@@ -48,3 +48,8 @@ next-env.d.ts
 
 # Encrypted vault (API keys, tokens)
 .vault/
+
+# Database files (never commit these)
+*.db
+*.db-shm
+*.db-wal
