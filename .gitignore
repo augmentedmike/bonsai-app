@@ -24,6 +24,7 @@
 *.db
 *.db-wal
 *.db-shm
+*.db.backup-*
 *.sqlite
 
 # misc
