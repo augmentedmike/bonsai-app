@@ -17,6 +17,10 @@ export async function GET(
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
 
+  if (!project.localPath) {
+    return NextResponse.json({ error: "Project has no local path" }, { status: 400 });
+  }
+
   // Read .env file from project directory
   const envPath = path.join(project.localPath, ".env");
   let envVars: Array<{ key: string; value: string }> = [];
@@ -68,6 +72,10 @@ export async function PATCH(
   const project = await getProjectById(projectId);
   if (!project) {
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
+  }
+
+  if (!project.localPath) {
+    return NextResponse.json({ error: "Project has no local path" }, { status: 400 });
   }
 
   // Update build/run commands in database

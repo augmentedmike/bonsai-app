@@ -16,6 +16,10 @@ export async function POST(
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
   }
 
+  if (!project.localPath) {
+    return NextResponse.json({ error: "Project has no local path" }, { status: 400 });
+  }
+
   const worktreeDir = getWorktreeDir(project.localPath);
 
   try {

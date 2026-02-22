@@ -73,7 +73,7 @@ interface BoardViewProps {
   projectId: string;
   personas?: Persona[];
   project?: Project;
-  ticketStats?: { planning: number; building: number; review: number; shipped: number };
+  ticketStats?: { planning: number; building: number; shipped: number };
   awakePersonaIds?: string[];
   previewUrl?: string | null;
   startingPreview?: boolean;

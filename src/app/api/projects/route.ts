@@ -204,9 +204,9 @@ export async function DELETE(req: Request) {
   const { eq } = await import("drizzle-orm");
 
   // Delete tickets first (they may reference personas)
-  db.delete(tickets).where(eq(tickets.project_id, Number(id))).run();
+  db.delete(tickets).where(eq(tickets.projectId, Number(id))).run();
   // Delete personas
-  db.delete(personas).where(eq(personas.project_id, Number(id))).run();
+  db.delete(personas).where(eq(personas.projectId, Number(id))).run();
 
   await softDeleteProject(Number(id));
   return NextResponse.json({ success: true });

@@ -3,15 +3,10 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { GeminiSetupModal } from "@/components/gemini-setup-modal";
+import { useLanguage } from "@/i18n/language-context";
+import type { Locale } from "@/i18n/translations";
 
 type Section = "preferences" | "api-keys" | "prompts" | "roles";
-
-const sections: { id: Section; label: string }[] = [
-  { id: "preferences", label: "User preferences" },
-  { id: "api-keys", label: "API Keys" },
-  { id: "prompts", label: "Prompts" },
-  { id: "roles", label: "Roles" },
-];
 
 interface SettingsData {
   name: string;
@@ -28,12 +23,20 @@ export function SettingsPanel({
   open: boolean;
   onClose: () => void;
 }) {
+  const { t, locale, setLocale } = useLanguage();
   const [activeSection, setActiveSection] = useState<Section>("preferences");
   const [data, setData] = useState<SettingsData | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [nameValue, setNameValue] = useState("");
   const [saving, setSaving] = useState(false);
   const [mounted, setMounted] = useState(false);
+
+  const sections: { id: Section; label: string }[] = [
+    { id: "preferences", label: t.settings.preferences },
+    { id: "api-keys", label: t.settings.apiKeys },
+    { id: "prompts", label: t.settings.prompts },
+    { id: "roles", label: t.settings.roles },
+  ];
 
   useEffect(() => {
     queueMicrotask(() => setMounted(true));
@@ -124,7 +127,7 @@ export function SettingsPanel({
             className="text-xs font-semibold uppercase tracking-wider px-3 mb-2"
             style={{ color: "var(--text-muted)" }}
           >
-            Settings
+            {t.settings.title}
           </h2>
           {sections.map((s) => (
             <button
@@ -152,7 +155,7 @@ export function SettingsPanel({
           {!data ? (
             <div className="flex items-center justify-center h-full">
               <span className="text-sm" style={{ color: "var(--text-muted)" }}>
-                Loading...
+                {t.settings.loading}
               </span>
             </div>
           ) : activeSection === "preferences" ? (
@@ -161,6 +164,8 @@ export function SettingsPanel({
               editingName={editingName}
               nameValue={nameValue}
               saving={saving}
+              locale={locale}
+              onLocaleChange={setLocale}
               onEditName={() => setEditingName(true)}
               onNameChange={setNameValue}
               onSaveName={handleSaveName}
@@ -187,6 +192,8 @@ function PreferencesSection({
   editingName,
   nameValue,
   saving,
+  locale,
+  onLocaleChange,
   onEditName,
   onNameChange,
   onSaveName,
@@ -197,12 +204,15 @@ function PreferencesSection({
   editingName: boolean;
   nameValue: string;
   saving: boolean;
+  locale: Locale;
+  onLocaleChange: (locale: Locale) => void;
   onEditName: () => void;
   onNameChange: (v: string) => void;
   onSaveName: () => void;
   onCancelEdit: () => void;
   onAvatarChange: (url: string) => void;
 }) {
+  const { t } = useLanguage();
   const [generatingAvatar, setGeneratingAvatar] = useState(false);
   const [showGeminiSetup, setShowGeminiSetup] = useState(false);
 
@@ -243,7 +253,7 @@ function PreferencesSection({
           className="text-base font-semibold mb-4"
           style={{ color: "var(--text-primary)" }}
         >
-          User preferences
+          {t.settings.preferences}
         </h3>
       </div>
 
@@ -253,7 +263,7 @@ function PreferencesSection({
           className="text-xs font-medium mb-1.5 block"
           style={{ color: "var(--text-muted)" }}
         >
-          Avatar
+          {t.settings.avatar}
         </label>
         <div className="flex items-center gap-3">
           {displayAvatar ? (
@@ -277,10 +287,10 @@ function PreferencesSection({
               className="px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-40 transition-opacity"
               style={{ backgroundColor: "var(--accent-blue)" }}
             >
-              {generatingAvatar ? "Generating..." : "Generate avatar"}
+              {generatingAvatar ? t.settings.generating : t.settings.generateAvatar}
             </button>
             <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-              {data.userAvatarUrl ? "AI-generated using team style" : data.githubAvatarUrl ? "Synced from GitHub" : "No avatar set"}
+              {data.userAvatarUrl ? t.settings.aiGenerated : data.githubAvatarUrl ? t.settings.syncedFromGithub : t.settings.noAvatar}
             </span>
           </div>
         </div>
@@ -292,7 +302,7 @@ function PreferencesSection({
           className="text-xs font-medium mb-1.5 block"
           style={{ color: "var(--text-muted)" }}
         >
-          Display name
+          {t.settings.displayName}
         </label>
         {editingName ? (
           <div className="flex gap-2 max-w-sm">

@@ -5,8 +5,6 @@ import { eq, and, desc, sql } from "drizzle-orm";
 type DocType =
   | "research"
   | "implementation_plan"
-  | "research_critique"
-  | "plan_critique"
   | "design";
 
 export function getDocumentsByTicket(ticketId: number) {

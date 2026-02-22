@@ -43,7 +43,6 @@ export default async function BoardPage({
   const ticketStats = {
     planning: visibleTickets.filter((t) => t.state === "planning").length,
     building: visibleTickets.filter((t) => t.state === "building").length,
-    review: visibleTickets.filter((t) => t.state === "review").length,
     shipped: visibleTickets.filter((t) => t.state === "shipped").length,
   };
 

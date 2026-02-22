@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import type { Project } from "@/types";
 import { ProjectSelector } from "./project-selector";
 import { ProjectSettingsModal } from "./project-settings-modal";
+import { LanguageSwitcher } from "./language-switcher";
+import { useLanguage } from "@/i18n/language-context";
 
 interface BoardHeaderProps {
   project: Project;
@@ -17,6 +19,7 @@ interface BoardHeaderProps {
 
 export function BoardHeader({ project, allProjects, shippedCount, hasCommands, previewMode, onPreviewToggle }: BoardHeaderProps) {
   const router = useRouter();
+  const { t } = useLanguage();
   const [previewing, setPreviewing] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsNotice, setSettingsNotice] = useState("");
@@ -31,7 +34,7 @@ export function BoardHeader({ project, allProjects, shippedCount, hasCommands, p
     }
 
     if (!previewEnabled) {
-      setSettingsNotice("Configure build and run commands in project settings to enable preview.");
+      setSettingsNotice(t.board.previewNotConfigured);
       setSettingsOpen(true);
       return;
     }
@@ -42,8 +45,8 @@ export function BoardHeader({ project, allProjects, shippedCount, hasCommands, p
       const data = await res.json();
       if (!res.ok) {
         const msg = data.details
-          ? `Build failed:\n${data.details}`
-          : data.error || "Preview failed";
+          ? `${t.board.buildFailed}\n${data.details}`
+          : data.error || t.board.previewFailed;
         setSettingsNotice(msg);
         setSettingsOpen(true);
         setPreviewing(false);
@@ -92,7 +95,7 @@ export function BoardHeader({ project, allProjects, shippedCount, hasCommands, p
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
               <path d="M8 5v14l11-7z" />
             </svg>
-            {previewing ? "Starting..." : previewMode ? "Close Preview" : "Preview"}
+            {previewing ? t.board.starting : previewMode ? t.board.closePreview : t.board.preview}
           </button>
 
           <button
@@ -103,8 +106,10 @@ export function BoardHeader({ project, allProjects, shippedCount, hasCommands, p
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
-            Add ticket
+            {t.board.addTicket}
           </button>
+
+          <LanguageSwitcher />
         </div>
       </div>
 

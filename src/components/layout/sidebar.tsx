@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
 import { SettingsPanel } from "./settings-panel";
 import type { AgentRun } from "@/types";
+import { useLanguage } from "@/i18n/language-context";
 
 function NavIcon({ icon, active }: { icon: string; active?: boolean }) {
   const base = active
@@ -63,6 +64,7 @@ function getSubPage(pathname: string): string | undefined {
 export function Sidebar({ userName }: { userName?: string }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { t } = useLanguage();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [clientName, setClientName] = useState(userName ?? "");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -112,10 +114,10 @@ export function Sidebar({ userName }: { userName?: string }) {
 
   // Nav items that require an active project
   const projectNavItems = [
-    { icon: "board", label: "Board", subPath: "board", match: (s: string | undefined) => s === "board" || s === undefined },
-    { icon: "activity", label: "Agent Activity", subPath: "activity", match: (s: string | undefined) => s === "activity" },
-    { icon: "team", label: "Team", subPath: "team", match: (s: string | undefined) => s === "team" },
-    { icon: "settings", label: "Settings", subPath: "settings", match: (s: string | undefined) => s === "settings" },
+    { icon: "board", label: t.nav.board, subPath: "board", match: (s: string | undefined) => s === "board" || s === undefined },
+    { icon: "activity", label: t.nav.activity, subPath: "activity", match: (s: string | undefined) => s === "activity" },
+    { icon: "team", label: t.nav.team, subPath: "team", match: (s: string | undefined) => s === "team" },
+    { icon: "settings", label: t.nav.settings, subPath: "settings", match: (s: string | undefined) => s === "settings" },
   ];
 
   return (
@@ -145,7 +147,7 @@ export function Sidebar({ userName }: { userName?: string }) {
           onClick={() => router.push("/ideas")}
           className="group relative w-10 h-10 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5"
           style={pathname.startsWith("/ideas") ? { backgroundColor: "rgba(91, 141, 249, 0.1)" } : undefined}
-          title="Ideas"
+          title={t.nav.ideas}
         >
           <NavIcon icon="ideas" active={pathname.startsWith("/ideas")} />
         </button>

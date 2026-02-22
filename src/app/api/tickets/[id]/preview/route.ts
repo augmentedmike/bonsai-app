@@ -16,6 +16,10 @@ export async function GET(
     return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
   }
 
+  if (!ticket.projectId) {
+    return NextResponse.json({ error: "Ticket has no project" }, { status: 400 });
+  }
+
   const project = await getProjectById(ticket.projectId);
   if (!project) {
     return NextResponse.json({ error: "Project not found" }, { status: 404 });
@@ -67,13 +71,13 @@ export async function GET(
     headers.delete("X-Frame-Options");
     headers.delete("Content-Security-Policy");
 
-    return new NextResponse(body, {
+    return new NextResponse(body as BodyInit, {
       status: response.status,
       headers,
     });
   } catch (error) {
     // Get worktree path for error message
-    const worktreePath = getWorktreePath(project.localPath, ticket.id);
+    const worktreePath = project.localPath ? getWorktreePath(project.localPath, ticket.id) : null;
 
     // Only return HTML error page for HTML requests (not for assets)
     const accept = request.headers.get("Accept") || "";
@@ -83,8 +87,8 @@ export async function GET(
           <div style="text-align:center;max-width:600px;padding:20px;">
             <h2 style="margin:0 0 8px 0;color:#333;">Dev server not running</h2>
             <p style="margin:0 0 16px 0;">Start the dev server to see live changes:</p>
-            <pre style="background:#f5f5f5;padding:16px;border-radius:8px;text-align:left;margin:0 0 16px 0;font-size:13px;overflow-x:auto;">cd ${worktreePath}
-${project.runCommand || "npm run dev"}</pre>
+            ${worktreePath ? `<pre style="background:#f5f5f5;padding:16px;border-radius:8px;text-align:left;margin:0 0 16px 0;font-size:13px;overflow-x:auto;">cd ${worktreePath}
+${project.runCommand || "npm run dev"}</pre>` : ""}
             <p style="margin:0;font-size:14px;color:#999;">Error: ${error instanceof Error ? error.message : "Could not connect to dev server"}</p>
           </div>
         </body></html>`,

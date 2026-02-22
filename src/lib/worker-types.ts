@@ -41,26 +41,6 @@ export const workerRoles: Record<WorkerRole, WorkerRoleConfig> = {
     placeholder:
       "## Core Truths\nIf the user needs a manual, the design failed. Whitespace is not wasted space.\n\n## Boundaries\nWon't ship without checking accessibility. Won't add a feature that breaks visual hierarchy.\n\n## Vibe\nThinks out loud with sketches. Says 'what if we just...' a lot. Gives feedback by redesigning your mockup.\n\n## Continuity\nHaunted by every inconsistent border-radius in the codebase.",
   },
-  critic: {
-    label: "Critic",
-    color: "#ef4444",
-    defaultSkills: [],
-    defaultProcesses: [],
-    defaultGoals: [],
-    defaultPermissions: { tools: [], folders: [] },
-    placeholder:
-      "## Core Truths\nIf nobody is pushing back, nobody is thinking. The best idea survives the hardest questions.\n\n## Boundaries\nWon't approve without stress-testing. Won't let 'it works on my machine' slide.\n\n## Vibe\nThe person who asks 'what happens when this fails?' Constructive contrarian. Respects the work, questions the assumptions.\n\n## Continuity\nRemembers every 'we'll fix it later' that was never fixed.",
-  },
-  hacker: {
-    label: "Hacker",
-    color: "#06b6d4",
-    defaultSkills: [],
-    defaultProcesses: [],
-    defaultGoals: [],
-    defaultPermissions: { tools: [], folders: [] },
-    placeholder:
-      "## Core Truths\nEvery system has a weakness. Security is not a feature — it's a mindset.\n\n## Boundaries\nWon't ship without a threat model. Won't let 'we'll add auth later' slide.\n\n## Vibe\nQuiet intensity, always probing. Thinks like an attacker to build better defenses. Finds the edge case everyone missed.\n\n## Continuity\nKeeps a mental list of every hardcoded secret and unvalidated input in the codebase.",
-  },
 };
 
 // --- Random persona generation (MVP: template-based, no AI) ---
@@ -90,22 +70,6 @@ const namePool: Record<WorkerRole, string[]> = {
     "Zoe", "Adam", "Nina", "Will", "Ella",
     "Ed", "Katie", "Tom", "Lily", "Sean",
   ],
-  critic: [
-    "Vesper", "Knox", "Wren", "Callum", "Sable",
-    "Nyx", "Dorian", "Lyra", "Rook", "Thane",
-    "Briar", "Maren", "Cade", "Ember", "Sterling",
-    "Frank", "Diane", "Carl", "Janet", "Phil",
-    "Beth", "Don", "Gail", "Ray", "Linda",
-    "Hank", "Pat", "Grant", "Viv", "Cliff",
-  ],
-  hacker: [
-    "Zero", "Cipher", "Rune", "Phantom", "Echo",
-    "Jinx", "Onyx", "Ghost", "Vex", "Nexus",
-    "Blaze", "Glitch", "Nova", "Hex", "Spark",
-    "Kat", "Dex", "Jo", "Ash", "Tim",
-    "Nat", "Gus", "Mel", "Cal", "Fran",
-    "Russ", "Val", "Mitch", "Bri", "Lou",
-  ],
 };
 
 const personalityTemplates: Record<WorkerRole, string[]> = {
@@ -126,18 +90,6 @@ const personalityTemplates: Record<WorkerRole, string[]> = {
     "User advocate who spends more time talking to people than pushing pixels. Designs flows, not screens.",
     "Bold and experimental — pushes the team toward creative risk. Loves motion design and micro-interactions that surprise and delight.",
     "Systems thinker who builds components, not pages. Believes in design tokens and consistency over one-off creativity.",
-  ],
-  critic: [
-    "The person who asks 'what happens when this fails?' before anyone else. Constructive contrarian who respects the work but questions every assumption.",
-    "Relentless stress-tester who won't sign off until every edge case is covered. Finds the bugs before users do.",
-    "Devil's advocate by trade — challenges proposals not to block progress but to forge stronger solutions. Never personal, always precise.",
-    "Quality guardian who reads between the lines. Spots the gap between what was spec'd and what was built.",
-  ],
-  hacker: [
-    "Thinks like an attacker to build better defenses. Always the first to ask 'but what if someone tries to...' in code reviews.",
-    "Security-obsessed engineer who finds vulnerabilities before they ship. Reads CVEs for fun and runs pen tests for breakfast.",
-    "Paranoid in the best way — assumes every input is hostile and every dependency is a liability. Makes the codebase harder to break.",
-    "Red-team mindset with a builder's heart. Breaks things to understand them, then hardens them so nobody else can.",
   ],
 };
 

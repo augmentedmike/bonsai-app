@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { Project } from "@/types";
 import { ProjectSettingsModal } from "./project-settings-modal";
+import { useLanguage } from "@/i18n/language-context";
 
 interface BoardActionsProps {
   project: Project;
@@ -18,6 +19,7 @@ interface BoardActionsProps {
 
 export function BoardActions({ project, shippedCount, hasCommands, previewMode, onPreviewToggle, onPreviewStart, onPreviewReady, onPreviewError }: BoardActionsProps) {
   const router = useRouter();
+  const { t } = useLanguage();
   const [previewing, setPreviewing] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsNotice, setSettingsNotice] = useState("");
@@ -64,7 +66,7 @@ export function BoardActions({ project, shippedCount, hasCommands, previewMode, 
     }
 
     if (!previewEnabled) {
-      setSettingsNotice("Configure build and run commands in project settings to enable preview.");
+      setSettingsNotice(t.board.previewNotConfigured);
       setSettingsOpen(true);
       return;
     }
@@ -76,8 +78,8 @@ export function BoardActions({ project, shippedCount, hasCommands, previewMode, 
       const data = await res.json();
       if (!res.ok) {
         const msg = data.details
-          ? `Build failed:\n${data.details}`
-          : data.error || "Preview failed";
+          ? `${t.board.buildFailed}\n${data.details}`
+          : data.error || t.board.previewFailed;
         onPreviewError(msg);
         setSettingsNotice(msg);
         setSettingsOpen(true);
@@ -95,7 +97,7 @@ export function BoardActions({ project, shippedCount, hasCommands, previewMode, 
       onPreviewReady(url);
     } catch (err) {
       console.error("[preview]", err);
-      onPreviewError("Failed to start preview");
+      onPreviewError(t.board.failedToStartPreview);
     } finally {
       setPreviewing(false);
     }
@@ -111,7 +113,7 @@ export function BoardActions({ project, shippedCount, hasCommands, previewMode, 
         <button
           onClick={togglePause}
           disabled={pauseLoading}
-          title={paused ? "Resume agents" : "Pause agents"}
+          title={paused ? t.board.resumeAgents : t.board.pauseAgents}
           className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all"
           style={{
             backgroundColor: paused ? "rgba(239,68,68,0.12)" : "var(--bg-input)",
@@ -132,7 +134,7 @@ export function BoardActions({ project, shippedCount, hasCommands, previewMode, 
               <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
             </svg>
           )}
-          {paused ? "Paused" : "Pause"}
+          {paused ? t.board.paused : t.board.pause}
         </button>
 
         <button
@@ -150,7 +152,7 @@ export function BoardActions({ project, shippedCount, hasCommands, previewMode, 
           <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
             <path d="M8 5v14l11-7z" />
           </svg>
-          {previewing ? "Starting..." : previewMode ? "Close Preview" : "Preview"}
+          {previewing ? t.board.starting : previewMode ? t.board.closePreview : t.board.preview}
         </button>
 
         <button
@@ -161,7 +163,7 @@ export function BoardActions({ project, shippedCount, hasCommands, previewMode, 
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
           </svg>
-          Add ticket
+          {t.board.addTicket}
         </button>
       </div>
 

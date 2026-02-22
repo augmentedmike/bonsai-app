@@ -70,9 +70,9 @@ export function AddTicketModal({ open, onClose, projectSlug }: AddTicketModalPro
   const [generatingTitle, setGeneratingTitle] = useState(false);
   const [generatingCriteria, setGeneratingCriteria] = useState(false);
   // EPIC FEATURES DISABLED
-  // const [epicId, setEpicId] = useState<string>("");
-  // const [isEpic, setIsEpic] = useState(false);
-  // const [epicOptions, setEpicOptions] = useState<Array<{ id: string; title: string }>>([]);
+  const [epicId, setEpicId] = useState<string>("");
+  const [isEpic, setIsEpic] = useState(false);
+  const [epicOptions, setEpicOptions] = useState<Array<{ id: string; title: string }>>([]);
   const descRef = useRef<HTMLTextAreaElement>(null);
   const pendingVoiceBlurRef = useRef(false);
 

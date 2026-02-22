@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/layout/sidebar";
 import { getSetting } from "@/db/data/settings";
+import { LanguageProvider } from "@/i18n/language-context";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -38,10 +39,12 @@ export default async function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <div className="flex h-screen overflow-hidden">
-          <Sidebar userName={userName ?? undefined} />
-          <main className="flex-1 overflow-hidden">{children}</main>
-        </div>
+        <LanguageProvider>
+          <div className="flex h-screen overflow-hidden">
+            <Sidebar userName={userName ?? undefined} />
+            <main className="flex-1 overflow-hidden">{children}</main>
+          </div>
+        </LanguageProvider>
       </body>
     </html>
   );

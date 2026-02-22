@@ -327,7 +327,6 @@ async function toolsForRole(role: string): Promise<string[]> {
 
 // Resolve phase label for agent run tracking
 function resolvePhaseForRun(ticket: typeof tickets.$inferSelect): string {
-  if (ticket.state === "review") return "review";
   if (ticket.planApprovedAt) return "implementation";      // Plan approved = building
   if (ticket.researchApprovedAt) return "planning";        // Research approved = planning
   return "research";                                        // Nothing approved = research
@@ -355,10 +354,8 @@ async function getTicketContext(ticketId: number) {
 
   const researchDoc = docs.find((d) => d.type === "research");
   const implPlan = docs.find((d) => d.type === "implementation_plan");
-  const researchCritique = docs.find((d) => d.type === "research_critique");
-  const planCritique = docs.find((d) => d.type === "plan_critique");
 
-  return { enrichedComments, researchDoc, implPlan, researchCritique, planCritique };
+  return { enrichedComments, researchDoc, implPlan };
 }
 
 // ── POST /api/tickets/[id]/dispatch ──────────────────
@@ -421,13 +418,11 @@ export async function POST(
       // @team: only dispatch roles relevant to the current phase
       const inResearch = !ticket.researchApprovedAt;
       const inPlanning = !!ticket.researchApprovedAt && !ticket.planApprovedAt;
-      const inReview = ticket.state === "review";
-      const inBuild = !!ticket.planApprovedAt && !inReview;
+      const inBuild = !!ticket.planApprovedAt;
       const relevantRoles = new Set<string>();
       if (inResearch) { relevantRoles.add("researcher"); relevantRoles.add("critic"); }
       if (inPlanning) { relevantRoles.add("developer"); relevantRoles.add("critic"); relevantRoles.add("hacker"); }
       if (inBuild) { relevantRoles.add("developer"); relevantRoles.add("hacker"); }
-      if (inReview) { relevantRoles.add("developer"); relevantRoles.add("hacker"); relevantRoles.add("critic"); }
       dispatchTargets = projectPersonas.filter((p) => relevantRoles.has(p.role || ""));
     }
 
@@ -917,7 +912,7 @@ async function assembleAgentTask(
     return sections.join("\n");
   }
 
-  const { enrichedComments, researchDoc, implPlan, researchCritique, planCritique } = await getTicketContext(ticket.id);
+  const { enrichedComments, researchDoc, implPlan } = await getTicketContext(ticket.id);
 
   // QMD search for prior work on this ticket to prevent redundant effort
   const qmdContext = await searchQMDForTicket(ticket.id, persona.role || "developer");
@@ -964,12 +959,6 @@ async function assembleAgentTask(
       : implPlan.content;
     sections.push("", "## Implementation Plan (v" + implPlan.version + ")", content);
   }
-  if (researchCritique) {
-    sections.push("", "## Research Critique (v" + researchCritique.version + ")", researchCritique.content);
-  }
-  if (planCritique) {
-    sections.push("", "## Plan Critique (v" + planCritique.version + ")", planCritique.content);
-  }
 
   if (enrichedComments.length > 0) {
     sections.push("", "## Recent Comments");
@@ -977,8 +966,7 @@ async function assembleAgentTask(
   }
 
   // Determine current phase based on what's been approved
-  const phase = ticket.state === "review" ? "review"
-    : ticket.planApprovedAt ? "implementation"  // Plan approved = building phase
+  const phase = ticket.planApprovedAt ? "implementation"  // Plan approved = building phase
     : ticket.researchApprovedAt ? "planning"    // Research approved = planning phase
     : "research";                                // Nothing approved = research phase
 
@@ -989,13 +977,6 @@ async function assembleAgentTask(
     sections.push("", prompt || "## PHASE: IMPLEMENTATION — BUILD THE APP\nWrite code. Do NOT produce documents.");
     if (opts?.conversational) {
       sections.push("", "You were @mentioned. Answer briefly, but your PRIMARY job is to BUILD — write code, not documents. If the message is asking you to do work, DO the work (write code), don't just describe what you'd do.");
-    }
-  } else if (phase === "review") {
-    // REVIEW phase — test thoroughly, even in conversational mode
-    const prompt = await getSetting("prompt_phase_test");
-    sections.push("", prompt || "## PHASE: REVIEW\nTest the app thoroughly. Run it, verify acceptance criteria, find bugs.");
-    if (opts?.conversational) {
-      sections.push("", "You were @mentioned. Answer briefly, but your PRIMARY job is to REVIEW — run the app, verify features work, find bugs.");
     }
   } else if (opts?.conversational) {
     // Conversational in research/planning — just reply

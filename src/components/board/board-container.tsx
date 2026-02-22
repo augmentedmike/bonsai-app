@@ -9,7 +9,7 @@ interface BoardContainerProps {
   project: Project;
   tickets: Ticket[];
   personas: Persona[];
-  ticketStats: { planning: number; building: number; review: number; shipped: number };
+  ticketStats: { planning: number; building: number; shipped: number };
   awakePersonaIds: string[];
 }
 

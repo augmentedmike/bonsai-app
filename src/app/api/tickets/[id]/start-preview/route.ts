@@ -37,6 +37,10 @@ export async function POST(
   const project = await getProjectById(ticket.projectId);
   if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
 
+  if (!project.localPath) {
+    return NextResponse.json({ error: "Project has no local path" }, { status: 400 });
+  }
+
   // Get worktree path from centralized utility
   const worktreePath = getWorktreePath(project.localPath, ticket.id);
 

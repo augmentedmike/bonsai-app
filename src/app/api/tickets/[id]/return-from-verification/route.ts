@@ -19,13 +19,6 @@ export async function POST(
     return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
   }
 
-  if (ticket.state !== "review") {
-    return NextResponse.json(
-      { error: "Ticket is not in review state" },
-      { status: 400 }
-    );
-  }
-
   // Set returned flag and move back to building
   await updateTicket(ticketId, {
     returnedFromVerification: true,

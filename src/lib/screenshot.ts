@@ -29,6 +29,7 @@ export async function capturePreviewScreenshot(): Promise<{ name: string; type: 
       const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
       if (iframeDoc) {
         // Import html2canvas dynamically
+        // @ts-ignore - html2canvas types not available
         const html2canvas = (await import('html2canvas')).default;
 
         // Capture iframe content

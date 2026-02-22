@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
+import { eq } from "drizzle-orm";
 import * as schema from "./schema";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,7 +26,7 @@ if (env === "dev") {
   const existingUserName = db
     .select({ value: schema.settings.value })
     .from(schema.settings)
-    .where(schema.eq(schema.settings.key, "user_name"))
+    .where(eq(schema.settings.key, "user_name"))
     .get();
 
   if (!existingUserName) {
