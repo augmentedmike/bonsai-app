@@ -231,6 +231,18 @@ We welcome contributions! Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for:
 
 ---
 
+## Contributors
+
+<div align="center">
+  <img src="public/mike-portrait.png" alt="Mike O'Neal" width="200" style="border-radius: 10px;" />
+  <br />
+  <strong>Mike O'Neal</strong>
+  <br />
+  Creator & Lead Developer
+</div>
+
+---
+
 ## License
 
 [License information here]
