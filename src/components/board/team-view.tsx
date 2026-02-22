@@ -718,7 +718,7 @@ export function TeamView({ projectSlug }: { projectSlug: string }) {
                         </div>
                         <div className="flex items-start gap-5">
                           <div
-                            className="w-24 h-24 rounded-xl flex items-center justify-center text-3xl font-bold text-white overflow-hidden flex-shrink-0"
+                            className="w-24 h-24 rounded-full flex items-center justify-center text-3xl font-bold text-white overflow-hidden flex-shrink-0"
                             style={{ backgroundColor: color }}
                           >
                             {persona.avatar ? (

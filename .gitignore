@@ -25,6 +25,7 @@
 *.db-wal
 *.db-shm
 *.db.backup-*
+*.db.post-restore-*
 *.sqlite
 
 # misc
