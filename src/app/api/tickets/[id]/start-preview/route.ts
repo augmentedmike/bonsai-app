@@ -115,10 +115,10 @@ export async function POST(
   const port = 4000 + (ticketId % 1000);
 
   const host = "localhost";
+  const previewPath = project.slug ? `/p/${project.slug}/board` : '/';
 
   // Check if dev server is already running on this port
   const inUse = await isPortInUse(port);
-  const previewPath = project.slug ? `/p/${project.slug}/board` : '/';
   if (inUse) {
     return NextResponse.json({ url: `http://${host}:${port}${previewPath}`, alreadyRunning: true, port });
   }
