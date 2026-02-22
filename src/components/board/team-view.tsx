@@ -649,16 +649,16 @@ export function TeamView({ projectSlug }: { projectSlug: string }) {
                   </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
                   {personas.map((persona) => {
                     const role = roles.find((r) => r.id === persona.roleId);
                     const color = role?.color || persona.color;
                     return (
                       <div
                         key={persona.id}
-                        className="group relative p-5 rounded-xl border border-[var(--border-medium)] bg-[var(--bg-input)] hover:border-[var(--border-subtle)] transition-colors"
+                        className="group relative p-6 rounded-xl border border-[var(--border-medium)] bg-[var(--bg-input)] hover:border-[var(--border-subtle)] transition-colors"
                       >
-                        <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                        <div className="absolute top-4 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
                           <button
                             onClick={() => startEditWorker(persona)}
                             className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/10"
@@ -670,9 +670,9 @@ export function TeamView({ projectSlug }: { projectSlug: string }) {
                           </button>
                           <ConfirmDelete onDelete={() => handleDeleteWorker(persona.id)} />
                         </div>
-                        <div className="flex items-start gap-4">
+                        <div className="flex items-start gap-5">
                           <div
-                            className="w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold text-white overflow-hidden flex-shrink-0"
+                            className="w-24 h-24 rounded-xl flex items-center justify-center text-3xl font-bold text-white overflow-hidden flex-shrink-0"
                             style={{ backgroundColor: color }}
                           >
                             {persona.avatar ? (
@@ -682,21 +682,23 @@ export function TeamView({ projectSlug }: { projectSlug: string }) {
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <h4 className="font-semibold text-[var(--text-primary)]">{persona.name}</h4>
-                            <span
-                              className="inline-block text-xs font-medium px-2 py-0.5 rounded mt-1"
-                              style={{
-                                backgroundColor: `color-mix(in srgb, ${color} 15%, transparent)`,
-                                color: color,
-                              }}
-                            >
-                              {role?.title || persona.role}
-                            </span>
+                            <div className="flex items-center gap-3">
+                              <h4 className="text-lg font-semibold text-[var(--text-primary)]">{persona.name}</h4>
+                              <span
+                                className="inline-block text-xs font-medium px-2.5 py-0.5 rounded"
+                                style={{
+                                  backgroundColor: `color-mix(in srgb, ${color} 15%, transparent)`,
+                                  color: color,
+                                }}
+                              >
+                                {role?.title || persona.role}
+                              </span>
+                            </div>
                             {persona.personality && (
-                              <div className="text-xs text-[var(--text-muted)] mt-2 line-clamp-2 prose prose-invert prose-xs max-w-none">
+                              <div className="text-sm text-[var(--text-secondary)] mt-2 leading-relaxed prose prose-invert prose-sm max-w-none">
                                 <ReactMarkdown
                                   components={{
-                                    p: ({ children }) => <span>{children}</span>,
+                                    p: ({ children }) => <p className="mb-1.5 last:mb-0">{children}</p>,
                                     strong: ({ children }) => <strong className="font-semibold text-white/80">{children}</strong>,
                                     em: ({ children }) => <em>{children}</em>,
                                     h1: ({ children }) => <span className="font-bold">{children}</span>,
@@ -1162,15 +1164,73 @@ export function TeamView({ projectSlug }: { projectSlug: string }) {
                       <textarea value={commStyle} onChange={(e) => setCommStyle(e.target.value)} placeholder="How do they communicate? Tone, energy, quirks..." rows={3} className="w-full px-4 py-3 rounded-lg text-sm bg-[var(--bg-input)] border border-[var(--border-medium)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-blue)] resize-y" />
                     </div>
 
-                    {editRole?.skillDefinitions && editRole.skillDefinitions.length > 0 && (
-                      <div>
-                        <label className="block text-xs font-medium mb-1.5 text-[var(--text-muted)]">Skills from {editRole.title}</label>
-                        <div className="flex flex-wrap gap-1.5">
-                          {editRole.skillDefinitions.map((skill, idx) => (
-                            <span key={idx} className="text-xs px-2 py-1 rounded-md" style={{ backgroundColor: `color-mix(in srgb, ${editRole.color} 15%, transparent)`, color: editRole.color }}>
-                              /{skill.name}
-                            </span>
-                          ))}
+                    {/* Role Permissions */}
+                    {editRole && (
+                      <div className="rounded-lg border border-[var(--border-medium)] bg-white/[0.02] overflow-hidden">
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-medium)]">
+                          <div className="flex items-center gap-2">
+                            <svg className="w-4 h-4 text-[var(--text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" /></svg>
+                            <span className="text-xs font-medium text-[var(--text-secondary)]">{editRole.title} Permissions</span>
+                          </div>
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-white/5 text-[var(--text-muted)]">
+                            {editRole.slug === "researcher" || editRole.slug === "critic" ? "Read-only" : "Full access"}
+                          </span>
+                        </div>
+                        <div className="px-4 py-3 space-y-3">
+                          {/* Tools */}
+                          <div>
+                            <label className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-medium mb-1.5 block">Tools</label>
+                            <div className="flex flex-wrap gap-1.5">
+                              {(editRole.slug === "researcher" || editRole.slug === "critic"
+                                ? ["Read", "Grep", "Glob", "Bash", "WebSearch", "WebFetch"]
+                                : ["Read", "Grep", "Glob", "Write", "Edit", "Bash"]
+                              ).map((tool) => {
+                                const isWrite = ["Write", "Edit"].includes(tool);
+                                const isWeb = ["WebSearch", "WebFetch"].includes(tool);
+                                return (
+                                  <span key={tool} className="text-xs px-2 py-1 rounded-md font-mono" style={{
+                                    backgroundColor: isWrite ? "rgba(239,68,68,0.1)" : isWeb ? "rgba(59,130,246,0.1)" : "rgba(255,255,255,0.05)",
+                                    color: isWrite ? "#f87171" : isWeb ? "#60a5fa" : "var(--text-secondary)",
+                                  }}>
+                                    {tool}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          {/* Phases */}
+                          <div>
+                            <label className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-medium mb-1.5 block">Active Phases</label>
+                            <div className="flex flex-wrap gap-1.5">
+                              {(editRole.slug === "researcher"
+                                ? ["Research"]
+                                : editRole.slug === "developer"
+                                ? ["Planning", "Building"]
+                                : editRole.slug === "designer"
+                                ? ["Design"]
+                                : editRole.slug === "critic"
+                                ? ["Review"]
+                                : [editRole.title]
+                              ).map((phase) => (
+                                <span key={phase} className="text-xs px-2 py-1 rounded-md" style={{ backgroundColor: `color-mix(in srgb, ${editRole.color} 12%, transparent)`, color: editRole.color }}>
+                                  {phase}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          {/* Skills */}
+                          {editRole.skillDefinitions && editRole.skillDefinitions.length > 0 && (
+                            <div>
+                              <label className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-medium mb-1.5 block">Skills</label>
+                              <div className="flex flex-wrap gap-1.5">
+                                {editRole.skillDefinitions.map((skill, idx) => (
+                                  <span key={idx} className="text-xs px-2 py-1 rounded-md font-mono" style={{ backgroundColor: `color-mix(in srgb, ${editRole.color} 15%, transparent)`, color: editRole.color }}>
+                                    /{skill.name}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
