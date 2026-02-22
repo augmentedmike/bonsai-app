@@ -118,8 +118,9 @@ export async function POST(
 
   // Check if dev server is already running on this port
   const inUse = await isPortInUse(port);
+  const previewPath = project.slug ? `/p/${project.slug}/board` : '/';
   if (inUse) {
-    return NextResponse.json({ url: `http://${host}:${port}`, alreadyRunning: true, port });
+    return NextResponse.json({ url: `http://${host}:${port}${previewPath}`, alreadyRunning: true, port });
   }
 
   // Ensure package.json exists in worktree
@@ -186,7 +187,7 @@ export async function POST(
   console.log(`[ticket-preview] Started dev server for ticket ${ticketId} in worktree on port ${port} (pid ${child.pid})`);
 
   return NextResponse.json({
-    url: `http://${host}:${port}`,
+    url: `http://${host}:${port}${previewPath}`,
     pid: child.pid,
     port,
     worktreePath
