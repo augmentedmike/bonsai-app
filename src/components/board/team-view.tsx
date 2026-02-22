@@ -86,6 +86,10 @@ export function TeamView({ projectSlug }: { projectSlug: string }) {
   const [saving, setSaving] = useState(false);
   const [editingPersona, setEditingPersona] = useState<Persona | null>(null);
 
+  const [roleTools, setRoleTools] = useState<string[]>([]);
+  const [roleToolsDirty, setRoleToolsDirty] = useState(false);
+  const [savingRoleTools, setSavingRoleTools] = useState(false);
+
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [roleForm, setRoleForm] = useState({
     title: "",
@@ -242,6 +246,18 @@ export function TeamView({ projectSlug }: { projectSlug: string }) {
     setRerolling("");
   }
 
+  const ALL_TOOLS = [
+    { name: "Read", group: "filesystem", description: "Read files" },
+    { name: "Grep", group: "filesystem", description: "Search file contents" },
+    { name: "Glob", group: "filesystem", description: "Find files by pattern" },
+    { name: "Bash", group: "filesystem", description: "Run shell commands" },
+    { name: "Write", group: "write", description: "Create new files" },
+    { name: "Edit", group: "write", description: "Modify existing files" },
+    { name: "WebSearch", group: "web", description: "Search the web" },
+    { name: "WebFetch", group: "web", description: "Fetch web pages" },
+    { name: "Task", group: "agent", description: "Spawn sub-agents" },
+  ];
+
   function startEditWorker(persona: Persona) {
     setEditingPersona(persona);
     setName(persona.name);
@@ -252,7 +268,37 @@ export function TeamView({ projectSlug }: { projectSlug: string }) {
     const role = roles.find((r) => r.id === persona.roleId)
       || roles.find((r) => r.slug === persona.role);
     setSelectedRole(role || null);
+    // Initialize role tools from DB, or defaults
+    if (role?.tools && role.tools.length > 0) {
+      setRoleTools([...role.tools]);
+    } else if (role?.slug === "researcher" || role?.slug === "critic") {
+      setRoleTools(["Read", "Grep", "Glob", "Bash", "WebSearch", "WebFetch"]);
+    } else {
+      setRoleTools(["Read", "Grep", "Glob", "Write", "Edit", "Bash"]);
+    }
+    setRoleToolsDirty(false);
     setTab("edit-worker");
+  }
+
+  async function handleSaveRoleTools() {
+    if (!editingPersona) return;
+    const role = roles.find((r) => r.id === editingPersona.roleId)
+      || roles.find((r) => r.slug === editingPersona?.role);
+    if (!role) return;
+    setSavingRoleTools(true);
+    try {
+      const res = await fetch("/api/roles", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: role.id, tools: roleTools }),
+      });
+      const updated = await res.json();
+      setRoles(roles.map((r) => (r.id === updated.id ? updated : r)));
+      setRoleToolsDirty(false);
+    } catch (err) {
+      console.error("Failed to save role tools:", err);
+    }
+    setSavingRoleTools(false);
   }
 
   async function handleRegenerateForEdit() {
@@ -1172,28 +1218,57 @@ export function TeamView({ projectSlug }: { projectSlug: string }) {
                             <svg className="w-4 h-4 text-[var(--text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" /></svg>
                             <span className="text-xs font-medium text-[var(--text-secondary)]">{editRole.title} Permissions</span>
                           </div>
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-white/5 text-[var(--text-muted)]">
-                            {editRole.slug === "researcher" || editRole.slug === "critic" ? "Read-only" : "Full access"}
-                          </span>
+                          {roleToolsDirty && (
+                            <button
+                              onClick={handleSaveRoleTools}
+                              disabled={savingRoleTools}
+                              className="text-xs px-3 py-1 rounded-md font-medium text-white hover:opacity-90 disabled:opacity-40"
+                              style={{ backgroundColor: editRole.color }}
+                            >
+                              {savingRoleTools ? "Saving..." : "Save Permissions"}
+                            </button>
+                          )}
                         </div>
                         <div className="px-4 py-3 space-y-3">
                           {/* Tools */}
                           <div>
-                            <label className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-medium mb-1.5 block">Tools</label>
+                            <label className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-medium mb-2 block">Tools</label>
                             <div className="flex flex-wrap gap-1.5">
-                              {(editRole.slug === "researcher" || editRole.slug === "critic"
-                                ? ["Read", "Grep", "Glob", "Bash", "WebSearch", "WebFetch"]
-                                : ["Read", "Grep", "Glob", "Write", "Edit", "Bash"]
-                              ).map((tool) => {
-                                const isWrite = ["Write", "Edit"].includes(tool);
-                                const isWeb = ["WebSearch", "WebFetch"].includes(tool);
+                              {ALL_TOOLS.map((tool) => {
+                                const enabled = roleTools.includes(tool.name);
+                                const isWrite = tool.group === "write";
+                                const isWeb = tool.group === "web";
+                                const isAgent = tool.group === "agent";
                                 return (
-                                  <span key={tool} className="text-xs px-2 py-1 rounded-md font-mono" style={{
-                                    backgroundColor: isWrite ? "rgba(239,68,68,0.1)" : isWeb ? "rgba(59,130,246,0.1)" : "rgba(255,255,255,0.05)",
-                                    color: isWrite ? "#f87171" : isWeb ? "#60a5fa" : "var(--text-secondary)",
-                                  }}>
-                                    {tool}
-                                  </span>
+                                  <button
+                                    key={tool.name}
+                                    onClick={() => {
+                                      const next = enabled
+                                        ? roleTools.filter((t) => t !== tool.name)
+                                        : [...roleTools, tool.name];
+                                      setRoleTools(next);
+                                      setRoleToolsDirty(true);
+                                    }}
+                                    className="text-xs px-2.5 py-1.5 rounded-md font-mono transition-all flex items-center gap-1.5"
+                                    style={{
+                                      backgroundColor: enabled
+                                        ? isWrite ? "rgba(239,68,68,0.15)" : isWeb ? "rgba(59,130,246,0.15)" : isAgent ? "rgba(168,85,247,0.15)" : "rgba(255,255,255,0.1)"
+                                        : "rgba(255,255,255,0.02)",
+                                      color: enabled
+                                        ? isWrite ? "#f87171" : isWeb ? "#60a5fa" : isAgent ? "#a855f7" : "var(--text-primary)"
+                                        : "var(--text-muted)",
+                                      border: `1px solid ${enabled ? "transparent" : "var(--border-medium)"}`,
+                                      opacity: enabled ? 1 : 0.5,
+                                    }}
+                                    title={tool.description}
+                                  >
+                                    {enabled ? (
+                                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                                    ) : (
+                                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                                    )}
+                                    {tool.name}
+                                  </button>
                                 );
                               })}
                             </div>

@@ -334,15 +334,13 @@ async function postAgentComment(ticketId: number, personaId: string, content: st
 }
 
 async function toolsForRole(role: string): Promise<string[]> {
-  // Read-only roles
-  if (role === "researcher") return TOOLS_READONLY;
-  if (role === "critic") return TOOLS_READONLY;
-
-  // Check DB for role-specific tools
+  // Check DB first — user may have customized tools for any role
   const roleRow = await getRoleBySlug(role);
   if (roleRow?.tools) {
     try { return JSON.parse(roleRow.tools); } catch {}
   }
+  // Defaults if no DB override
+  if (role === "researcher" || role === "critic") return TOOLS_READONLY;
   return TOOLS_FULL;
 }
 

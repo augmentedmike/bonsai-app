@@ -423,6 +423,19 @@ const API_BASE = process.env.API_BASE || "http://localhost:3080";
 const TOOLS_READONLY = ["Read", "Grep", "Glob", "Bash", "Skill", "WebSearch", "WebFetch"];
 const TOOLS_FULL = ["Read", "Grep", "Glob", "Write", "Edit", "Bash", "Skill"];
 
+const getRoleByIdStmt = db.prepare(`SELECT tools FROM roles WHERE id = ?`);
+
+function toolsForPersona(persona: PersonaRow, fallback: string[]): string[] {
+  // Check DB first — user may have customized tools for this role
+  if (persona.role_id) {
+    const row = getRoleByIdStmt.get(persona.role_id) as { tools: string | null } | undefined;
+    if (row?.tools) {
+      try { return JSON.parse(row.tools); } catch {}
+    }
+  }
+  return fallback;
+}
+
 function shellEscape(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`;
 }
@@ -922,7 +935,7 @@ async function dispatch(maxTickets: number) {
           ticket.acceptance_criteria ? `\n### Acceptance Criteria\n${ticket.acceptance_criteria}` : "",
           `\nResearch this ticket thoroughly. Explore the files inside your workspace (${resolveMainRepo(project)}), understand the current state, identify constraints and edge cases. ONLY read files inside your workspace directory. Output your complete research document in markdown format.`,
         ].join("\n");
-        tools = TOOLS_READONLY;
+        tools = toolsForPersona(persona, TOOLS_READONLY);
         timeoutMs = AGENT_MAX_DURATION_MS;
 
       } else if (!ticket.plan_completed_at) {
@@ -939,7 +952,7 @@ async function dispatch(maxTickets: number) {
           `\n---\n\n## Research Document (approved)\n\n${researchContent}`,
           `\n---\n\nUsing the research above, create a detailed implementation plan. Be specific about files, functions, and the order of changes. Output your complete implementation plan in markdown format.`,
         ].join("\n");
-        tools = TOOLS_READONLY;
+        tools = toolsForPersona(persona, TOOLS_READONLY);
         timeoutMs = AGENT_MAX_DURATION_MS;
 
       } else {
@@ -959,7 +972,7 @@ async function dispatch(maxTickets: number) {
           `\n---\n\n## Implementation Plan (approved)\n\n${planContent}`,
           `\n---\n\nFollow the implementation plan above step by step. Make the actual code changes. When done, summarize what you implemented.`,
         ].join("\n");
-        tools = TOOLS_FULL;
+        tools = toolsForPersona(persona, TOOLS_FULL);
         timeoutMs = DEVELOPER_MAX_DURATION_MS;
       }
 
