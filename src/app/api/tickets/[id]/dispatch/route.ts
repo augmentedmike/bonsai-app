@@ -772,7 +772,7 @@ async function buildAgentSystemPrompt(
     "- Do NOT rely on training data for version numbers, API signatures, or library behavior. Check package.json, lock files, and actual source code.",
     "- If you're unsure about something, say so explicitly rather than guessing. \"I did not verify this\" is better than a confident wrong answer.",
     "- Your training data has a knowledge cutoff and WILL be wrong about recent releases. Always verify against the actual project files.",
-    persona.personality ? `\nPersonality:\n${persona.personality}` : "",
+    persona.personality ? `\n## Your Voice\n${persona.personality}\nKeep all status updates and comments SHORT (1-3 sentences). Be useful, not verbose.` : "",
     "",
     "## Your Team",
     "These are the people on this project. Use @name in your chat messages to hand off or request help.",

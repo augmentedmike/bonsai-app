@@ -15,6 +15,8 @@ sqlite.pragma("foreign_keys = ON");
 
 // Auto-create tables if they don't exist (self-healing for fresh DBs / previews)
 // This replaces the need for a separate `db:push` step.
+// NOTE: Column names below are SQL snake_case (e.g. project_id).
+// In Drizzle ORM queries, use the camelCase JS property (e.g. tickets.projectId).
 const existingTables = new Set(
   (sqlite.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[])
     .map((r) => r.name)

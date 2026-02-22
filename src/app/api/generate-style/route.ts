@@ -625,8 +625,8 @@ export async function POST(req: Request) {
       const ref = allRefs[Math.floor(Math.random() * allRefs.length)];
       style = `Bust portrait, head and shoulders only, face fills most of the frame. No full body. Square format, no text or logos. ${ref}.`;
     } else {
-      // Default: pop culture (movies, TV, games, comics)
-      style = buildPopCulturePrompt();
+      // Default: artistic (rich multi-dimensional style prompt)
+      style = buildStylePrompt();
     }
 
     return NextResponse.json({ style });

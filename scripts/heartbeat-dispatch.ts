@@ -5,7 +5,7 @@
  * Opens SQLite directly (no Next.js server needed).
  *
  * Phases:
- *   1. RESEARCH — backlog tickets without research → researcher agent
+ *   1. RESEARCH — planning tickets without research → researcher agent
  *   2. PLANNING — research-approved tickets without plan → planner agent
  *   3. IMPLEMENTATION — plan-approved tickets → developer agent
  *
@@ -148,16 +148,15 @@ const getActionableTicketsStmt = db.prepare(`
          t.research_approved_at, t.plan_completed_at, t.plan_approved_at,
          t.last_human_comment_at, t.returned_from_verification
   FROM tickets t
-  WHERE t.state != 'done'
-    AND t.state != 'test'
-    AND t.state != 'ship'
+  WHERE t.state IN ('planning', 'building')
     AND t.project_id = ?
+    AND t.deleted_at IS NULL
     AND (t.last_agent_activity IS NULL OR datetime(t.last_agent_activity) < datetime('now', '-30 minutes'))
   ORDER BY
     CASE WHEN t.last_human_comment_at IS NOT NULL THEN 1 ELSE 2 END,
     CASE WHEN t.returned_from_verification = 1 THEN 1 ELSE 2 END,
-    CASE WHEN t.state = 'in_progress' THEN 1 ELSE 2 END,
-    CASE WHEN t.state = 'backlog' THEN 1 ELSE 2 END,
+    CASE WHEN t.state = 'building' THEN 1 ELSE 2 END,
+    CASE WHEN t.state = 'planning' THEN 1 ELSE 2 END,
     t.priority DESC,
     t.created_at ASC
   LIMIT 10
@@ -1038,10 +1037,10 @@ async function dispatch(maxTickets: number) {
         }
       } else if (phase === "implement") {
         if (result) {
-          markTicketState.run("test", ticket.id);
+          markTicketState.run("shipped", ticket.id);
           const summary = extractSummary(result);
-          postAgentComment(ticket.id, persona.id, `**Implementation complete** — moved to test\n\n${summary}`);
-          log(`  COMPLETE: ${ticket.id} — implementation done, moved to test`);
+          postAgentComment(ticket.id, persona.id, `**Implementation complete** — moved to shipped\n\n${summary}`);
+          log(`  COMPLETE: ${ticket.id} — implementation done, moved to shipped`);
           completed++;
         } else {
           markAgentActivity.run(null, null, ticket.id);
@@ -1079,7 +1078,7 @@ async function scanAndDispatchMentions() {
     JOIN tickets t ON t.id = c.ticket_id
     WHERE c.author_type = 'agent'
       AND c.created_at > datetime('now', '-15 minutes')
-      AND t.state NOT IN ('shipped', 'cancelled')
+      AND t.state IN ('planning', 'building')
       AND t.deleted_at IS NULL
     ORDER BY c.created_at DESC
     LIMIT 50

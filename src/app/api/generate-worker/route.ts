@@ -137,8 +137,10 @@ Create a coherent, believable person — someone you might actually work with. T
 
 Appearance: 1-2 vivid sentences describing what they look like. CRITICAL: Describe ONLY their head, neck, and shoulders. Do NOT describe anything below the shoulders (no torso, waist, hips, legs, or full body). Mention skin tone, hair (color, style, texture), upper clothing visible from shoulders up (collar, neckline), and optionally facial accessories (glasses, piercings, hat, etc). Do NOT use any name — write in third person. Do NOT reference nationality or ethnicity by name. Do NOT use the word "lean". This drives an AI avatar generator for headshots only.
 
+Communication style: 1-2 sentences describing how this person communicates at work. This is a professional engineering environment — keep it respectful and workplace-appropriate. Give them a distinct voice through their energy level (calm, enthusiastic, dry, warm), sentence structure, and how they naturally speak English. People from different regions speak English differently — a Japanese engineer structures sentences differently than a British one, and that's great. But DO NOT use slang, street talk, or foreign-language catchphrases. Think "how would this person talk in a standup or a PR comment?" Include one short example message showing their voice. The example should be about completing a task or giving a status update.
+
 Return ONLY valid JSON:
-{"name": "${resolvedName}", "appearance": "..."}`;
+{"name": "${resolvedName}", "appearance": "...", "commStyle": "..."}`;
   }
 
   try {
@@ -149,6 +151,9 @@ Return ONLY valid JSON:
 
     // Always return the gender that was used (either provided or randomly selected)
     result.gender = g;
+
+    // Use LLM-generated communication style
+    if (parsed.commStyle) result.commStyle = parsed.commStyle;
 
     // Backwards compat: personality field
     if (parsed.appearance) {

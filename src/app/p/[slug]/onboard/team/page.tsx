@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { StepHeader } from "@/components/ui/step-header";
 import { GeminiSetupModal } from "@/components/gemini-setup-modal";
 import type { Role, Persona } from "@/types";
 
@@ -36,6 +35,7 @@ export default function TeamPage() {
 
   // Track workers being generated in random team flow
   const [generatingWorkers, setGeneratingWorkers] = useState<Persona[]>([]);
+  const [randomTeamDone, setRandomTeamDone] = useState(false);
 
   // Worker form state
   const [name, setName] = useState("");
@@ -49,6 +49,7 @@ export default function TeamPage() {
   const [saving, setSaving] = useState(false);
   const [showGeminiSetup, setShowGeminiSetup] = useState(false);
   const [geminiRetryFn, setGeminiRetryFn] = useState<(() => void) | null>(null);
+  const [avatarSize, setAvatarSize] = useState<"small" | "medium" | "large">("medium");
   const [styleMode, setStyleMode] = useState<"text" | "photo">("text");
   const [styleImage, setStyleImage] = useState<string | null>(null);
   const [styleDragOver, setStyleDragOver] = useState(false);
@@ -87,10 +88,16 @@ export default function TeamPage() {
       // Check if art style is already set (not default)
       const avatarStyleEntry = promptsData.prompts?.prompt_avatar_style;
       const styleSet = avatarStyleEntry?.isDefault === false;
-      if (styleSet && avatarStyleEntry?.value) {
+
+      // Only restore saved style if project already has personas (returning user).
+      // New projects start fresh so the user picks new art direction.
+      if (styleSet && avatarStyleEntry?.value && allPersonas.length > 0) {
         setSavedStylePrompt(avatarStyleEntry.value);
         setStylePromptText(avatarStyleEntry.value);
       }
+
+      // Art direction is complete if text style is set OR a style image exists
+      const artDirectionDone = styleSet || !!styleImageData?.image;
 
       // Compute unfilled roles: roles with no active persona matching that roleId
       // ONLY ENABLE: researcher, developer
@@ -100,9 +107,9 @@ export default function TeamPage() {
       const unfilled = enabledRoles.filter((r) => !filledRoleIds.has(r.id));
       setUnfilledRoles(unfilled);
 
-      // Only skip step 0 if style is set AND some personas already exist for this project
-      // (meaning art direction was already completed for this project specifically)
-      if (styleSet && unfilled.length < enabledRoles.length) {
+      // Skip step 0 only if art direction is set AND project already has personas
+      // New projects always show art direction so user can pick fresh style
+      if (artDirectionDone && allPersonas.length > 0) {
         setStep(1);
       } else {
         // Auto-generate a preview on first load
@@ -366,7 +373,9 @@ export default function TeamPage() {
         if (genData.name) allNames.push(genData.name);
       }
 
-      // Redirect to board after all team members created
+      // Show "Meet your new team" for 4 seconds before redirecting
+      setRandomTeamDone(true);
+      await new Promise((resolve) => setTimeout(resolve, 4000));
       router.push(`/p/${slug}/board`);
     } catch (err) {
       console.error("[handleAcceptRandomTeam] failed:", err);
@@ -473,6 +482,7 @@ export default function TeamPage() {
       }
       if (genData.name) setName(genData.name);
       if (genData.appearance) setAppearance(genData.appearance);
+      if (genData.commStyle) setCommStyle(genData.commStyle);
 
       setGeneratingPhase("avatar");
       const avatarRes = await fetch("/api/avatar", {
@@ -650,20 +660,140 @@ export default function TeamPage() {
 
   // ── Loading ──
 
-  if (loading) {
-    return (
-      <div className="flex flex-col h-full">
-        <StepHeader title="Build your team" />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="w-8 h-8 border-2 border-white/20 border-t-white/80 rounded-full animate-spin" />
-        </div>
-      </div>
-    );
-  }
+  if (loading) return null;
 
   // ══════════════════════════════════════════════
   // STEP 0: Art Style — Two-Column with Category Buttons
   // ══════════════════════════════════════════════
+  if (step === 0 && saving) {
+    // ── Random Team Generation View ──
+    const styleAccent = "#6366f1";
+    return (
+      <div
+        className="flex flex-col h-full items-center justify-center"
+        style={{
+          background: `radial-gradient(ellipse at 50% 30%, ${styleAccent}12 0%, transparent 60%), var(--bg-primary)`,
+        }}
+      >
+        {/* Title */}
+        <h1
+          style={{
+            fontSize: 28,
+            fontWeight: 700,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            color: randomTeamDone ? "#fff" : "var(--text-muted)",
+            marginBottom: 48,
+            opacity: randomTeamDone ? 1 : 0.4,
+            transition: "all 0.6s ease",
+          }}
+        >
+          {randomTeamDone ? "Meet your new team" : "Building your team..."}
+        </h1>
+
+        {/* Team members */}
+        <div style={{ display: "flex", gap: 48, alignItems: "flex-start" }}>
+          {unfilledRoles.map((role, idx) => {
+            const worker = generatingWorkers[idx];
+            const isGenerating = !worker && idx <= generatingWorkers.length;
+            const accent = role.color;
+            return (
+              <div
+                key={role.id}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 16,
+                  opacity: worker ? 1 : 0.3,
+                  transition: "opacity 0.5s ease",
+                }}
+              >
+                {/* Large avatar */}
+                <div
+                  style={{
+                    width: 160,
+                    height: 160,
+                    borderRadius: "50%",
+                    border: `3px solid ${worker ? accent : accent + "40"}`,
+                    overflow: "hidden",
+                    boxShadow: worker ? `0 0 40px ${accent}40, 0 0 80px ${accent}20` : "none",
+                    backgroundColor: `${accent}15`,
+                    transition: "all 0.5s ease",
+                  }}
+                >
+                  {worker?.avatar ? (
+                    <img
+                      src={worker.avatar}
+                      alt={worker.name}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      {isGenerating ? (
+                        <svg className="w-10 h-10 animate-spin" style={{ color: accent }} fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      ) : (
+                        <svg className="w-10 h-10" style={{ color: `${accent}40` }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                        </svg>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Name */}
+                <span
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color: worker ? accent : `${accent}40`,
+                    letterSpacing: "0.05em",
+                    transition: "color 0.5s ease",
+                  }}
+                >
+                  {worker?.name || role.title}
+                </span>
+
+                {/* Role */}
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: "var(--text-muted)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.1em",
+                  }}
+                >
+                  {role.title}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        <GeminiSetupModal
+          open={showGeminiSetup}
+          onClose={() => setShowGeminiSetup(false)}
+          onSuccess={() => {
+            setShowGeminiSetup(false);
+            geminiRetryFn?.();
+          }}
+        />
+      </div>
+    );
+  }
+
   if (step === 0) {
     const styleAccent = "#6366f1";
     const STYLE_CATEGORIES = [
@@ -700,10 +830,12 @@ export default function TeamPage() {
                 backgroundColor: `${styleAccent}04`,
               }}
             >
-              {/* ── Left Column: Avatar Preview + Title ── */}
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 300, flexShrink: 0 }}>
-                {/* Avatar */}
-                <div style={{ position: "relative", marginBottom: 16 }}>
+              {/* ── Left Column: Avatar Preview (3 sizes) + Title ── */}
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 340, flexShrink: 0 }}>
+                {/* Avatar sizes layout: Large left, Small+Medium stacked right */}
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 16, marginBottom: 16 }}>
+                  {/* Large avatar (2x = 440px logical, displayed at container) */}
+                  <div style={{ position: "relative" }}>
                   <div
                     style={{
                       width: 220,
@@ -792,6 +924,32 @@ export default function TeamPage() {
                         </div>
                       </button>
                     )}
+                  </div>
+                  </div>
+                  {/* Small + Medium avatars stacked to the right */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12, paddingTop: 8 }}>
+                    {/* Small avatar (32px — ticket card size) */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{
+                        width: 32, height: 32, borderRadius: "50%", overflow: "hidden",
+                        border: `2px solid ${styleAccent}60`, backgroundColor: "var(--bg-primary)",
+                        flexShrink: 0,
+                      }}>
+                        {previewAvatar && <img src={previewAvatar} alt="Small" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%", opacity: generatingPreview ? 0.4 : 1 }} />}
+                      </div>
+                      <span style={{ fontSize: 10, color: "var(--text-muted)" }}>32px</span>
+                    </div>
+                    {/* Medium avatar (64px — board/team view size) */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{
+                        width: 64, height: 64, borderRadius: "50%", overflow: "hidden",
+                        border: `2px solid ${styleAccent}60`, backgroundColor: "var(--bg-primary)",
+                        flexShrink: 0,
+                      }}>
+                        {previewAvatar && <img src={previewAvatar} alt="Medium" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%", opacity: generatingPreview ? 0.4 : 1 }} />}
+                      </div>
+                      <span style={{ fontSize: 10, color: "var(--text-muted)" }}>64px</span>
+                    </div>
                   </div>
                 </div>
 
@@ -1348,13 +1506,15 @@ export default function TeamPage() {
         <div className="flex gap-10" style={{ maxWidth: 1400, margin: "0 auto" }}>
 
           {/* ── Left Column: Character Pedestal ── */}
-          <div className="flex flex-col items-center" style={{ width: 280, flexShrink: 0 }}>
-            {/* Avatar frame with glow */}
-            <div style={{ position: "relative" as const, marginBottom: 0 }}>
+          <div className="flex flex-col items-center" style={{ width: 340, flexShrink: 0 }}>
+            {/* Avatar sizes layout: Large left, Small+Medium stacked right */}
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 16, marginBottom: 0 }}>
+              {/* Large avatar */}
+              <div style={{ position: "relative" as const }}>
               <div
                 style={{
-                  width: 160,
-                  height: 160,
+                  width: 220,
+                  height: 220,
                   borderRadius: "50%",
                   border: `3px solid ${accent}`,
                   overflow: "hidden",
@@ -1439,12 +1599,38 @@ export default function TeamPage() {
                   </button>
                 )}
               </div>
+              </div>
+              {/* Small + Medium avatars stacked to the right */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, paddingTop: 8 }}>
+                {/* Small avatar (32px — ticket card size) */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{
+                    width: 32, height: 32, borderRadius: "50%", overflow: "hidden",
+                    border: `2px solid ${accent}60`, backgroundColor: "var(--bg-primary)",
+                    flexShrink: 0,
+                  }}>
+                    {avatarUrl && <img src={avatarUrl} alt="Small" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%", opacity: generatingPhase === "avatar" || rerolling === "avatar" ? 0.4 : 1 }} />}
+                  </div>
+                  <span style={{ fontSize: 10, color: "var(--text-muted)" }}>32px</span>
+                </div>
+                {/* Medium avatar (64px — board/team view size) */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{
+                    width: 64, height: 64, borderRadius: "50%", overflow: "hidden",
+                    border: `2px solid ${accent}60`, backgroundColor: "var(--bg-primary)",
+                    flexShrink: 0,
+                  }}>
+                    {avatarUrl && <img src={avatarUrl} alt="Medium" style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%", opacity: generatingPhase === "avatar" || rerolling === "avatar" ? 0.4 : 1 }} />}
+                  </div>
+                  <span style={{ fontSize: 10, color: "var(--text-muted)" }}>64px</span>
+                </div>
+              </div>
             </div>
 
             {/* Pedestal shape */}
             <div
               style={{
-                width: 200,
+                width: 240,
                 height: 24,
                 marginTop: -2,
                 background: `linear-gradient(to bottom, ${accent}25, ${accent}08)`,
@@ -1453,126 +1639,15 @@ export default function TeamPage() {
             />
             <div
               style={{
-                width: 220,
+                width: 260,
                 height: 6,
                 background: `linear-gradient(to right, transparent, ${accent}30, transparent)`,
                 marginTop: -1,
               }}
             />
 
-            {/* Gender selector column */}
-            <div style={{ marginTop: 16, display: "flex", flexDirection: "column" as const, gap: 4 }}>
-              {(["male", "female", "non-binary"] as const).map((g) => (
-                <button
-                  key={g}
-                  onClick={() => switchGender(g)}
-                  style={{
-                    padding: "6px 0",
-                    borderRadius: 6,
-                    fontSize: 11,
-                    fontWeight: 600,
-                    letterSpacing: "0.05em",
-                    textTransform: "uppercase" as const,
-                    border: gender === g ? `2px solid ${accent}` : `1px solid var(--border-medium)`,
-                    backgroundColor: gender === g ? `${accent}20` : "transparent",
-                    color: gender === g ? accent : "var(--text-muted)",
-                    cursor: "pointer",
-                    transition: "all 0.2s",
-                    width: 160,
-                  }}
-                >
-                  {g === "non-binary" ? "Non-Binary" : g.charAt(0).toUpperCase() + g.slice(1)}
-                </button>
-              ))}
-            </div>
-
-            {/* ── Role Identity (below pedestal) ── */}
-            <div style={{ marginTop: 24, textAlign: "center" as const, maxWidth: 260 }}>
-              <div
-                style={{
-                  fontSize: 20,
-                  fontWeight: 700,
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase" as const,
-                  color: accent,
-                  lineHeight: 1.2,
-                }}
-              >
-                {role.title}
-              </div>
-              {role.description && (
-                <p style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 8, lineHeight: 1.5 }}>
-                  {role.description}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* ── Right Column: Character Traits Panel ── */}
-          <div
-            style={{
-              flex: 1,
-              border: `1px solid ${accent}30`,
-              borderRadius: 12,
-              backgroundColor: `${accent}06`,
-              padding: "20px 24px",
-              display: "flex",
-              flexDirection: "column" as const,
-              gap: 16,
-            }}
-          >
-            {/* Panel header with Regen All */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                paddingBottom: 10,
-                borderBottom: `1px solid ${accent}20`,
-              }}
-            >
-              <div style={{ width: 80 }} />
-              <div
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  letterSpacing: "0.15em",
-                  textTransform: "uppercase" as const,
-                  color: "var(--text-muted)",
-                }}
-              >
-                Character Traits
-              </div>
-              <button
-                onClick={regenerateAll}
-                disabled={generating || !!rerolling}
-                style={{
-                  padding: "5px 10px",
-                  borderRadius: 6,
-                  border: `1px solid ${accent}40`,
-                  backgroundColor: `${accent}10`,
-                  color: accent,
-                  fontSize: 10,
-                  fontWeight: 700,
-                  letterSpacing: "0.05em",
-                  textTransform: "uppercase" as const,
-                  cursor: generating || rerolling ? "not-allowed" : "pointer",
-                  opacity: generating || rerolling ? 0.4 : 1,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 5,
-                  transition: "all 0.2s",
-                }}
-              >
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
-                </svg>
-                {generatingPhase === "text" ? "Generating..." : generatingPhase === "avatar" ? "Painting..." : "Regen All"}
-              </button>
-            </div>
-
-            {/* Name field (full width) */}
-            <div>
+            {/* Name field */}
+            <div style={{ marginTop: 16, width: 220 }}>
               <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" as const, color: "var(--text-muted)", display: "block", marginBottom: 6 }}>
                 Name
               </label>
@@ -1618,7 +1693,106 @@ export default function TeamPage() {
               </div>
             </div>
 
-            {/* Bottom: two textareas side by side */}
+            {/* Gender selector column */}
+            <div style={{ marginTop: 12, display: "flex", flexDirection: "column" as const, gap: 4 }}>
+              {(["male", "female", "non-binary"] as const).map((g) => (
+                <button
+                  key={g}
+                  onClick={() => switchGender(g)}
+                  style={{
+                    padding: "6px 0",
+                    borderRadius: 6,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    letterSpacing: "0.05em",
+                    textTransform: "uppercase" as const,
+                    border: gender === g ? `2px solid ${accent}` : `1px solid var(--border-medium)`,
+                    backgroundColor: gender === g ? `${accent}20` : "transparent",
+                    color: gender === g ? accent : "var(--text-muted)",
+                    cursor: "pointer",
+                    transition: "all 0.2s",
+                    width: 160,
+                  }}
+                >
+                  {g === "non-binary" ? "Non-Binary" : g.charAt(0).toUpperCase() + g.slice(1)}
+                </button>
+              ))}
+            </div>
+
+          </div>
+
+          {/* ── Right Column: Character Traits Panel ── */}
+          <div
+            style={{
+              flex: 1,
+              border: `1px solid ${accent}30`,
+              borderRadius: 12,
+              backgroundColor: `${accent}06`,
+              padding: "20px 24px",
+              display: "flex",
+              flexDirection: "column" as const,
+              gap: 16,
+            }}
+          >
+            {/* Role header with Regen All */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                paddingBottom: 12,
+                borderBottom: `1px solid ${accent}20`,
+              }}
+            >
+              <button
+                onClick={regenerateAll}
+                disabled={generating || !!rerolling}
+                style={{
+                  padding: "5px 10px",
+                  borderRadius: 6,
+                  border: `1px solid ${accent}40`,
+                  backgroundColor: `${accent}10`,
+                  color: accent,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: "0.05em",
+                  textTransform: "uppercase" as const,
+                  cursor: generating || rerolling ? "not-allowed" : "pointer",
+                  opacity: generating || rerolling ? 0.4 : 1,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                  transition: "all 0.2s",
+                }}
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                </svg>
+                {generatingPhase === "text" ? "Generating..." : generatingPhase === "avatar" ? "Painting..." : "Regen All"}
+              </button>
+              <div style={{ flex: 1, textAlign: "center" as const }}>
+                <div
+                  style={{
+                    fontSize: 20,
+                    fontWeight: 700,
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase" as const,
+                    color: accent,
+                    lineHeight: 1.2,
+                  }}
+                >
+                  {role.title}
+                </div>
+                {role.description && (
+                  <p style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 6, lineHeight: 1.5 }}>
+                    {role.description}
+                  </p>
+                )}
+              </div>
+              <div style={{ width: 80 }} />
+            </div>
+
+            {/* Two textareas side by side */}
             <div style={{ display: "flex", gap: 12, flex: 1, minHeight: 0 }}>
               {/* Visual Description */}
               <div style={{ flex: 1, display: "flex", flexDirection: "column" as const }}>
