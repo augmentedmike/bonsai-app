@@ -24,7 +24,7 @@ const BONSAI_DIR = path.join(HOME, ".bonsai");
 const API_BASE = process.env.API_BASE || "http://localhost:3080";
 const BONSAI_CLI = path.join(process.cwd(), "cli", "bonsai-cli.ts");
 
-const TOOLS_READONLY = ["Read", "Grep", "Glob", "Bash"];
+const TOOLS_READONLY = ["Read", "Grep", "Glob", "Bash", "WebSearch", "WebFetch"];
 const TOOLS_FULL = ["Read", "Grep", "Glob", "Write", "Edit", "Bash"];
 
 // Agent skills directory — skills are discovered via --add-dir, not concatenated into prompts

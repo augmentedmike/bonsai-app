@@ -420,7 +420,7 @@ const CLAUDE_CLI = path.join(process.env.HOME || "", ".local", "bin", "claude");
 const MODEL = "opus";
 const API_BASE = process.env.API_BASE || "http://localhost:3080";
 
-const TOOLS_READONLY = ["Read", "Grep", "Glob", "Bash", "Skill"];
+const TOOLS_READONLY = ["Read", "Grep", "Glob", "Bash", "Skill", "WebSearch", "WebFetch"];
 const TOOLS_FULL = ["Read", "Grep", "Glob", "Write", "Edit", "Bash", "Skill"];
 
 function shellEscape(s: string): string {
