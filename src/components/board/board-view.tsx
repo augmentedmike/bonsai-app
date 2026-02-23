@@ -8,6 +8,7 @@ import { TicketDetailModal } from "./ticket-detail-modal";
 import { ProjectInfoPanel } from "./project-info-panel";
 import { ProjectChatPanel } from "./project-chat-panel";
 import { PreviewPanel } from "./preview-panel";
+import { PixelOffice } from "./pixel-office";
 
 const columnOrder: TicketState[] = [
   "planning",
@@ -108,6 +109,17 @@ export function BoardView({
   const previewUrl = externalPreviewUrl;
 
   const awakePersonaIds = useMemo(() => new Set(awakePersonaIdsList), [awakePersonaIdsList]);
+
+  // Derive real-time active persona IDs from polled ticket data (15s cycle)
+  const activePersonaIds = useMemo(() => {
+    const active = new Set<string>();
+    for (const ticket of tickets) {
+      for (const pid of (ticket.activeRunPersonaIds ?? [])) {
+        active.add(pid);
+      }
+    }
+    return active;
+  }, [tickets]);
 
   // User-overridden collapse state — persisted per project in localStorage
   const storageKey = `bonsai-col-collapse-${projectId}`;
@@ -267,6 +279,14 @@ export function BoardView({
           awakePersonaIds={awakePersonaIds}
           onPersonaClick={handlePersonaClick}
           onChatOpen={() => { setChatMentionPersonaId(null); setChatOpen(true); }}
+        />
+      )}
+
+      {/* Pixel office visualization */}
+      {project && personas.length > 0 && (
+        <PixelOffice
+          personas={personas}
+          activePersonaIds={activePersonaIds}
         />
       )}
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { agentRuns, personas } from "@/db/schema";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 // GET /api/tickets/[id]/active-agents - Get currently running agents for a ticket
 export async function GET(
@@ -11,7 +11,7 @@ export async function GET(
   const { id } = await params;
   const ticketId = Number(id);
 
-  // Find agent runs that are still in progress (no endedAt)
+  // Find agent runs that are still in progress (status = "running")
   const activeRuns = db
     .select({
       runId: agentRuns.id,
@@ -28,7 +28,7 @@ export async function GET(
     .where(
       and(
         eq(agentRuns.ticketId, ticketId),
-        isNull(agentRuns.endedAt)
+        eq(agentRuns.status, "running")
       )
     )
     .orderBy(agentRuns.startedAt)
