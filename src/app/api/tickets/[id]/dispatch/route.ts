@@ -265,6 +265,22 @@ function spawnAgent(
     `  }`,
     `  process.exit(0);`,
     `}`,
+    `// Check for Anthropic API 500/overloaded errors — retry instead of posting error to UI`,
+    `if (/api_error|Internal server error|overloaded_error|"type":"error"/i.test(allOutput) && !/hit your limit|rate limit|out of credits|quota exceeded/i.test(allOutput)) {`,
+    `  fs.writeFileSync(${JSON.stringify(path.join(sessionDir, "post-error.log"))}, "Anthropic API error detected — requesting re-dispatch\\n" + allOutput.slice(0, 1000));`,
+    `  // Wait 5s before retrying to let transient errors clear`,
+    `  await new Promise(r => setTimeout(r, 5000));`,
+    `  try {`,
+    `    await fetch(${JSON.stringify(`${API_BASE}/api/tickets/${ticketId}/dispatch`)}, {`,
+    `      method: "POST",`,
+    `      headers: { "Content-Type": "application/json" },`,
+    `      body: JSON.stringify({ targetPersonaId: ${JSON.stringify(personaId)}, urgent: true }),`,
+    `    });`,
+    `  } catch (e) {`,
+    `    fs.writeFileSync(${JSON.stringify(path.join(sessionDir, "post-error.log"))}, "API error detected but re-dispatch failed: " + String(e));`,
+    `  }`,
+    `  process.exit(0);`,
+    `}`,
     `const raw = fs.readFileSync(${JSON.stringify(outputFile)}, "utf-8").trim();`,
     `if (!raw) {`,
     `  fs.writeFileSync(${JSON.stringify(path.join(sessionDir, "post-error.log"))}, "Empty output file — agent produced no output");`,
@@ -274,8 +290,13 @@ function spawnAgent(
     `try {`,
     `  const json = JSON.parse(raw);`,
     `  output = json.result || "";`,
-    `  if (!output && json.is_error) {`,
-    `    output = "I encountered an error while working on this task: " + (json.result || "unknown error");`,
+    `  if (json.is_error) {`,
+    `    const errMsg = json.result || "unknown error";`,
+    `    if (/api_error|Internal server error|overloaded/i.test(errMsg)) {`,
+    `      fs.writeFileSync(${JSON.stringify(path.join(sessionDir, "post-error.log"))}, "is_error API error caught: " + errMsg);`,
+    `      process.exit(0);`,
+    `    }`,
+    `    if (!output) output = "I encountered an error while working on this task. Will retry shortly.";`,
     `  }`,
     `} catch {`,
     `  output = raw;`,
@@ -555,9 +576,9 @@ export async function POST(
     return NextResponse.json({ error: "No personas available" }, { status: 400 });
   }
 
-  // Per-persona cooldown: 30s for direct human @mentions, 5 min for auto-dispatch chains
+  // Per-persona cooldown: 30s for direct human @mentions (name or role), 5 min for auto-dispatch chains
   // Skip cooldown for urgent dispatches (plan approval, research completion)
-  const isDirectMention = !!targetPersonaName;
+  const isDirectMention = !!targetPersonaName || !!requestedRole;
   if (!urgent && isPersonaOnCooldown(ticketId, targetPersona.id, isDirectMention)) {
     const cd = isDirectMention ? "30s" : "5 min";
     console.log(`[dispatch] Skipping ${targetPersona.name} — dispatched to ${ticketId} within last ${cd}`);

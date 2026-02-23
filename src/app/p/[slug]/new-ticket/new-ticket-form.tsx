@@ -30,6 +30,7 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
 
   const [dragOver, setDragOver] = useState(false);
   const [images, setImages] = useState<{ id: string; name: string; dataUrl: string }[]>([]);
+  const [fileAttachments, setFileAttachments] = useState<{ id: string; name: string; dataUrl: string; mimeType: string }[]>([]);
   // EPIC FEATURES DISABLED
   // const [wizardEpic, setWizardEpic] = useState<{ id: number; title: string } | null>(null);
   const descRef = useRef<HTMLTextAreaElement>(null);
@@ -48,12 +49,28 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
     aiField: "massage_criteria",
   });
 
-  function addImageFiles(files: File[]) {
-    files.filter((f) => f.type.startsWith("image/")).forEach((file) => {
+  function addFiles(files: File[]) {
+    const imageFiles = files.filter((f) => f.type.startsWith("image/"));
+    const nonImageFiles = files.filter((f) => !f.type.startsWith("image/"));
+
+    imageFiles.forEach((file) => {
       const reader = new FileReader();
       reader.onload = () => {
         const dataUrl = reader.result as string;
         setImages((prev) => [...prev, { id: crypto.randomUUID(), name: file.name, dataUrl }]);
+      };
+      reader.readAsDataURL(file);
+    });
+
+    nonImageFiles.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        setFileAttachments((prev) => [...prev, { id: crypto.randomUUID(), name: file.name, dataUrl, mimeType: file.type || "application/octet-stream" }]);
+        setDescription((prev) => {
+          const ref = `[Attached: ${file.name}]`;
+          return prev ? `${prev}\n${ref}` : ref;
+        });
       };
       reader.readAsDataURL(file);
     });
@@ -62,7 +79,7 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
   function handleDescDrop(e: React.DragEvent<HTMLTextAreaElement>) {
     e.preventDefault();
     setDragOver(false);
-    addImageFiles(Array.from(e.dataTransfer.files));
+    addFiles(Array.from(e.dataTransfer.files));
   }
 
   function handleDescPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
@@ -70,7 +87,7 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
     if (items.length === 0) return;
     e.preventDefault();
     const files = items.map((i) => i.getAsFile()).filter(Boolean) as File[];
-    addImageFiles(files);
+    addFiles(files);
   }
 
   // EPIC FEATURES DISABLED
@@ -176,25 +193,29 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
     });
     const data = await res.json();
     const ticketId = data.ticket?.id;
-    // Upload attached images
-    if (ticketId && images.length > 0) {
-      await Promise.all(images.map(async (img) => {
+    // Upload attached images and file attachments
+    const allAttachments = [
+      ...images.map((img) => ({ name: img.name, dataUrl: img.dataUrl, mimeType: img.dataUrl.split(";")[0].split(":")[1] || "image/png" })),
+      ...fileAttachments.map((f) => ({ name: f.name, dataUrl: f.dataUrl, mimeType: f.mimeType })),
+    ];
+    if (ticketId && allAttachments.length > 0) {
+      await Promise.all(allAttachments.map(async (att) => {
         try {
           const res = await fetch(`/api/tickets/${ticketId}/attachments`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              filename: img.name,
-              mimeType: img.dataUrl.split(";")[0].split(":")[1] || "image/png",
-              data: img.dataUrl,
+              filename: att.name,
+              mimeType: att.mimeType,
+              data: att.dataUrl,
               createdByType: "human",
             }),
           });
           if (!res.ok) {
-            console.error(`Failed to upload attachment ${img.name}:`, res.status, await res.text());
+            console.error(`Failed to upload attachment ${att.name}:`, res.status, await res.text());
           }
         } catch (err) {
-          console.error(`Failed to upload attachment ${img.name}:`, err);
+          console.error(`Failed to upload attachment ${att.name}:`, err);
         }
       }));
     }
@@ -309,6 +330,33 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
                       className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/70 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                     >
                       <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* File attachment badges */}
+            {fileAttachments.length > 0 && (
+              <div className="flex gap-2 mt-2 flex-wrap">
+                {fileAttachments.map((f) => (
+                  <div
+                    key={f.id}
+                    className="relative group flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-[var(--border-medium)] bg-[var(--bg-input)]"
+                  >
+                    <svg className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "var(--text-muted)" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                    </svg>
+                    <span className="text-xs truncate max-w-[120px]" style={{ color: "var(--text-secondary)" }}>{f.name}</span>
+                    <button
+                      onClick={() => {
+                        setFileAttachments((prev) => prev.filter((a) => a.id !== f.id));
+                        setDescription((prev) => prev.replace(`[Attached: ${f.name}]`, "").replace(/\n{2,}/g, "\n").trim());
+                      }}
+                      className="w-4 h-4 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                    >
+                      <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                       </svg>
                     </button>

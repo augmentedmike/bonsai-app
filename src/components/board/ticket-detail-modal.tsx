@@ -11,6 +11,7 @@ import { formatRelativeTime } from "@/lib/time-format";
 import { useVoiceInput } from "@/hooks/use-voice-input";
 import { VoiceButton } from "@/components/voice-button";
 import { CommentInput } from "@/components/board/comment-input";
+import { FileBrowser } from "@/components/board/file-browser";
 
 interface TicketDetailModalProps {
   ticket: Ticket | null;
@@ -161,8 +162,12 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
   const [approvingResearch, setApprovingResearch] = useState(false);
   const [approvingPlan, setApprovingPlan] = useState(false);
 
+  // Text attachment viewer state
+  const [textViewerAttachment, setTextViewerAttachment] = useState<{ filename: string; content: string } | null>(null);
+  const [loadingTextAttachment, setLoadingTextAttachment] = useState(false);
+
   // Live preview state
-  const [viewMode, setViewMode] = useState<"info" | "preview">("info");
+  const [viewMode, setViewMode] = useState<"info" | "preview" | "files">("info");
   const [project, setProject] = useState<{ buildCommand?: string; runCommand?: string; id?: string } | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [startingPreview, setStartingPreview] = useState(false);
@@ -333,7 +338,9 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
     if (!ticket) return;
     function handleKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        if (lightboxImage) {
+        if (textViewerAttachment) {
+          setTextViewerAttachment(null);
+        } else if (lightboxImage) {
           setLightboxImage(null);
         } else if (expandedDoc) {
           setExpandedDoc(null);
@@ -1241,6 +1248,29 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
     }
   }
 
+  const TEXT_VIEWABLE_TYPES = new Set([
+    "text/plain", "text/markdown", "application/json", "text/csv",
+    "text/html", "text/xml", "application/xml",
+  ]);
+
+  async function openTextViewer(att: TicketAttachment) {
+    if (!ticket) return;
+    setLoadingTextAttachment(true);
+    try {
+      const res = await fetch(`/api/tickets/${ticket.id}/attachments/${att.id}`);
+      const text = await res.text();
+      let displayText = text;
+      if (att.mimeType === "application/json") {
+        try { displayText = JSON.stringify(JSON.parse(text), null, 2); } catch { /* keep raw */ }
+      }
+      setTextViewerAttachment({ filename: att.filename, content: displayText });
+    } catch {
+      console.error("Failed to load attachment text");
+    } finally {
+      setLoadingTextAttachment(false);
+    }
+  }
+
   async function applyTransparencyToAttachment(attachmentId: number) {
     if (!ticket) return;
     setProcessingAttachmentId(attachmentId);
@@ -1515,6 +1545,20 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
                   </button>
                 );
               })()}
+              {/* Files browser toggle */}
+              <button
+                onClick={() => setViewMode(viewMode === "files" ? "info" : "files")}
+                className="w-10 h-10 rounded-lg flex items-center justify-center transition-colors"
+                style={{
+                  color: viewMode === "files" ? "var(--accent-blue)" : "var(--text-muted)",
+                  backgroundColor: viewMode === "files" ? "rgba(59, 130, 246, 0.1)" : "transparent",
+                }}
+                title={viewMode === "files" ? "Show ticket info" : "Browse repo files"}
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+                </svg>
+              </button>
               <button
                 onClick={onClose}
                 className="w-10 h-10 rounded-lg flex items-center justify-center transition-colors hover:bg-white/10"
@@ -1602,6 +1646,10 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
                     />
                   </>
                 )}
+              </div>
+            ) : viewMode === "files" ? (
+              <div className="h-full w-full -mx-8 -my-6 p-4" style={{ minHeight: "500px" }}>
+                <FileBrowser ticketId={ticket.id} />
               </div>
             ) : (
               <>
@@ -2039,21 +2087,29 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
                         </div>
                       );
                     } else {
-                      // Non-image file badge
+                      // Non-image file badge — text-viewable files open in viewer
+                      const isTextViewable = TEXT_VIEWABLE_TYPES.has(att.mimeType);
                       return (
-                        <a
+                        <div
                           key={att.id}
-                          href={attachmentUrl}
-                          download={att.filename}
+                          onClick={() => isTextViewable ? openTextViewer(att) : undefined}
                           className="relative group rounded-lg p-3 flex flex-col items-center justify-center gap-1 transition-colors hover:bg-white/10"
-                          style={{ backgroundColor: "rgba(255,255,255,0.03)", border: "1px solid var(--border-subtle)" }}
+                          style={{ backgroundColor: "rgba(255,255,255,0.03)", border: "1px solid var(--border-subtle)", cursor: isTextViewable ? "pointer" : "default" }}
                         >
-                          <svg className="w-6 h-6" style={{ color: "var(--text-muted)" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <svg className="w-6 h-6" style={{ color: isTextViewable ? "var(--accent-blue)" : "var(--text-muted)" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
                           </svg>
                           <span className="text-xs text-center truncate w-full" style={{ color: "var(--text-secondary)" }}>
                             {att.filename}
                           </span>
+                          {isTextViewable && (
+                            <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>Click to view</span>
+                          )}
+                          {!isTextViewable && (
+                            <a href={attachmentUrl} download={att.filename} onClick={(e) => e.stopPropagation()} className="text-[10px] hover:underline" style={{ color: "var(--text-muted)" }}>
+                              Download
+                            </a>
+                          )}
                           <button
                             onClick={(e) => { e.preventDefault(); e.stopPropagation(); removeAttachment(att.id); }}
                             className="absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
@@ -2063,7 +2119,7 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
                               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                             </svg>
                           </button>
-                        </a>
+                        </div>
                       );
                     }
                   })}
@@ -3056,10 +3112,74 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
     </div>
   );
 
+  // Text attachment viewer modal
+  const textViewer = textViewerAttachment && (
+    <div
+      className="fixed inset-0 z-[60] flex flex-col"
+      style={{ backgroundColor: "#0a0a0f" }}
+    >
+      <div
+        className="flex items-center justify-between px-8 py-4 border-b flex-shrink-0"
+        style={{ borderColor: "var(--border-subtle)", backgroundColor: "#0f0f1a" }}
+      >
+        <div className="flex items-center gap-3">
+          <svg className="w-5 h-5" style={{ color: "var(--accent-blue)" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+          </svg>
+          <span className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
+            {textViewerAttachment.filename}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              const blob = new Blob([textViewerAttachment.content], { type: "text/plain" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = textViewerAttachment.filename;
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+            className="px-3 py-1.5 rounded-lg text-sm transition-colors hover:bg-white/10"
+            style={{ color: "var(--text-secondary)" }}
+          >
+            Download
+          </button>
+          <button
+            onClick={() => setTextViewerAttachment(null)}
+            className="w-10 h-10 rounded-full flex items-center justify-center transition-colors hover:bg-white/10"
+            style={{ color: "var(--text-muted)" }}
+          >
+            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div className="flex-1 overflow-auto p-8">
+        <pre
+          className="text-sm leading-relaxed whitespace-pre-wrap"
+          style={{
+            fontFamily: "var(--font-mono, 'SF Mono', Menlo, monospace)",
+            color: "var(--text-primary)",
+            backgroundColor: "var(--bg-card)",
+            padding: "24px",
+            borderRadius: "12px",
+            border: "1px solid var(--border-subtle)",
+          }}
+        >
+          {textViewerAttachment.content}
+        </pre>
+      </div>
+    </div>
+  );
+
   return createPortal(
     <>
       {modal}
       {lightbox}
+      {textViewer}
       {docViewer}
       {quoteModal}
     </>,
