@@ -9,6 +9,7 @@ import { ProjectInfoPanel } from "./project-info-panel";
 import { ProjectChatPanel } from "./project-chat-panel";
 import { PreviewPanel } from "./preview-panel";
 import { PixelOffice } from "./pixel-office";
+import type { PersonaActivityState } from "./pixel-office";
 
 const columnOrder: TicketState[] = [
   "planning",
@@ -110,16 +111,21 @@ export function BoardView({
 
   const awakePersonaIds = useMemo(() => new Set(awakePersonaIdsList), [awakePersonaIdsList]);
 
-  // Derive real-time active persona IDs from polled ticket data (15s cycle)
-  const activePersonaIds = useMemo(() => {
-    const active = new Set<string>();
-    for (const ticket of tickets) {
-      for (const pid of (ticket.activeRunPersonaIds ?? [])) {
-        active.add(pid);
-      }
-    }
-    return active;
-  }, [tickets]);
+  // Compute persona activity states for PixelOffice
+  const personaStates: PersonaActivityState[] = useMemo(() => {
+    const activePersonaIds = new Set(
+      tickets.flatMap((t) => t.activeRunPersonaIds ?? [])
+    );
+    return personas.map((p) => ({
+      personaId: p.id,
+      name: p.name,
+      color: p.color,
+      avatar: p.avatar,
+      role: p.role,
+      isAwake: awakePersonaIds.has(p.id),
+      isActive: activePersonaIds.has(p.id),
+    }));
+  }, [personas, awakePersonaIds, tickets]);
 
   // User-overridden collapse state — persisted per project in localStorage
   const storageKey = `bonsai-col-collapse-${projectId}`;
@@ -283,11 +289,8 @@ export function BoardView({
       )}
 
       {/* Pixel office visualization */}
-      {project && personas.length > 0 && (
-        <PixelOffice
-          personas={personas}
-          activePersonaIds={activePersonaIds}
-        />
+      {personas.length > 0 && (
+        <PixelOffice personaStates={personaStates} />
       )}
 
       {/* Main content area: columns OR preview + chat sidebar */}

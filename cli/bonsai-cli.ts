@@ -4,8 +4,8 @@
  * Usage: bonsai-cli <command> [args]
  */
 
-import { db } from "../webapp/src/db/index.js";
-import { tickets, projects, comments, ticketDocuments } from "../webapp/src/db/schema.js";
+import { db } from "../src/db/index.js";
+import { tickets, projects, comments, ticketDocuments } from "../src/db/schema.js";
 import { eq, and, isNull, desc } from "drizzle-orm";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -31,6 +31,7 @@ Commands:
   search-artifacts <query>                    Search artifacts using QMD hybrid search
   report <ticket-id> <message>                Post a progress update to the ticket
   check-criteria <ticket-id> <index>          Mark an acceptance criterion as complete (0-indexed)
+  update-ticket <ticket-id> --field <value>   Update ticket fields (--title, --description, --acceptance-criteria, --type, --state)
   upload-attachment <ticket-id> <file> [name]  Upload a file attachment to a ticket
   credit-status                               Check if API credits are paused
 
@@ -44,6 +45,8 @@ Examples:
   bonsai-cli search-artifacts "React 19 patterns"
   bonsai-cli report 41 "Starting implementation of auth module"
   bonsai-cli check-criteria 41 0
+  bonsai-cli update-ticket 41 --acceptance-criteria "- [ ] User can log in\\n- [ ] Session persists"
+  bonsai-cli update-ticket 41 --state building
   bonsai-cli upload-attachment 41 /tmp/screenshot.png "UI Screenshot"
   bonsai-cli credit-status
   `);
@@ -139,7 +142,8 @@ async function createTicketCmd(projectSlug: string, title: string, options: { ty
 
   // Create ticket via API
   try {
-    const res = await fetch(`http://localhost:3080/api/tickets`, {
+    const apiBase = process.env.BONSAI_API_BASE || "http://localhost:3080";
+    const res = await fetch(`${apiBase}/api/tickets`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -211,7 +215,8 @@ async function writeArtifact(ticketId: string, type: string, filePath: string) {
   // Call the API endpoint
   const personaId = process.env.BONSAI_PERSONA_ID || null;
   try {
-    const res = await fetch(`http://localhost:3080/api/tickets/${ticketId}/documents`, {
+    const apiBase = process.env.BONSAI_API_BASE || "http://localhost:3080";
+    const res = await fetch(`${apiBase}/api/tickets/${ticketId}/documents`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type, content: content.trim(), personaId }),
@@ -489,6 +494,69 @@ async function checkCriteria(ticketId: string, indexStr: string) {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// update-ticket <ticket-id> --field <value> — Update ticket fields
+// ───────────────────────────────────────────────────────────────────────────
+async function updateTicketCmd(ticketId: string, flags: string[]) {
+  const ticketIdNum = Number(ticketId);
+  if (!ticketIdNum) {
+    console.error("Error: ticket-id must be a number");
+    process.exit(1);
+  }
+
+  const apiBase = process.env.BONSAI_API_BASE || "http://localhost:3080";
+  const updates: Record<string, unknown> = { ticketId: ticketIdNum };
+
+  // Parse --flag value pairs
+  for (let i = 0; i < flags.length; i++) {
+    const flag = flags[i];
+    const value = flags[i + 1];
+    switch (flag) {
+      case "--title":
+        updates.title = value; i++; break;
+      case "--description":
+        updates.description = value; i++; break;
+      case "--acceptance-criteria":
+        // Support \n in the value for multi-line criteria
+        updates.acceptanceCriteria = value?.replace(/\\n/g, "\n"); i++; break;
+      case "--type":
+        updates.type = value; i++; break;
+      case "--state":
+        updates.state = value; i++; break;
+      default:
+        console.error(`Unknown flag: ${flag}`);
+        process.exit(1);
+    }
+  }
+
+  if (Object.keys(updates).length <= 1) {
+    console.error("Error: at least one --field is required");
+    console.error("Flags: --title, --description, --acceptance-criteria, --type, --state");
+    process.exit(1);
+  }
+
+  try {
+    const response = await fetch(`${apiBase}/api/tickets`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updates),
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      console.error(`Error: ${response.status} ${response.statusText}`);
+      console.error(data.error || "Failed to update ticket");
+      process.exit(1);
+    }
+
+    const changed = Object.keys(updates).filter(k => k !== "ticketId");
+    console.log(`✓ Updated ticket #${ticketId}: ${changed.join(", ")}`);
+  } catch (err: any) {
+    console.error(`Error: ${err.message}`);
+    process.exit(1);
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // credit-status — Check if API credits are paused
 // ───────────────────────────────────────────────────────────────────────────
 async function creditStatus() {
@@ -710,6 +778,14 @@ async function main() {
         usage();
       }
       await checkCriteria(args[0], args[1]);
+      break;
+
+    case "update-ticket":
+      if (args.length < 2) {
+        console.error("Error: update-ticket requires <ticket-id> --field <value>");
+        usage();
+      }
+      await updateTicketCmd(args[0], args.slice(1));
       break;
 
     case "upload-attachment":

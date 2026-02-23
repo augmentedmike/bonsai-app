@@ -32,10 +32,12 @@ export async function POST(req: Request, context: RouteContext) {
   const now = new Date().toISOString();
   const userName = await getSetting("user_name");
 
-  await updateTicket(ticketId, {
-    researchApprovedAt: now,
-    state: "planning",
-  });
+  // Only move to planning if not already further along (building/shipped)
+  const updates: Record<string, unknown> = { researchApprovedAt: now };
+  if (ticket.state === "planning" || !ticket.state) {
+    updates.state = "planning";
+  }
+  await updateTicket(ticketId, updates);
 
   // Post system comment for the transition
   await createSystemCommentAndBumpCount(

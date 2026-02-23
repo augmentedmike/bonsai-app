@@ -1,11 +1,23 @@
 "use client";
 
 import { useMemo } from "react";
-import type { Persona } from "@/types";
 
-interface PixelOfficeProps {
-  personas: Persona[];
-  activePersonaIds: Set<string>;
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface PersonaActivityState {
+  personaId: string;
+  name: string;
+  color: string;
+  avatar?: string;
+  role?: string;
+  isAwake: boolean;
+  isActive: boolean;
+}
+
+export interface PixelOfficeProps {
+  personaStates: PersonaActivityState[];
 }
 
 // Map role slug → workstation key
@@ -129,15 +141,17 @@ function CoffeeCooler() {
 function CharacterSprite({
   persona,
   isActive,
+  isAwake,
 }: {
-  persona: Persona;
+  persona: PersonaActivityState;
   isActive: boolean;
+  isAwake: boolean;
 }) {
   const initial = persona.name[0]?.toUpperCase() ?? "?";
   return (
     <div
       className="flex flex-col items-center"
-      style={{ width: 44 }}
+      style={{ width: 44, opacity: isAwake ? 1 : 0.5 }}
     >
       {/* Character body + head */}
       <div className="relative">
@@ -145,7 +159,7 @@ function CharacterSprite({
         <div
           className="w-8 h-8 rounded-full overflow-hidden border-2 flex-shrink-0"
           style={{
-            borderColor: isActive ? persona.color : "rgba(255,255,255,0.1)",
+            borderColor: isActive ? persona.color : isAwake ? "rgba(91,141,249,0.5)" : "rgba(255,255,255,0.1)",
             boxShadow: isActive
               ? `0 0 8px ${persona.color}40`
               : "none",
@@ -193,28 +207,26 @@ function CharacterSprite({
   );
 }
 
-export function PixelOffice({ personas, activePersonaIds }: PixelOfficeProps) {
+export function PixelOffice({ personaStates }: PixelOfficeProps) {
   // Assign each persona to a workstation
   const assignments = useMemo(() => {
-    const stationGroups: Record<string, Persona[]> = {};
-    for (const p of personas) {
-      const isActive = activePersonaIds.has(p.id);
-      const station = getWorkstation(p.role, isActive);
+    const stationGroups: Record<string, PersonaActivityState[]> = {};
+    for (const p of personaStates) {
+      const station = getWorkstation(p.role, p.isActive);
       if (!stationGroups[station]) stationGroups[station] = [];
       stationGroups[station].push(p);
     }
 
-    return personas.map((p) => {
-      const isActive = activePersonaIds.has(p.id);
-      const station = getWorkstation(p.role, isActive);
+    return personaStates.map((p) => {
+      const station = getWorkstation(p.role, p.isActive);
       const group = stationGroups[station];
       const indexAtStation = group.indexOf(p);
       const pos = getCharacterPosition(station, indexAtStation, group.length);
-      return { persona: p, isActive, station, pos };
+      return { persona: p, station, pos };
     });
-  }, [personas, activePersonaIds]);
+  }, [personaStates]);
 
-  if (personas.length === 0) return null;
+  if (personaStates.length === 0) return null;
 
   return (
     <div
@@ -308,22 +320,22 @@ export function PixelOffice({ personas, activePersonaIds }: PixelOfficeProps) {
       </div>
 
       {/* Characters */}
-      {assignments.map(({ persona, isActive, pos }) => (
+      {assignments.map(({ persona, pos }) => (
         <div
-          key={persona.id}
+          key={persona.personaId}
           className="absolute"
           style={{
             left: `${pos.x}%`,
             top: `${pos.y}%`,
             transform: "translateX(-50%)",
             transition: "left 1.2s ease-in-out, top 1.2s ease-in-out",
-            animation: isActive
+            animation: persona.isActive
               ? "pixel-office-working 2s ease-in-out infinite"
               : "pixel-office-idle 3s ease-in-out infinite",
             zIndex: 10,
           }}
         >
-          <CharacterSprite persona={persona} isActive={isActive} />
+          <CharacterSprite persona={persona} isActive={persona.isActive} isAwake={persona.isAwake} />
         </div>
       ))}
 
