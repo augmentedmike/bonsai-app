@@ -72,12 +72,18 @@ export async function POST(
       // Create worktree
       execSync(`git worktree add "${worktreePath}" ${branchName}`, { cwd: mainRepo });
 
-      // Copy env files from main repo
+      // Copy env files — check the main repo first, then fall back to the
+      // running server's cwd (where .env.local typically lives for dev).
+      const envSources = [mainRepo, process.cwd()];
       for (const envFile of [".env", ".env.local", ".env.development", ".env.development.local"]) {
-        const src = path.join(mainRepo, envFile);
         const dst = path.join(worktreePath, envFile);
-        if (fs.existsSync(src) && !fs.existsSync(dst)) {
-          fs.copyFileSync(src, dst);
+        if (fs.existsSync(dst)) continue;
+        for (const dir of envSources) {
+          const src = path.join(dir, envFile);
+          if (fs.existsSync(src)) {
+            fs.copyFileSync(src, dst);
+            break;
+          }
         }
       }
 
@@ -137,7 +143,14 @@ export async function POST(
   if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
   const logFile = path.join(logDir, `preview-ticket-${ticketId}.log`);
 
-  const envVars = { ...process.env, PORT: String(port) };
+  // Point the preview server at the main server's DB so data stays in sync.
+  // Also forward BONSAI_ENV so the correct DB filename is used.
+  const envVars = {
+    ...process.env,
+    PORT: String(port),
+    BONSAI_DB_DIR: process.cwd(),
+    BONSAI_ENV: process.env.BONSAI_ENV || "dev",
+  };
 
   // Run build command if specified (synchronously)
   if (project.buildCommand) {
