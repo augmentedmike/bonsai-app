@@ -1,4 +1,5 @@
 import * as path from "path";
+import { formatTicketSlug } from "@/types";
 
 /**
  * Get the worktree directory for a project
@@ -12,5 +13,5 @@ export function getWorktreeDir(projectLocalPath: string): string {
  * Get the worktree path for a specific ticket
  */
 export function getWorktreePath(projectLocalPath: string, ticketId: number): string {
-  return path.join(getWorktreeDir(projectLocalPath), `tkt_${ticketId}`);
+  return path.join(getWorktreeDir(projectLocalPath), formatTicketSlug(ticketId));
 }
