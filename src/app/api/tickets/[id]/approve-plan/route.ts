@@ -31,10 +31,15 @@ export async function POST(req: Request, context: RouteContext) {
   const now = new Date().toISOString();
   const userName = await getSetting("user_name");
 
-  await updateTicket(ticketId, {
+  // Approve both research and plan — moving to building implies research is accepted too
+  const updates: Record<string, unknown> = {
     planApprovedAt: now,
     state: "building",
-  });
+  };
+  if (!ticket.researchApprovedAt) {
+    updates.researchApprovedAt = now;
+  }
+  await updateTicket(ticketId, updates);
 
   // Post system comment for the transition
   await createSystemCommentAndBumpCount(

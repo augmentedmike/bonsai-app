@@ -139,7 +139,8 @@ async function createTicketCmd(projectSlug: string, title: string, options: { ty
 
   // Create ticket via API
   try {
-    const res = await fetch(`http://localhost:3080/api/tickets`, {
+    const apiBase = process.env.BONSAI_API_BASE || "http://localhost:3080";
+    const res = await fetch(`${apiBase}/api/tickets`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -211,7 +212,8 @@ async function writeArtifact(ticketId: string, type: string, filePath: string) {
   // Call the API endpoint
   const personaId = process.env.BONSAI_PERSONA_ID || null;
   try {
-    const res = await fetch(`http://localhost:3080/api/tickets/${ticketId}/documents`, {
+    const apiBase = process.env.BONSAI_API_BASE || "http://localhost:3080";
+    const res = await fetch(`${apiBase}/api/tickets/${ticketId}/documents`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type, content: content.trim(), personaId }),
