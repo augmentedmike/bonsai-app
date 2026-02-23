@@ -46,7 +46,7 @@ export async function POST(
 
   // If worktree doesn't exist, create it now
   if (!fs.existsSync(worktreePath)) {
-    const mainRepo = project.localPath;
+    const mainRepo = path.join(project.localPath, "repo");
     const gitDir = path.join(mainRepo, ".git");
 
     if (!fs.existsSync(gitDir)) {
