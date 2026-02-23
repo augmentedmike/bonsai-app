@@ -30,7 +30,7 @@ import { spawn } from "child_process";
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 const IMAGE_MODEL = "gemini-3-pro-image-preview";
 const TEXT_MODEL = "gemini-3-pro-preview";
-const API_BASE = process.env.BONSAI_API_BASE || "http://localhost:3000";
+const API_BASE = process.env.BONSAI_API_BASE || "http://localhost:3080";
 
 // ── Parse CLI args ──────────────────────────────
 function parseArgs(argv) {
