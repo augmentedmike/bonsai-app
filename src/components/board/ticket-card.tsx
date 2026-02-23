@@ -106,7 +106,9 @@ export function TicketCard({ ticket, onDragStart, onDragEnd, onEdit, onViewDocum
         backgroundColor: "var(--bg-card)",
         border: dragging
           ? "1px solid rgba(91, 141, 249, 0.5)"
-          : "1px solid var(--border-subtle)",
+          : ticket.blocked
+            ? "1px solid rgba(239, 68, 68, 0.4)"
+            : "1px solid var(--border-subtle)",
         boxShadow: dragging
           ? "0 20px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(91, 141, 249, 0.15), 0 0 24px rgba(91, 141, 249, 0.08)"
           : "0 1px 3px rgba(0, 0, 0, 0.1)",
@@ -160,6 +162,21 @@ export function TicketCard({ ticket, onDragStart, onDragEnd, onEdit, onViewDocum
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
               </svg>
               Epic
+            </span>
+          )}
+          {ticket.blocked && (
+            <span
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold"
+              style={{
+                backgroundColor: "rgba(239, 68, 68, 0.18)",
+                color: "#f87171",
+              }}
+              title={ticket.blockedReason || "Blocked"}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+              Blocked
             </span>
           )}
           {ticket.state === "shipped" && ticket.mergedAt && (

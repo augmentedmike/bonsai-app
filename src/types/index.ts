@@ -35,6 +35,10 @@ export interface Ticket {
   // Merge tracking
   mergedAt?: string;
   mergeCommit?: string;
+  // Blocked flag
+  blocked?: boolean;
+  blockedReason?: string;
+  blockedAt?: string;
   // Epic hierarchy
   isEpic?: boolean;
   epicId?: number;

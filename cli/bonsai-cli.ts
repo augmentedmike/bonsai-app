@@ -262,7 +262,7 @@ function readArtifact(ticketId: string, type: string) {
   const docs = db.select().from(ticketDocuments)
     .where(and(
       eq(ticketDocuments.ticketId, ticketIdNum),
-      eq(ticketDocuments.type, type)
+      eq(ticketDocuments.type, type as "research" | "implementation_plan" | "design")
     ))
     .orderBy(desc(ticketDocuments.version))
     .all();
@@ -799,6 +799,32 @@ async function main() {
     case "credit-status":
       await creditStatus();
       break;
+
+    case "block-ticket": {
+      if (args.length < 1) {
+        console.error("Error: block-ticket requires <ticket-id> [reason]");
+        usage();
+      }
+      const blockTicketId = args[0];
+      const blockReason = args.slice(1).join(" ") || "Agent hit a blocker — needs human intervention";
+      const blockApiBase = process.env.BONSAI_API_BASE || "http://localhost:3080";
+      const blockPersonaId = process.env.BONSAI_PERSONA_ID || null;
+      const blockRes = await fetch(`${blockApiBase}/api/tickets/${blockTicketId}/block`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reason: blockReason,
+          actorType: "agent",
+          actorId: blockPersonaId,
+        }),
+      });
+      if (!blockRes.ok) {
+        console.error(`Failed to block ticket: ${blockRes.status}`);
+        process.exit(1);
+      }
+      console.log(`Ticket ${blockTicketId} blocked: ${blockReason}`);
+      break;
+    }
 
     default:
       console.error(`Error: unknown command '${command}'`);

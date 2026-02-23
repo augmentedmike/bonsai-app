@@ -42,7 +42,8 @@ if (!existingTables.has("users")) {
       tech_stack TEXT,
       local_path TEXT,
       build_command TEXT,
-      run_command TEXT
+      run_command TEXT,
+      is_dogfooding INTEGER DEFAULT 0
     );
     CREATE UNIQUE INDEX IF NOT EXISTS projects_slug_unique ON projects (slug);
     CREATE TABLE IF NOT EXISTS "roles" (
@@ -122,6 +123,9 @@ if (!existingTables.has("users")) {
       plan_approved_by INTEGER REFERENCES users(id),
       merged_at TEXT,
       merge_commit TEXT,
+      blocked INTEGER DEFAULT 0,
+      blocked_reason TEXT,
+      blocked_at TEXT,
       deleted_at TEXT
     );
     CREATE TABLE IF NOT EXISTS "comments" (
@@ -239,6 +243,19 @@ if (!existingTables.has("project_messages")) {
     CREATE INDEX IF NOT EXISTS idx_project_messages_project ON project_messages (project_id, created_at);
   `);
   console.log("[db] Auto-created project_messages table");
+}
+
+// ── blocked columns on tickets (self-healing migration) ──────────────────
+{
+  const cols = new Set(
+    (sqlite.prepare("PRAGMA table_info(tickets)").all() as { name: string }[]).map((c) => c.name)
+  );
+  if (!cols.has("blocked")) {
+    sqlite.exec(`ALTER TABLE tickets ADD COLUMN blocked INTEGER DEFAULT 0`);
+    sqlite.exec(`ALTER TABLE tickets ADD COLUMN blocked_reason TEXT`);
+    sqlite.exec(`ALTER TABLE tickets ADD COLUMN blocked_at TEXT`);
+    console.log("[db] Added blocked columns to tickets");
+  }
 }
 
 export const db = drizzle(sqlite, { schema });

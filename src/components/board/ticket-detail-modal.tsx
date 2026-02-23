@@ -1498,6 +1498,38 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
             </div>
             <div className="flex items-center gap-1">
               {/* EPIC FEATURES DISABLED - Make Epic toggle removed */}
+              {/* Block / Unblock toggle */}
+              {ticket.state !== "shipped" && (
+                <button
+                  onClick={async () => {
+                    if (!ticket) return;
+                    if (ticket.blocked) {
+                      await fetch(`/api/tickets/${ticket.id}/block`, { method: "DELETE" });
+                      router.refresh();
+                    } else {
+                      const reason = prompt("Why is this ticket blocked?", "Needs human intervention");
+                      if (reason === null) return;
+                      await fetch(`/api/tickets/${ticket.id}/block`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ reason }),
+                      });
+                      router.refresh();
+                    }
+                  }}
+                  className="h-10 px-3 rounded-lg flex items-center gap-1.5 transition-colors"
+                  style={{
+                    color: ticket.blocked ? "#f87171" : "var(--text-muted)",
+                    backgroundColor: ticket.blocked ? "rgba(239, 68, 68, 0.1)" : "transparent",
+                  }}
+                  title={ticket.blocked ? `Blocked: ${ticket.blockedReason || "unknown"} — click to unblock` : "Flag as blocked"}
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                  </svg>
+                  {ticket.blocked && <span className="text-xs font-semibold">Blocked</span>}
+                </button>
+              )}
               {onDelete && (
                 <button
                   onClick={async () => {

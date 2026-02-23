@@ -130,6 +130,10 @@ export const tickets = sqliteTable("tickets", {
   // Merge tracking
   mergedAt: text("merged_at"),
   mergeCommit: text("merge_commit"),
+  // Blocked flag — ticket stays in its column but needs human intervention
+  blocked: integer("blocked", { mode: "boolean" }).default(false),
+  blockedReason: text("blocked_reason"),
+  blockedAt: text("blocked_at"),
   // Epic hierarchy
   isEpic: integer("is_epic", { mode: "boolean" }).default(false),
   epicId: integer("epic_id"), // references tickets.id (self-ref handled at app layer)
