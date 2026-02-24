@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getTickets, getTicketById, createTicket, updateTicket, softDeleteTicket, getSetting, createSystemCommentAndBumpCount, logAuditEvent } from "@/db/data";
 import { fireDispatch } from "@/lib/dispatch-agent";
 import { formatTicketSlug } from "@/types";
+import { geminiRequest, extractText } from "@/lib/gemini";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -151,12 +152,29 @@ export async function POST(req: Request) {
 
   const activeProjectId = await getSetting("active_project_id");
   const userName = await getSetting("user_name");
+
+  // Auto-generate acceptance criteria if description exists but criteria is empty
+  let finalCriteria = acceptanceCriteria?.trim() || null;
+  if (!finalCriteria && description?.trim()) {
+    try {
+      const res = await geminiRequest("gemini-2.5-flash", {
+        contents: [{ parts: [{ text: `Generate acceptance criteria for this task as a markdown checklist. Each item should be a concrete, testable condition. Use "- [ ]" format. Return 3-6 items, ONLY the checklist, no other text.\n\nDescription:\n${description.trim()}` }] }],
+        generationConfig: { maxOutputTokens: 65536 },
+      });
+      const data = await res.json();
+      const generated = extractText(data);
+      if (generated) finalCriteria = generated;
+    } catch (err) {
+      console.error("[tickets/POST] Failed to auto-generate acceptance criteria:", err);
+    }
+  }
+
   const ticket = await createTicket({
     title: title.trim(),
     type: type || "feature",
     state: "planning",
     description: description?.trim() || null,
-    acceptanceCriteria: acceptanceCriteria?.trim() || null,
+    acceptanceCriteria: finalCriteria,
     priority: 500,
     projectId: projectId || Number(activeProjectId) || 1,
     commentCount: 0,
@@ -178,7 +196,7 @@ export async function POST(req: Request) {
   });
 
   const origin = new URL(req.url).origin;
-  const ticketSummary = `${title.trim()}${description ? `\n\n${description.trim()}` : ""}${acceptanceCriteria ? `\n\nAcceptance Criteria:\n${acceptanceCriteria.trim()}` : ""}`;
+  const ticketSummary = `${title.trim()}${description ? `\n\n${description.trim()}` : ""}${finalCriteria ? `\n\nAcceptance Criteria:\n${finalCriteria}` : ""}`;
 
   if (isEpic) {
     // Epic breakdown is handled interactively by the wizard UI — no auto-dispatch

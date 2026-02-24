@@ -101,6 +101,7 @@ export function BoardView({
   const [draggingId, setDraggingId] = useState<number | null>(null);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [initialDocType, setInitialDocType] = useState<"research" | "implementation_plan" | undefined>();
+  const [hideOnHold, setHideOnHold] = useState(false);
 
   // Chat panel state
   const [chatOpen, setChatOpen] = useState(false);
@@ -198,7 +199,7 @@ export function BoardView({
 
   const grouped = columnOrder.reduce(
     (acc, state) => {
-      acc[state] = sortTickets(tickets.filter((t) => t.state === state && !t.isEpic));
+      acc[state] = sortTickets(tickets.filter((t) => t.state === state && !t.isEpic && !(hideOnHold && t.onHold)));
       return acc;
     },
     {} as Record<TicketState, Ticket[]>
@@ -285,13 +286,16 @@ export function BoardView({
           awakePersonaIds={awakePersonaIds}
           onPersonaClick={handlePersonaClick}
           onChatOpen={() => { setChatMentionPersonaId(null); setChatOpen(true); }}
+          hideOnHold={hideOnHold}
+          onHideOnHoldChange={setHideOnHold}
+          holdCount={tickets.filter((t) => t.onHold && !t.isEpic).length}
         />
       )}
 
-      {/* Pixel office scene */}
-      {personas.length > 0 && (
+      {/* Pixel office scene — disabled, will be rebuilt via CLI tools */}
+      {/* {personas.length > 0 && (
         <PixelOffice personaStates={personaStates} />
-      )}
+      )} */}
 
       {/* Main content area: columns OR preview + chat sidebar */}
       <div className="flex flex-1 h-full overflow-hidden">

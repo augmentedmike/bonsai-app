@@ -12,6 +12,8 @@ import { useVoiceInput } from "@/hooks/use-voice-input";
 import { VoiceButton } from "@/components/voice-button";
 import { CommentInput } from "@/components/board/comment-input";
 import { FileBrowser } from "@/components/board/file-browser";
+import { extractPathsFromDrop, pathToMarkdown, type DroppedPath } from "@/lib/drop-paths";
+import { DroppedPathBadges } from "@/components/dropped-path-badges";
 
 interface TicketDetailModalProps {
   ticket: Ticket | null;
@@ -121,6 +123,7 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [acceptanceCriteria, setAcceptanceCriteria] = useState("");
+  const [generatingCriteria, setGeneratingCriteria] = useState(false);
   const [type, setType] = useState<TicketType>("feature");
   const [state, setState] = useState<TicketState>("planning");
 
@@ -228,6 +231,8 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
   // Description cleanup state
   const [enhancingDescription, setEnhancingDescription] = useState(false);
   const descOnFocusRef = useRef<string>("");
+  const [droppedPaths, setDroppedPaths] = useState<DroppedPath[]>([]);
+  const [descDragOver, setDescDragOver] = useState(false);
 
   // Local lifecycle state (from ticket prop, refreshed after actions)
   const [deletingDoc, setDeletingDoc] = useState<string | null>(null);
@@ -298,6 +303,16 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
     if (ticket && ticketId) {
       setTitle(ticket.title);
       setDescription(ticket.description || "");
+      // Parse existing dropped paths from description markdown
+      const pathRegex = /\*\*(.+?)\*\* `(.+?)`/g;
+      const parsed: DroppedPath[] = [];
+      let match;
+      while ((match = pathRegex.exec(ticket.description || "")) !== null) {
+        if (match[2].startsWith("/")) {
+          parsed.push({ id: Math.random().toString(36).slice(2) + Date.now().toString(36), name: match[1], path: match[2] });
+        }
+      }
+      setDroppedPaths(parsed);
       setAcceptanceCriteria(ticket.acceptanceCriteria || "");
       setType(ticket.type);
       setState(ticket.state);
@@ -329,6 +344,36 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticketId, ticket?.state]);
+
+  // Backport: auto-generate acceptance criteria for existing tickets missing it
+  useEffect(() => {
+    if (!ticket || !ticketId) return;
+    if (ticket.acceptanceCriteria?.trim()) return;
+    if (!ticket.description?.trim()) return;
+
+    let cancelled = false;
+    setGeneratingCriteria(true);
+    fetch("/api/generate-title", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ description: ticket.description.trim(), field: "criteria" }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled || !data.criteria) return;
+        setAcceptanceCriteria(data.criteria);
+        // Persist to the ticket so it's only generated once
+        fetch(`/api/tickets`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ticketId, acceptanceCriteria: data.criteria }),
+        }).catch(() => {});
+      })
+      .catch((err) => console.error("Failed to backfill criteria:", err))
+      .finally(() => { if (!cancelled) setGeneratingCriteria(false); });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticketId]);
 
   useEffect(() => {
     setMounted(true);
@@ -680,6 +725,17 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
       return researchDocs.find(d => d.version === selectedVersion) || expandedDoc;
     }
     return expandedDoc;
+  }
+
+  function handleDescDrop(e: React.DragEvent<HTMLTextAreaElement>) {
+    e.preventDefault();
+    setDescDragOver(false);
+    const paths = extractPathsFromDrop(e.dataTransfer);
+    if (paths.length > 0) {
+      setDroppedPaths((prev) => [...prev, ...paths]);
+      const markdown = paths.map(pathToMarkdown).join("\n");
+      setDescription((prev) => prev ? `${prev}\n\n${markdown}` : markdown);
+    }
   }
 
   async function enhanceDescription() {
@@ -1377,13 +1433,13 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
             borderRight: "1px solid var(--border-medium)",
           }}
         >
-          {/* Header */}
+          {/* Header - compact in files/preview mode */}
           <div
-            className="flex items-start justify-between px-8 py-6 border-b flex-shrink-0"
+            className={`flex items-start justify-between border-b flex-shrink-0 ${viewMode === "files" || viewMode === "preview" ? "px-4 py-2" : "px-8 py-6"}`}
             style={{ borderColor: "var(--border-subtle)" }}
           >
             <div className="flex-1 pr-4">
-              <div className="flex items-center gap-3 mb-4">
+              <div className={`flex items-center gap-3 ${viewMode === "files" || viewMode === "preview" ? "mb-0" : "mb-4"}`}>
                 <select
                   value={type}
                   onChange={(e) => setType(e.target.value as TicketType)}
@@ -1425,79 +1481,110 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
                   })}
                 </select>
               </div>
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="w-full text-2xl font-bold leading-tight bg-transparent border-none outline-none"
-                style={{ color: "var(--text-primary)" }}
-                placeholder="Ticket title..."
-              />
-              {/* Participant avatar bubbles */}
-              {(() => {
-                const seen = new Set<string>();
-                const participants: { id: string; name: string; color?: string; avatarUrl?: string; role?: string; isActive?: boolean }[] = [];
-                const activeRunIds = new Set(ticket.activeRunPersonaIds ?? []);
-                const activeMs = ticket.lastAgentActivity ? Date.now() - new Date(ticket.lastAgentActivity).getTime() : Infinity;
-                const legacyActive = activeMs < 30 * 60 * 1000;
-                // Assignee first
-                if (ticket.assignee) {
-                  seen.add(ticket.assignee.id);
-                  participants.push({
-                    id: ticket.assignee.id,
-                    name: ticket.assignee.name,
-                    color: ticket.assignee.color,
-                    avatarUrl: ticket.assignee.avatar,
-                    role: ticket.assignee.role,
-                    isActive: activeRunIds.size > 0 ? activeRunIds.has(ticket.assignee.id) : legacyActive
-                  });
-                }
-                // All agent comment authors
-                for (const c of comments) {
-                  if (c.authorType === "agent" && c.author?.name) {
-                    const p = personasList.find(p => p.name === c.author!.name);
-                    const key = p?.id ?? c.author.name;
-                    if (seen.has(key)) continue;
-                    seen.add(key);
-                    participants.push({ id: key, name: c.author.name, color: p?.color ?? c.author.color, avatarUrl: p?.avatar ?? c.author.avatarUrl, role: p?.role ?? c.author.role, isActive: p ? activeRunIds.has(p.id) : false });
+              <div className={`flex items-center gap-4 ${viewMode === "files" || viewMode === "preview" ? "hidden" : ""}`}>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="flex-1 min-w-0 text-2xl font-bold leading-tight bg-transparent border-none outline-none"
+                  style={{ color: "var(--text-primary)" }}
+                  placeholder="Ticket title..."
+                />
+                {/* Participant avatar bubbles */}
+                {(() => {
+                  const seen = new Set<string>();
+                  const participants: { id: string; name: string; color?: string; avatarUrl?: string; role?: string; isActive?: boolean }[] = [];
+                  const activeRunIds = new Set(ticket.activeRunPersonaIds ?? []);
+                  const activeMs = ticket.lastAgentActivity ? Date.now() - new Date(ticket.lastAgentActivity).getTime() : Infinity;
+                  const legacyActive = activeMs < 30 * 60 * 1000;
+                  // Assignee first
+                  if (ticket.assignee) {
+                    seen.add(ticket.assignee.id);
+                    participants.push({
+                      id: ticket.assignee.id,
+                      name: ticket.assignee.name,
+                      color: ticket.assignee.color,
+                      avatarUrl: ticket.assignee.avatar,
+                      role: ticket.assignee.role,
+                      isActive: activeRunIds.size > 0 ? activeRunIds.has(ticket.assignee.id) : legacyActive
+                    });
                   }
-                }
-                // Also add any running agents not yet in participants (e.g. dispatched but no comment yet)
-                for (const runId of activeRunIds) {
-                  if (!seen.has(runId)) {
-                    const p = personasList.find(p => p.id === runId);
-                    if (p) {
-                      seen.add(runId);
-                      participants.push({ id: runId, name: p.name, color: p.color, avatarUrl: p.avatar, role: p.role, isActive: true });
+                  // All agent comment authors
+                  for (const c of comments) {
+                    if (c.authorType === "agent" && c.author?.name) {
+                      const p = personasList.find(p => p.name === c.author!.name);
+                      const key = p?.id ?? c.author.name;
+                      if (seen.has(key)) continue;
+                      seen.add(key);
+                      participants.push({ id: key, name: c.author.name, color: p?.color ?? c.author.color, avatarUrl: p?.avatar ?? c.author.avatarUrl, role: p?.role ?? c.author.role, isActive: p ? activeRunIds.has(p.id) : false });
                     }
                   }
-                }
-                if (participants.length === 0) return null;
-                return (
-                  <div className="flex items-center gap-2 mt-3">
-                    {participants.map((p) => (
-                      <div key={p.id} className="flex items-center gap-1.5" title={`${p.name}${p.role ? ` — ${p.role}` : ""}`}>
-                        <div className="relative w-7 h-7 rounded-full overflow-hidden flex-shrink-0" style={{ border: `2px solid ${p.color || "rgba(255,255,255,0.2)"}` }}>
-                          {p.avatarUrl ? (
-                            <img src={p.avatarUrl} alt={p.name} className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-[10px] font-bold" style={{ backgroundColor: p.color || "rgba(255,255,255,0.1)", color: "#fff" }}>
-                              {p.name[0]}
-                            </div>
-                          )}
-                          {p.isActive && (
-                            <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-green-400 border border-black" />
-                          )}
+                  // Also add any running agents not yet in participants (e.g. dispatched but no comment yet)
+                  for (const runId of activeRunIds) {
+                    if (!seen.has(runId)) {
+                      const p = personasList.find(p => p.id === runId);
+                      if (p) {
+                        seen.add(runId);
+                        participants.push({ id: runId, name: p.name, color: p.color, avatarUrl: p.avatar, role: p.role, isActive: true });
+                      }
+                    }
+                  }
+                  if (participants.length === 0) return null;
+                  return (
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {participants.map((p) => (
+                        <div key={p.id} className="flex items-center gap-1.5" title={`${p.name}${p.role ? ` — ${p.role}` : ""}`}>
+                          <div className="relative w-7 h-7 rounded-full overflow-hidden flex-shrink-0" style={{ border: `2px solid ${p.color || "rgba(255,255,255,0.2)"}` }}>
+                            {p.avatarUrl ? (
+                              <img src={p.avatarUrl} alt={p.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-[10px] font-bold" style={{ backgroundColor: p.color || "rgba(255,255,255,0.1)", color: "#fff" }}>
+                                {p.name[0]}
+                              </div>
+                            )}
+                            {p.isActive && (
+                              <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-green-400 border border-black" />
+                            )}
+                          </div>
+                          <span className="text-xs" style={{ color: "var(--text-muted)" }}>{p.name}</span>
                         </div>
-                        <span className="text-xs" style={{ color: "var(--text-muted)" }}>{p.name}</span>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })()}
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
             <div className="flex items-center gap-1">
               {/* EPIC FEATURES DISABLED - Make Epic toggle removed */}
+              {/* Hold / Unhold toggle */}
+              {ticket.state !== "shipped" && (
+                <button
+                  onClick={async () => {
+                    if (!ticket) return;
+                    if (ticket.onHold) {
+                      await fetch(`/api/tickets/${ticket.id}/hold`, { method: "DELETE" });
+                    } else {
+                      await fetch(`/api/tickets/${ticket.id}/hold`, { method: "POST" });
+                    }
+                    router.refresh();
+                  }}
+                  className="h-10 px-4 rounded-lg flex items-center gap-2 transition-colors font-semibold text-sm"
+                  style={ticket.onHold ? {
+                    color: "#fbbf24",
+                    backgroundColor: "rgba(245, 158, 11, 0.15)",
+                    border: "1.5px solid rgba(245, 158, 11, 0.5)",
+                  } : {
+                    color: "var(--text-muted)",
+                    backgroundColor: "transparent",
+                  }}
+                  title={ticket.onHold ? `On hold: ${ticket.holdReason || "unknown"} — click to resume` : "Put on hold"}
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={ticket.onHold ? 2.5 : 1.8}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
+                  </svg>
+                  {ticket.onHold ? "On Hold" : "Hold"}
+                </button>
+              )}
               {/* Block / Unblock toggle */}
               {ticket.state !== "shipped" && (
                 <button
@@ -1605,9 +1692,45 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
 
           {/* Body - scrollable */}
           <div className="flex-1 overflow-y-auto px-8 py-6 space-y-8">
+            {/* Hold banner */}
+            {ticket.onHold && (
+              <div
+                className="flex items-center gap-3 px-5 py-3.5 rounded-xl -mt-2"
+                style={{
+                  backgroundColor: "rgba(245, 158, 11, 0.12)",
+                  border: "1.5px solid rgba(245, 158, 11, 0.35)",
+                }}
+              >
+                <svg className="w-5 h-5 flex-shrink-0" style={{ color: "#fbbf24" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
+                </svg>
+                <div className="flex-1">
+                  <span className="text-sm font-semibold" style={{ color: "#fbbf24" }}>On Hold</span>
+                  {ticket.holdReason && (
+                    <span className="text-sm ml-2" style={{ color: "var(--text-secondary)" }}>
+                      — {ticket.holdReason}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={async () => {
+                    await fetch(`/api/tickets/${ticket.id}/hold`, { method: "DELETE" });
+                    router.refresh();
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors hover:opacity-80"
+                  style={{
+                    backgroundColor: "rgba(245, 158, 11, 0.2)",
+                    color: "#fbbf24",
+                    border: "1px solid rgba(245, 158, 11, 0.3)",
+                  }}
+                >
+                  Resume
+                </button>
+              </div>
+            )}
             {viewMode === "preview" ? (
               /* Live preview iframe - auto-starts dev server if needed */
-              <div className="h-full w-full -mx-8 -my-6 flex flex-col">
+              <div className="h-full w-full -my-2 flex flex-col">
                 {previewError ? (
                   <div className="flex items-center justify-center h-full p-8" style={{ color: "var(--text-secondary)" }}>
                     <div className="flex flex-col items-center gap-3 text-center max-w-md">
@@ -1672,7 +1795,7 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
                     <iframe
                       key={iframeKey}
                       src={previewUrl || `http://localhost:${3100 + (Number(projectId) % 100)}`}
-                      className="flex-1 w-full border-0"
+                      className="flex-1 w-full border-0 rounded-xl"
                       title="Live Preview"
                       sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
                     />
@@ -1699,12 +1822,15 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
                   onChange={(e) => setDescription(e.target.value)}
                   onFocus={() => { descOnFocusRef.current = description; }}
                   onBlur={() => { if (description !== descOnFocusRef.current && !descVoice.isRecording && !descVoice.isProcessingAI) enhanceDescription(); }}
+                  onDrop={handleDescDrop}
+                  onDragOver={(e) => { e.preventDefault(); setDescDragOver(true); }}
+                  onDragLeave={() => setDescDragOver(false)}
                   rows={10}
                   disabled={descVoice.isProcessingAI || enhancingDescription}
                   className="w-full rounded-xl p-5 text-[15px] leading-relaxed resize-y min-h-[220px]"
                   style={{
                     backgroundColor: "var(--bg-input)",
-                    border: "1px solid var(--border-medium)",
+                    border: `1px solid ${descDragOver ? "var(--accent-blue)" : "var(--border-medium)"}`,
                     color: "var(--text-primary)",
                     outline: "none",
                   }}
@@ -1733,6 +1859,16 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
                   </div>
                 )}
               </div>
+              <DroppedPathBadges
+                paths={droppedPaths}
+                onRemove={(id) => {
+                  const removed = droppedPaths.find((p) => p.id === id);
+                  setDroppedPaths((prev) => prev.filter((p) => p.id !== id));
+                  if (removed) {
+                    setDescription((prev) => prev.replace(pathToMarkdown(removed), "").replace(/\n{3,}/g, "\n\n").trim());
+                  }
+                }}
+              />
             </div>
 
             {/* Acceptance Criteria */}
@@ -1748,7 +1884,7 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
                   value={acceptanceCriteria}
                   onChange={(e) => setAcceptanceCriteria(e.target.value)}
                   rows={10}
-                  disabled={criteriaVoice.isProcessingAI}
+                  disabled={criteriaVoice.isProcessingAI || generatingCriteria}
                   className="w-full rounded-xl p-5 text-sm font-mono leading-relaxed resize-y min-h-[220px]"
                   style={{
                     backgroundColor: "rgba(0, 0, 0, 0.3)",
@@ -1758,6 +1894,17 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
                   }}
                   placeholder={criteriaVoice.isRecording ? criteriaVoice.interimTranscript || "Listening..." : "- Criteria 1\n- Criteria 2\n- Criteria 3"}
                 />
+                {generatingCriteria && (
+                  <div className="absolute inset-0 rounded-xl flex items-center justify-center" style={{ backgroundColor: "rgba(0, 0, 0, 0.7)", backdropFilter: "blur(4px)" }}>
+                    <div className="flex items-center gap-2 text-sm" style={{ color: "var(--text-secondary)" }}>
+                      <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Generating acceptance criteria...
+                    </div>
+                  </div>
+                )}
                 {criteriaVoice.isProcessingAI && (
                   <div className="absolute inset-0 rounded-xl flex items-center justify-center" style={{ backgroundColor: "rgba(0, 0, 0, 0.7)", backdropFilter: "blur(4px)" }}>
                     <div className="flex items-center gap-2 text-sm" style={{ color: "var(--text-secondary)" }}>
@@ -2355,8 +2502,8 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
             )}
           </div>
 
-          {/* Footer */}
-          <div className="flex justify-end gap-3 px-8 py-5 border-t flex-shrink-0" style={{ borderColor: "var(--border-subtle)" }}>
+          {/* Footer - hidden in files view to maximize file browser space */}
+          <div className={`flex justify-end gap-3 px-8 py-5 border-t flex-shrink-0 ${viewMode === "files" ? "hidden" : ""}`} style={{ borderColor: "var(--border-subtle)" }}>
             {ticket?.state !== "building" && (
               <button onClick={onClose} className="px-5 py-2.5 rounded-xl text-sm font-medium transition-colors hover:bg-white/5" style={{ color: "var(--text-secondary)" }}>
                 Cancel

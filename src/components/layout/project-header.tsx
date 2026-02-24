@@ -17,7 +17,9 @@ export function ProjectHeader({ project, allProjects }: ProjectHeaderProps) {
   function handleSwitch(newSlug: string) {
     const match = pathname.match(/^\/p\/[^/]+\/(.+)$/);
     const subPath = match ? match[1] : "board";
-    router.push(`/p/${newSlug}/${subPath}`);
+    // Always land on the board when switching from the new-ticket page
+    const target = subPath === "new-ticket" ? "board" : subPath;
+    router.push(`/p/${newSlug}/${target}`);
   }
 
   return (

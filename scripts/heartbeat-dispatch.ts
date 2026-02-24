@@ -918,6 +918,16 @@ async function dispatch(maxTickets: number) {
 
       // Build phase-specific prompt and task
       const ticket = candidate;
+
+      // Resolve workspace ONCE — use the worktree (not main repo) so the
+      // system prompt and task content point to the correct isolated directory.
+      const workspacePath = ensureWorktree(project, ticket.id);
+      if (!workspacePath) {
+        log(`  SKIP: ${ticket.id} — could not create workspace`);
+        skipped++;
+        continue;
+      }
+
       let phase: string;
       let systemPrompt: string;
       let taskContent: string;
@@ -926,14 +936,13 @@ async function dispatch(maxTickets: number) {
 
       if (!ticket.research_completed_at) {
         phase = "research";
-        const workspacePath = resolveMainRepo(project);
         systemPrompt = await buildResearchPrompt(persona, project, ticket, workspacePath);
         taskContent = [
           `# Research Ticket: ${ticket.id}`,
           `## ${ticket.title}`,
           ticket.description ? `\n### Description\n${ticket.description}` : "",
           ticket.acceptance_criteria ? `\n### Acceptance Criteria\n${ticket.acceptance_criteria}` : "",
-          `\nResearch this ticket thoroughly. Explore the files inside your workspace (${resolveMainRepo(project)}), understand the current state, identify constraints and edge cases. ONLY read files inside your workspace directory. Output your complete research document in markdown format.`,
+          `\nResearch this ticket thoroughly. Explore the files inside your workspace (${workspacePath}), understand the current state, identify constraints and edge cases. ONLY read files inside your workspace directory. Output your complete research document in markdown format.`,
         ].join("\n");
         tools = toolsForPersona(persona, TOOLS_READONLY);
         timeoutMs = AGENT_MAX_DURATION_MS;
@@ -942,7 +951,6 @@ async function dispatch(maxTickets: number) {
         phase = "plan";
         const researchDoc = getDocumentContent.get(ticket.id, "research") as DocRow | undefined;
         const researchContent = researchDoc?.content || "(No research document found)";
-        const workspacePath = resolveMainRepo(project);
         systemPrompt = await buildPlannerPrompt(persona, project, ticket, workspacePath);
         taskContent = [
           `# Implementation Plan for: ${ticket.id}`,
@@ -961,7 +969,6 @@ async function dispatch(maxTickets: number) {
         const planDoc = getDocumentContent.get(ticket.id, "implementation_plan") as DocRow | undefined;
         const researchContent = researchDoc?.content || "(No research document)";
         const planContent = planDoc?.content || "(No implementation plan)";
-        const workspacePath = resolveMainRepo(project);
         systemPrompt = await buildDeveloperPrompt(persona, project, ticket, workspacePath);
         taskContent = [
           `# Implement: ${ticket.id}`,

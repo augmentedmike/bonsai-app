@@ -14,7 +14,7 @@ import { getSetting } from "@/db/data/settings";
 import { logAuditEvent } from "@/db/data/audit";
 import { insertAgentRun } from "@/db/data/agent-runs";
 import { getRecentProjectMessagesFormatted } from "@/db/data/project-messages";
-import { CREDITS_PAUSED_UNTIL, isPaused, pauseRemainingMs } from "@/lib/credit-pause";
+import { isPaused, pauseRemainingMs, projectPauseKey } from "@/lib/credit-pause";
 
 // ── Config ──────────────────────────────────────────
 const HOME = process.env.HOME || "~";
@@ -122,6 +122,7 @@ function spawnAgent(
   tools: string[],
   ticketId: number,
   personaId: string,
+  projectSlug: string,
   opts?: { conversational?: boolean; documentId?: number; role?: string }
 ) {
   const taskFile = path.join(sessionDir, "task.md");
@@ -167,7 +168,7 @@ function spawnAgent(
   //   `]).join("\n"));
   // fs.chmodSync(createSubTicketScript, 0o755);
 
-  // credit-status.sh - check if API credits are paused
+  // credit-status.sh - check if dispatch is paused
   const creditStatusScript = path.join(sessionDir, "credit-status.sh");
   const webappDir = path.join(process.cwd()); // webapp root
   fs.writeFileSync(creditStatusScript, [
@@ -251,17 +252,17 @@ function spawnAgent(
     `  }`,
     `  process.exit(0);`,
     `}`,
-    `// Check stderr for credit limit errors before processing output`,
+    `// Check stderr for rate limit errors before processing output`,
     `if (stderrContent && /hit your limit|rate limit|out of credits|\\b429\\b|quota exceeded/i.test(stderrContent)) {`,
     `  try {`,
     `    await fetch(${JSON.stringify(`${API_BASE}/api/credit-pause`)}, {`,
     `      method: "POST",`,
     `      headers: { "Content-Type": "application/json" },`,
-    `      body: JSON.stringify({ reason: stderrContent.slice(0, 500) }),`,
+    `      body: JSON.stringify({ reason: stderrContent.slice(0, 500), projectSlug: ${JSON.stringify(projectSlug)} }),`,
     `    });`,
-    `    fs.writeFileSync(${JSON.stringify(path.join(sessionDir, "post-error.log"))}, "Credit limit detected — pause activated");`,
+    `    fs.writeFileSync(${JSON.stringify(path.join(sessionDir, "post-error.log"))}, "Rate limit detected — dispatch paused");`,
     `  } catch (e) {`,
-    `    fs.writeFileSync(${JSON.stringify(path.join(sessionDir, "post-error.log"))}, "Credit limit detected but failed to set pause: " + String(e));`,
+    `    fs.writeFileSync(${JSON.stringify(path.join(sessionDir, "post-error.log"))}, "Rate limit detected but failed to set pause: " + String(e));`,
     `  }`,
     `  process.exit(0);`,
     `}`,
@@ -339,8 +340,7 @@ async function toolsForRole(role: string): Promise<string[]> {
   if (roleRow?.tools) {
     try { return JSON.parse(roleRow.tools); } catch {}
   }
-  // Defaults if no DB override
-  if (role === "researcher" || role === "critic") return TOOLS_READONLY;
+  // Default: all roles get full permissions
   return TOOLS_FULL;
 }
 
@@ -386,17 +386,6 @@ export async function POST(
   const ticketId = Number(id);
   const ticketSlug = formatTicketSlug(ticketId);
 
-  // ── Credit pause gate ───────────────────────────
-  const pausedUntil = await getSetting(CREDITS_PAUSED_UNTIL);
-  if (isPaused(pausedUntil)) {
-    const remainingMs = pauseRemainingMs(pausedUntil);
-    console.log(`[dispatch] Rejecting — credits paused until ${pausedUntil}`);
-    return NextResponse.json(
-      { error: "credits_paused", resumesAt: pausedUntil, remainingMs },
-      { status: 503 }
-    );
-  }
-
   const { commentContent, targetRole: requestedRole, targetPersonaName, targetPersonaId, team, silent, conversational, documentId, urgent } = await req.json();
 
   if (conversational) {
@@ -410,6 +399,27 @@ export async function POST(
     ? await getProjectById(ticket.projectId)
     : null;
   if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
+
+  // ── Per-project dispatch pause gate ───────────────────────────
+  const pausedUntil = await getSetting(projectPauseKey(project.slug));
+  if (isPaused(pausedUntil)) {
+    const remainingMs = pauseRemainingMs(pausedUntil);
+    console.log(`[dispatch] Rejecting — project "${project.slug}" paused until ${pausedUntil}`);
+    return NextResponse.json(
+      { error: "dispatch_paused", resumesAt: pausedUntil, remainingMs },
+      { status: 503 }
+    );
+  }
+
+  // ── Hold gate — no dispatches while ticket is on hold ───────
+  if (ticket.onHold) {
+    console.log(`[dispatch] Skipping — ticket ${ticketId} is on hold (${ticket.holdReason || "no reason"})`);
+    return NextResponse.json({
+      skipped: true,
+      reason: "on_hold",
+      holdReason: ticket.holdReason,
+    });
+  }
 
   // Get all non-deleted personas for this project
   const projectPersonas = await getProjectPersonasRaw(project.id);
@@ -465,7 +475,7 @@ export async function POST(
       );
 
       const personaTools = await toolsForRole(persona.role || "developer");
-      spawnAgent(sessionDir, cwd, personaTools, ticketId, persona.id, { conversational, documentId, role: persona.role || "developer" });
+      spawnAgent(sessionDir, cwd, personaTools, ticketId, persona.id, project.slug, { conversational, documentId, role: persona.role || "developer" });
       markPersonaDispatched(ticketId, persona.id);
 
       insertAgentRun({
@@ -566,12 +576,16 @@ export async function POST(
 
     console.log(`[dispatch] Role-based routing: ${targetRole} for ticket ${ticketId} (project personas: ${projectPersonas.map(p => `${p.name}/${p.role}`).join(", ")})`);
     targetPersona = projectPersonas.find((p) => p.role === targetRole)
-      || projectPersonas.find((p) => p.role === "developer")
-      || projectPersonas[0];
+      || projectPersonas.find((p) => p.name?.trim());  // Any named persona as last resort
   }
 
   if (!targetPersona) {
     return NextResponse.json({ error: "No personas available" }, { status: 400 });
+  }
+
+  if (!targetPersona.name?.trim()) {
+    console.warn(`[dispatch] Resolved persona ${targetPersona.id} (role: ${targetPersona.role}) has no name — aborting dispatch`);
+    return NextResponse.json({ error: "Resolved persona has no name", personaId: targetPersona.id, role: targetPersona.role }, { status: 400 });
   }
 
   // Per-persona cooldown: 30s for direct human @mentions (name or role), 5 min for auto-dispatch chains
@@ -609,7 +623,7 @@ export async function POST(
 
   // Spawn the agent (fire-and-forget, posts comment when done)
   const targetTools = await toolsForRole(targetPersona.role || "developer");
-  spawnAgent(sessionDir, cwd, targetTools, ticketId, targetPersona.id, { conversational, documentId, role: targetPersona.role || "developer" });
+  spawnAgent(sessionDir, cwd, targetTools, ticketId, targetPersona.id, project.slug, { conversational, documentId, role: targetPersona.role || "developer" });
   markPersonaDispatched(ticketId, targetPersona.id);
 
   insertAgentRun({

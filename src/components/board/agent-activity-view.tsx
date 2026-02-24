@@ -86,7 +86,7 @@ function PersonaAvatar({ name, color, avatar, size = 28 }: { name: string | null
   );
 }
 
-// --- Credit Pause Banner ---
+// --- Dispatch Pause Banner ---
 
 interface CreditPauseStatus {
   paused: boolean;
@@ -123,7 +123,7 @@ function CreditPauseBanner({ status, onResume }: { status: CreditPauseStatus; on
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
           </svg>
           <span className="text-sm font-semibold" style={{ color: "#f59e0b" }}>
-            Credits Paused
+            Dispatch Paused
           </span>
           <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
             {timeStr ? `Resumes at ${timeStr}` : "Paused"}{" "}
@@ -380,7 +380,7 @@ export function AgentActivityView({ projectSlug }: { projectSlug: string }) {
       try {
         const [runsRes, pauseRes, hbRes] = await Promise.all([
           fetch(`/api/agent-runs?limit=100&projectSlug=${projectSlug}`),
-          fetch("/api/credit-pause"),
+          fetch(`/api/credit-pause?projectSlug=${projectSlug}`),
           fetch("/api/heartbeat-status"),
         ]);
         if (cancelled) return;
@@ -399,7 +399,7 @@ export function AgentActivityView({ projectSlug }: { projectSlug: string }) {
 
   async function handleResume() {
     try {
-      await fetch("/api/credit-pause", { method: "DELETE" });
+      await fetch(`/api/credit-pause?projectSlug=${projectSlug}`, { method: "DELETE" });
       setCreditPause({ paused: false, resumesAt: null, remainingMs: 0, reason: null });
     } catch {}
   }
@@ -474,7 +474,7 @@ export function AgentActivityView({ projectSlug }: { projectSlug: string }) {
 
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto px-8 py-6">
-        {/* Credit Pause Banner */}
+        {/* Dispatch Pause Banner */}
         {creditPause?.paused && (
           <CreditPauseBanner status={creditPause} onResume={handleResume} />
         )}

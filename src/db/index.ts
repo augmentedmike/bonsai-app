@@ -258,6 +258,12 @@ if (!existingTables.has("project_messages")) {
     sqlite.exec(`ALTER TABLE tickets ADD COLUMN blocked_at TEXT`);
     console.log("[db] Added blocked columns to tickets");
   }
+  if (!cols.has("on_hold")) {
+    sqlite.exec(`ALTER TABLE tickets ADD COLUMN on_hold INTEGER DEFAULT 0`);
+    sqlite.exec(`ALTER TABLE tickets ADD COLUMN hold_reason TEXT`);
+    sqlite.exec(`ALTER TABLE tickets ADD COLUMN hold_at TEXT`);
+    console.log("[db] Added hold columns to tickets");
+  }
 }
 
 export const db = drizzle(sqlite, { schema });

@@ -110,6 +110,22 @@ export async function GET(
       }, { status: 413 });
     }
 
+    // Raw mode — serve file directly (for images, etc.)
+    const raw = url.searchParams.get("raw");
+    if (raw === "1") {
+      const ext = path.extname(resolved).toLowerCase();
+      const mimeMap: Record<string, string> = {
+        ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+        ".gif": "image/gif", ".svg": "image/svg+xml", ".webp": "image/webp",
+        ".ico": "image/x-icon",
+      };
+      const contentType = mimeMap[ext] || "application/octet-stream";
+      const buffer = fs.readFileSync(resolved);
+      return new NextResponse(buffer, {
+        headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=3600" },
+      });
+    }
+
     // Try to read as text
     try {
       const content = fs.readFileSync(resolved, "utf-8");

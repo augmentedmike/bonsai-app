@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import type { Role, Persona, ClaudeSkillDefinition } from "@/types";
 import { ConfirmDelete } from "@/components/ui/confirm-delete";
+import { PersonaEditorModal } from "@/components/board/persona-editor-modal";
 
 const PROMPT_LABELS: Record<string, string> = {
   prompt_role_researcher: "Role: Researcher",
@@ -63,32 +64,18 @@ interface PromptData {
   isDefault: boolean;
 }
 
-type Tab = "workers" | "roles" | "edit-worker";
+type Tab = "workers" | "roles";
 
 export function TeamView({ projectSlug }: { projectSlug: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [tab, setTab] = useState<Tab>("workers");
-  const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [personas, setPersonas] = useState<Persona[]>([]);
-
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [name, setName] = useState("");
-  const [gender, setGender] = useState<"male" | "female" | "non-binary">("male");
-  const [appearance, setAppearance] = useState("");
-  const [commStyle, setCommStyle] = useState("");
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [generating, setGenerating] = useState(false);
-  const [generatingPhase, setGeneratingPhase] = useState<"" | "text" | "avatar">("");
-  const [rerolling, setRerolling] = useState<"" | "name" | "appearance" | "style" | "avatar">("");
-  const [saving, setSaving] = useState(false);
+  // Modal state: null = closed, persona with empty id = create mode, persona with id = edit mode
   const [editingPersona, setEditingPersona] = useState<Persona | null>(null);
-
-  const [roleTools, setRoleTools] = useState<string[]>([]);
-  const [roleToolsDirty, setRoleToolsDirty] = useState(false);
-  const [savingRoleTools, setSavingRoleTools] = useState(false);
 
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [roleForm, setRoleForm] = useState({
@@ -162,8 +149,7 @@ export function TeamView({ projectSlug }: { projectSlug: string }) {
     if (editPersonaId && personas.length > 0) {
       const persona = personas.find((p) => p.id === editPersonaId);
       if (persona) {
-        startEditWorker(persona);
-        // Clear the query param
+        setEditingPersona(persona);
         router.replace(`/p/${projectSlug}/team`, { scroll: false });
       }
     }
@@ -172,218 +158,6 @@ export function TeamView({ projectSlug }: { projectSlug: string }) {
 
   function handleSelectRoleForCreate(role: Role) {
     setEditingPersona({ id: "", name: "", slug: "", color: role.color, role: role.slug, roleId: role.id } as Persona);
-    setSelectedRole(role);
-    setName("");
-    setGender("male");
-    setAppearance("");
-    setCommStyle("");
-    setAvatarUrl(null);
-    setTab("edit-worker");
-  }
-
-  function splitPersonality(p: string): [string, string] {
-    const parts = p.split("\n\n");
-    return [parts[0]?.trim() || "", parts.slice(1).join("\n\n").trim()];
-  }
-
-  function joinPersonality(app: string, comm: string): string {
-    return [app.trim(), comm.trim()].filter(Boolean).join("\n\n");
-  }
-
-  function getRoleSlug(): string {
-    if (editingPersona) {
-      const role = roles.find((r) => r.id === editingPersona.roleId)
-        || roles.find((r) => r.slug === editingPersona.role);
-      return role?.slug || editingPersona.role || "developer";
-    }
-    return selectedRole?.slug || "developer";
-  }
-
-  async function rerollIdentity() {
-    setRerolling("name");
-    try {
-      const res = await fetch("/api/generate-worker", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: getRoleSlug(), field: "appearance", name: name.trim() || undefined, gender, existingNames: personas.map((p) => p.name) }),
-      });
-      const data = await res.json();
-      if (data.name) setName(data.name);
-      if (data.appearance) setAppearance(data.appearance);
-    } catch {}
-    setRerolling("");
-  }
-
-  async function rerollStyle() {
-    setRerolling("style");
-    try {
-      const res = await fetch("/api/generate-worker", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: getRoleSlug(), field: "style", name: name.trim() || undefined, gender, existingNames: personas.map((p) => p.name) }),
-      });
-      const data = await res.json();
-      if (data.style) setCommStyle(data.style);
-    } catch {}
-    setRerolling("");
-  }
-
-  async function rerollAvatar() {
-    setRerolling("avatar");
-    try {
-      const res = await fetch("/api/avatar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          role: getRoleSlug(),
-          personality: joinPersonality(appearance, commStyle),
-        }),
-      });
-      const data = await res.json();
-      if (data.avatar) setAvatarUrl(data.avatar);
-    } catch {}
-    setRerolling("");
-  }
-
-  const ALL_TOOLS = [
-    { name: "Read", group: "filesystem", description: "Read files" },
-    { name: "Grep", group: "filesystem", description: "Search file contents" },
-    { name: "Glob", group: "filesystem", description: "Find files by pattern" },
-    { name: "Bash", group: "filesystem", description: "Run shell commands" },
-    { name: "Write", group: "write", description: "Create new files" },
-    { name: "Edit", group: "write", description: "Modify existing files" },
-    { name: "WebSearch", group: "web", description: "Search the web" },
-    { name: "WebFetch", group: "web", description: "Fetch web pages" },
-    { name: "Task", group: "agent", description: "Spawn sub-agents" },
-  ];
-
-  function startEditWorker(persona: Persona) {
-    setEditingPersona(persona);
-    setName(persona.name);
-    const [app, comm] = splitPersonality(persona.personality || "");
-    setAppearance(app);
-    setCommStyle(comm);
-    setAvatarUrl(persona.avatar || null);
-    const role = roles.find((r) => r.id === persona.roleId)
-      || roles.find((r) => r.slug === persona.role);
-    setSelectedRole(role || null);
-    // Initialize role tools from DB, or defaults
-    if (role?.tools && role.tools.length > 0) {
-      setRoleTools([...role.tools]);
-    } else if (role?.slug === "researcher" || role?.slug === "critic") {
-      setRoleTools(["Read", "Grep", "Glob", "Bash", "WebSearch", "WebFetch"]);
-    } else {
-      setRoleTools(["Read", "Grep", "Glob", "Write", "Edit", "Bash"]);
-    }
-    setRoleToolsDirty(false);
-    setTab("edit-worker");
-  }
-
-  async function handleSaveRoleTools() {
-    if (!editingPersona) return;
-    const role = roles.find((r) => r.id === editingPersona.roleId)
-      || roles.find((r) => r.slug === editingPersona?.role);
-    if (!role) return;
-    setSavingRoleTools(true);
-    try {
-      const res = await fetch("/api/roles", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: role.id, tools: roleTools }),
-      });
-      const updated = await res.json();
-      setRoles(roles.map((r) => (r.id === updated.id ? updated : r)));
-      setRoleToolsDirty(false);
-    } catch (err) {
-      console.error("Failed to save role tools:", err);
-    }
-    setSavingRoleTools(false);
-  }
-
-  async function handleRegenerateForEdit() {
-    if (!editingPersona) return;
-    const role = roles.find((r) => r.id === editingPersona.roleId)
-      || roles.find((r) => r.slug === editingPersona.role);
-    const roleSlug = role?.slug || editingPersona.role || "developer";
-
-    setGenerating(true);
-    setGeneratingPhase("text");
-    try {
-      // Don't pass name or gender to force regeneration
-      const genRes = await fetch("/api/generate-worker", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: roleSlug, existingNames: personas.map((p) => p.name) }),
-      });
-      const genData = await genRes.json();
-      if (genData.name) setName(genData.name);
-      if (genData.gender) setGender(genData.gender);
-      if (genData.appearance) setAppearance(genData.appearance);
-      if (genData.style) setCommStyle(genData.style);
-
-      setGeneratingPhase("avatar");
-      const avatarRes = await fetch("/api/avatar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: genData.name || name,
-          role: roleSlug,
-          personality: genData.appearance || appearance,
-        }),
-      });
-      const avatarData = await avatarRes.json();
-      if (avatarData.avatar) setAvatarUrl(avatarData.avatar);
-    } catch {}
-    setGenerating(false);
-    setGeneratingPhase("");
-  }
-
-  async function handleSaveWorker() {
-    if (!editingPersona || !name.trim()) return;
-    setSaving(true);
-    try {
-      const isCreate = !editingPersona.id;
-      if (isCreate) {
-        const role = selectedRole || roles.find((r) => r.id === editingPersona.roleId);
-        await fetch("/api/personas", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: name.trim(),
-            roleId: role?.id,
-            role: role?.slug || editingPersona.role || "developer",
-            personality: joinPersonality(appearance, commStyle) || undefined,
-            avatar: avatarUrl || undefined,
-            skills: [],
-            processes: [],
-            goals: [],
-            permissions: { tools: [], folders: [] },
-          }),
-        });
-      } else {
-        await fetch("/api/personas", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            id: editingPersona.id,
-            name: name.trim(),
-            personality: joinPersonality(appearance, commStyle) || undefined,
-            avatar: avatarUrl || undefined,
-          }),
-        });
-      }
-      setTab("workers");
-      setEditingPersona(null);
-      setSelectedRole(null);
-      setName("");
-      setGender("male");
-      setAppearance("");
-      setCommStyle("");
-      setAvatarUrl(null);
-      router.refresh();
-    } catch {}
-    setSaving(false);
   }
 
   function startEditRole(role: Role | null) {
@@ -706,7 +480,7 @@ export function TeamView({ projectSlug }: { projectSlug: string }) {
                       >
                         <div className="absolute top-4 right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
                           <button
-                            onClick={() => startEditWorker(persona)}
+                            onClick={() => setEditingPersona(persona)}
                             className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/10"
                             title="Edit worker"
                           >
@@ -1115,211 +889,20 @@ export function TeamView({ projectSlug }: { projectSlug: string }) {
           </>
         )}
 
-        {/* Edit Worker Tab */}
-        {tab === "edit-worker" && editingPersona && (() => {
-          const editRole = roles.find((r) => r.id === editingPersona.roleId);
-          const editAccent = editRole?.color || editingPersona.color;
-          const editInitial = name.trim() ? name.trim()[0].toUpperCase() : "?";
-          return (
-            <>
-              <div className="flex items-center gap-3 px-8 py-5 border-b border-[var(--border-subtle)]" style={{ borderTopWidth: "3px", borderTopColor: editAccent }}>
-                <button onClick={() => { setTab(editingPersona.id ? "workers" : "roles"); setEditingPersona(null); setSelectedRole(null); }} className="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--text-muted)] hover:bg-white/10">
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
-                </button>
-                <div>
-                  <h3 className="text-lg font-semibold text-[var(--text-primary)]">
-                    {editingPersona.id ? `Edit ${editingPersona.name}` : `New ${editRole?.title || editingPersona.role}`}
-                  </h3>
-                  <p className="text-xs text-[var(--text-muted)]">{editRole?.title || editingPersona.role}</p>
-                </div>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-8">
-                <div className="flex gap-6">
-                  {/* Avatar */}
-                  <div className="flex flex-col items-center gap-4 flex-shrink-0">
-                    <div className="relative">
-                      {avatarUrl ? (
-                        <img src={avatarUrl} alt={name} className="w-96 h-96 rounded-full object-cover border-4" style={{ borderColor: editAccent, backgroundColor: editAccent, opacity: generatingPhase === "avatar" ? 0.4 : 1, transition: "opacity 0.2s" }} />
-                      ) : (
-                        <div className="w-96 h-96 rounded-full flex items-center justify-center text-9xl font-bold text-white" style={{ backgroundColor: editAccent }}>{editInitial}</div>
-                      )}
-                      {generatingPhase === "avatar" && (
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <svg className="w-24 h-24 animate-spin text-white" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                        </div>
-                      )}
-                    </div>
-                    {/* Avatar regen button only */}
-                    <button onClick={rerollAvatar} disabled={!!rerolling || generating} className="p-2 rounded-lg border border-[var(--border-medium)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5 disabled:opacity-40" title="Reroll avatar">
-                      <svg className={`w-4 h-4 ${rerolling === "avatar" ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" /></svg>
-                    </button>
-                  </div>
-
-                  {/* Form */}
-                  <div className="flex-1 min-w-0 space-y-4">
-                    {/* Regen All button */}
-                    <button onClick={handleRegenerateForEdit} disabled={generating || !!rerolling} className="w-full px-4 py-2.5 rounded-lg text-sm font-medium border border-[var(--border-medium)] text-[var(--text-secondary)] hover:bg-white/5 disabled:opacity-40 flex items-center justify-center gap-2">
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" /></svg>
-                      {generatingPhase === "text" ? "Generating Profile..." : generatingPhase === "avatar" ? "Generating Avatar..." : "Regen All"}
-                    </button>
-
-                    {/* Gender first */}
-                    <div>
-                      <label className="text-xs font-medium text-[var(--text-muted)] mb-1.5 block">Gender</label>
-                      <div className="flex gap-2">
-                        {(["male", "female", "non-binary"] as const).map((g) => (
-                          <button key={g} onClick={() => setGender(g)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${gender === g ? "bg-white/15 text-[var(--text-primary)] border border-white/20" : "text-[var(--text-muted)] border border-[var(--border-medium)] hover:bg-white/5"}`}>
-                            {g.charAt(0).toUpperCase() + g.slice(1)}
-                          </button>
-                        ))}
-                        <button onClick={() => { const options: ("male" | "female" | "non-binary")[] = ["male", "female", "non-binary"]; setGender(options[Math.floor(Math.random() * options.length)]); }} className="px-2 py-1.5 rounded-lg text-xs font-medium text-[var(--text-muted)] border border-[var(--border-medium)] hover:bg-white/5 hover:text-[var(--text-primary)] transition-colors" title="Random gender">
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" /></svg>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Then name */}
-                    <div>
-                      <div className="flex items-center gap-2 mb-1.5">
-                        <label className="text-xs font-medium text-[var(--text-muted)]">Name</label>
-                        <button onClick={rerollIdentity} disabled={rerolling === "name"} className="p-0.5 rounded hover:bg-white/10 text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-40" title="Reroll name">
-                          <svg className={`w-3.5 h-3.5 ${rerolling === "name" ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" /></svg>
-                        </button>
-                      </div>
-                      <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Maya, Atlas, Nova..." className="w-full px-4 py-3 rounded-lg text-sm bg-[var(--bg-input)] border border-[var(--border-medium)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-blue)]" />
-                    </div>
-
-                    <div>
-                      <div className="flex items-center gap-2 mb-1.5">
-                        <label className="text-xs font-medium text-[var(--text-muted)]">Visual Description</label>
-                        <button onClick={rerollIdentity} disabled={!!rerolling} className="p-0.5 rounded hover:bg-white/10 text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-40" title="Reroll appearance">
-                          <svg className={`w-3.5 h-3.5 ${rerolling === "appearance" ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" /></svg>
-                        </button>
-                      </div>
-                      <textarea value={appearance} onChange={(e) => setAppearance(e.target.value)} placeholder="What do they look like? Physical features, hair, clothing..." rows={3} className="w-full px-4 py-3 rounded-lg text-sm bg-[var(--bg-input)] border border-[var(--border-medium)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-blue)] resize-y" />
-                    </div>
-
-                    <div>
-                      <div className="flex items-center gap-2 mb-1.5">
-                        <label className="text-xs font-medium text-[var(--text-muted)]">Communication Style</label>
-                        <button onClick={rerollStyle} disabled={!!rerolling} className="p-0.5 rounded hover:bg-white/10 text-[var(--text-muted)] hover:text-[var(--text-primary)] disabled:opacity-40" title="Reroll style">
-                          <svg className={`w-3.5 h-3.5 ${rerolling === "style" ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" /></svg>
-                        </button>
-                      </div>
-                      <textarea value={commStyle} onChange={(e) => setCommStyle(e.target.value)} placeholder="How do they communicate? Tone, energy, quirks..." rows={3} className="w-full px-4 py-3 rounded-lg text-sm bg-[var(--bg-input)] border border-[var(--border-medium)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent-blue)] resize-y" />
-                    </div>
-
-                    {/* Role Permissions */}
-                    {editRole && (
-                      <div className="rounded-lg border border-[var(--border-medium)] bg-white/[0.02] overflow-hidden">
-                        <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-medium)]">
-                          <div className="flex items-center gap-2">
-                            <svg className="w-4 h-4 text-[var(--text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" /></svg>
-                            <span className="text-xs font-medium text-[var(--text-secondary)]">{editRole.title} Permissions</span>
-                          </div>
-                          {roleToolsDirty && (
-                            <button
-                              onClick={handleSaveRoleTools}
-                              disabled={savingRoleTools}
-                              className="text-xs px-3 py-1 rounded-md font-medium text-white hover:opacity-90 disabled:opacity-40"
-                              style={{ backgroundColor: editRole.color }}
-                            >
-                              {savingRoleTools ? "Saving..." : "Save Permissions"}
-                            </button>
-                          )}
-                        </div>
-                        <div className="px-4 py-3 space-y-3">
-                          {/* Tools */}
-                          <div>
-                            <label className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-medium mb-2 block">Tools</label>
-                            <div className="flex flex-wrap gap-1.5">
-                              {ALL_TOOLS.map((tool) => {
-                                const enabled = roleTools.includes(tool.name);
-                                const isWrite = tool.group === "write";
-                                const isWeb = tool.group === "web";
-                                const isAgent = tool.group === "agent";
-                                return (
-                                  <button
-                                    key={tool.name}
-                                    onClick={() => {
-                                      const next = enabled
-                                        ? roleTools.filter((t) => t !== tool.name)
-                                        : [...roleTools, tool.name];
-                                      setRoleTools(next);
-                                      setRoleToolsDirty(true);
-                                    }}
-                                    className="text-xs px-2.5 py-1.5 rounded-md font-mono transition-all flex items-center gap-1.5"
-                                    style={{
-                                      backgroundColor: enabled
-                                        ? isWrite ? "rgba(239,68,68,0.15)" : isWeb ? "rgba(59,130,246,0.15)" : isAgent ? "rgba(168,85,247,0.15)" : "rgba(255,255,255,0.1)"
-                                        : "rgba(255,255,255,0.02)",
-                                      color: enabled
-                                        ? isWrite ? "#f87171" : isWeb ? "#60a5fa" : isAgent ? "#a855f7" : "var(--text-primary)"
-                                        : "var(--text-muted)",
-                                      border: `1px solid ${enabled ? "transparent" : "var(--border-medium)"}`,
-                                      opacity: enabled ? 1 : 0.5,
-                                    }}
-                                    title={tool.description}
-                                  >
-                                    {enabled ? (
-                                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-                                    ) : (
-                                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-                                    )}
-                                    {tool.name}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                          {/* Phases */}
-                          <div>
-                            <label className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-medium mb-1.5 block">Active Phases</label>
-                            <div className="flex flex-wrap gap-1.5">
-                              {(editRole.slug === "researcher"
-                                ? ["Research"]
-                                : editRole.slug === "developer"
-                                ? ["Planning", "Building"]
-                                : editRole.slug === "designer"
-                                ? ["Design"]
-                                : editRole.slug === "critic"
-                                ? ["Review"]
-                                : [editRole.title]
-                              ).map((phase) => (
-                                <span key={phase} className="text-xs px-2 py-1 rounded-md" style={{ backgroundColor: `color-mix(in srgb, ${editRole.color} 12%, transparent)`, color: editRole.color }}>
-                                  {phase}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                          {/* Skills */}
-                          {editRole.skillDefinitions && editRole.skillDefinitions.length > 0 && (
-                            <div>
-                              <label className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-medium mb-1.5 block">Skills</label>
-                              <div className="flex flex-wrap gap-1.5">
-                                {editRole.skillDefinitions.map((skill, idx) => (
-                                  <span key={idx} className="text-xs px-2 py-1 rounded-md font-mono" style={{ backgroundColor: `color-mix(in srgb, ${editRole.color} 15%, transparent)`, color: editRole.color }}>
-                                    /{skill.name}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    <button onClick={handleSaveWorker} disabled={!name.trim() || saving} className="w-full px-6 py-3 rounded-lg text-sm font-semibold text-white disabled:opacity-40 hover:opacity-90 transition-opacity" style={{ backgroundColor: editAccent }}>
-                      {saving ? "Saving..." : editingPersona.id ? "Save Changes" : "Create Worker"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </>
-          );
-        })()}
       </div>
+
+      {/* Persona Editor Modal */}
+      <PersonaEditorModal
+        persona={editingPersona}
+        roles={roles}
+        existingNames={personas.map((p) => p.name)}
+        onClose={() => setEditingPersona(null)}
+        onSaved={() => {
+          setEditingPersona(null);
+          fetchData();
+          router.refresh();
+        }}
+      />
     </div>
   );
 }

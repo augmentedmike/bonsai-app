@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import ReactMarkdown from "react-markdown";
+import rehypeRaw from "rehype-raw";
+import remarkGfm from "remark-gfm";
 
 interface FileEntry {
   path: string;
@@ -178,6 +181,7 @@ export function FileBrowser({ ticketId }: FileBrowserProps) {
   const [loadingContent, setLoadingContent] = useState(false);
   const [contentError, setContentError] = useState<string | null>(null);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<"raw" | "md">("md");
 
   // Load file listing
   useEffect(() => {
@@ -211,6 +215,7 @@ export function FileBrowser({ ticketId }: FileBrowserProps) {
     }
     setLoadingContent(true);
     setContentError(null);
+    setViewMode(selectedPath.endsWith(".md") ? "md" : "raw");
     fetch(`/api/tickets/${ticketId}/files?path=${encodeURIComponent(selectedPath)}`)
       .then((r) => r.json())
       .then((data) => {
@@ -312,11 +317,41 @@ export function FileBrowser({ ticketId }: FileBrowserProps) {
               >
                 {selectedPath}
               </span>
-              {fileContent && (
-                <span className="text-xs flex-shrink-0 ml-2" style={{ color: "var(--text-muted)" }}>
-                  {lines.length} lines · {formatSize(new Blob([fileContent]).size)}
-                </span>
-              )}
+              <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                {selectedPath?.endsWith(".md") && fileContent && (
+                  <span
+                    className="text-xs font-mono flex items-center rounded overflow-hidden border"
+                    style={{ borderColor: "var(--border-subtle)" }}
+                  >
+                    <button
+                      onClick={() => setViewMode("raw")}
+                      className="px-1.5 py-0.5 transition-colors"
+                      style={{
+                        color: viewMode === "raw" ? "var(--text-primary)" : "var(--text-muted)",
+                        backgroundColor: viewMode === "raw" ? "rgba(255,255,255,0.1)" : "transparent",
+                      }}
+                    >
+                      raw
+                    </button>
+                    <span style={{ color: "var(--text-muted)", opacity: 0.3 }}>|</span>
+                    <button
+                      onClick={() => setViewMode("md")}
+                      className="px-1.5 py-0.5 transition-colors"
+                      style={{
+                        color: viewMode === "md" ? "var(--text-primary)" : "var(--text-muted)",
+                        backgroundColor: viewMode === "md" ? "rgba(255,255,255,0.1)" : "transparent",
+                      }}
+                    >
+                      md
+                    </button>
+                  </span>
+                )}
+                {fileContent && (
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    {lines.length} lines · {formatSize(new Blob([fileContent]).size)}
+                  </span>
+                )}
+              </div>
             </div>
             <div className="flex-1 overflow-auto">
               {loadingContent ? (
@@ -328,31 +363,74 @@ export function FileBrowser({ ticketId }: FileBrowserProps) {
                   <span className="text-sm">{contentError}</span>
                 </div>
               ) : fileContent !== null ? (
-                <pre
-                  className="text-xs leading-5 p-0 m-0"
-                  style={{
-                    fontFamily: "var(--font-mono, 'SF Mono', Menlo, monospace)",
-                    color: "var(--text-primary)",
-                    tabSize: 2,
-                  }}
-                >
-                  {lines.map((line, i) => (
-                    <div key={i} className="flex hover:bg-white/5">
-                      <span
-                        className="select-none text-right flex-shrink-0 px-3 py-0"
-                        style={{
-                          color: "var(--text-muted)",
-                          width: "48px",
-                          opacity: 0.5,
-                          borderRight: "1px solid var(--border-subtle)",
-                        }}
-                      >
-                        {i + 1}
-                      </span>
-                      <span className="px-4 whitespace-pre">{line}</span>
-                    </div>
-                  ))}
-                </pre>
+                selectedPath?.endsWith(".md") && viewMode === "md" ? (
+                  <div className="p-6 overflow-auto prose-invert max-w-none">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      rehypePlugins={[rehypeRaw]}
+                      components={{
+                        h1: ({ children }) => <h1 className="text-xl font-bold mb-4 mt-0" style={{ color: "var(--text-primary)" }}>{children}</h1>,
+                        h2: ({ children }) => <h2 className="text-lg font-semibold mb-3 mt-6" style={{ color: "var(--text-primary)" }}>{children}</h2>,
+                        h3: ({ children }) => <h3 className="text-sm font-semibold mb-2 mt-4" style={{ color: "var(--text-primary)" }}>{children}</h3>,
+                        p: ({ children }) => <p className="text-sm leading-relaxed mb-3" style={{ color: "var(--text-secondary)" }}>{children}</p>,
+                        ul: ({ children }) => <ul className="text-sm list-disc pl-5 mb-3 space-y-1" style={{ color: "var(--text-secondary)" }}>{children}</ul>,
+                        ol: ({ children }) => <ol className="text-sm list-decimal pl-5 mb-3 space-y-1" style={{ color: "var(--text-secondary)" }}>{children}</ol>,
+                        li: ({ children }) => <li className="text-sm" style={{ color: "var(--text-secondary)" }}>{children}</li>,
+                        a: ({ href, children }) => <a href={href} className="underline" style={{ color: "var(--accent-blue)" }} target="_blank" rel="noopener noreferrer">{children}</a>,
+                        pre: ({ children }) => (
+                          <pre className="rounded p-3 mb-3 overflow-x-auto text-xs whitespace-pre" style={{ backgroundColor: "rgba(0,0,0,0.3)", color: "var(--text-primary)", fontFamily: "var(--font-mono, monospace)" }}>
+                            {children}
+                          </pre>
+                        ),
+                        code: ({ className, children }) => {
+                          if (className) return <code>{children}</code>;
+                          return <code className="rounded px-1.5 py-0.5 text-xs" style={{ backgroundColor: "rgba(255,255,255,0.08)", color: "var(--text-primary)", fontFamily: "var(--font-mono, monospace)" }}>{children}</code>;
+                        },
+                        blockquote: ({ children }) => <blockquote className="border-l-2 pl-4 my-3" style={{ borderColor: "var(--text-muted)", color: "var(--text-muted)" }}>{children}</blockquote>,
+                        hr: () => <hr className="my-4 border-0 h-px" style={{ backgroundColor: "var(--border-subtle)" }} />,
+                        strong: ({ children }) => <strong style={{ color: "var(--text-primary)" }}>{children}</strong>,
+                        img: ({ src, alt, ...props }) => {
+                          let resolvedSrc = src || "";
+                          if (resolvedSrc && !resolvedSrc.startsWith("http") && !resolvedSrc.startsWith("data:")) {
+                            resolvedSrc = `/api/tickets/${ticketId}/files?path=${encodeURIComponent(resolvedSrc)}&raw=1`;
+                          }
+                          return <img src={resolvedSrc} alt={alt || ""} className="max-w-full rounded my-2" {...props} />;
+                        },
+                        table: ({ children }) => <div className="overflow-x-auto mb-3"><table className="text-xs border-collapse w-full" style={{ borderColor: "var(--border-subtle)" }}>{children}</table></div>,
+                        th: ({ children }) => <th className="text-left px-3 py-1.5 border-b font-semibold text-xs" style={{ borderColor: "var(--border-subtle)", color: "var(--text-primary)" }}>{children}</th>,
+                        td: ({ children }) => <td className="px-3 py-1.5 border-b text-xs" style={{ borderColor: "var(--border-subtle)", color: "var(--text-secondary)" }}>{children}</td>,
+                      }}
+                    >
+                      {fileContent}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                  <pre
+                    className="text-xs leading-5 p-0 m-0"
+                    style={{
+                      fontFamily: "var(--font-mono, 'SF Mono', Menlo, monospace)",
+                      color: "var(--text-primary)",
+                      tabSize: 2,
+                    }}
+                  >
+                    {lines.map((line, i) => (
+                      <div key={i} className="flex hover:bg-white/5">
+                        <span
+                          className="select-none text-right flex-shrink-0 px-3 py-0"
+                          style={{
+                            color: "var(--text-muted)",
+                            width: "48px",
+                            opacity: 0.5,
+                            borderRight: "1px solid var(--border-subtle)",
+                          }}
+                        >
+                          {i + 1}
+                        </span>
+                        <span className="px-4 whitespace-pre">{line}</span>
+                      </div>
+                    ))}
+                  </pre>
+                )
               ) : null}
             </div>
           </>

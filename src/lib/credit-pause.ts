@@ -1,15 +1,25 @@
 /**
- * Credit pause utilities — detect API credit exhaustion and pause dispatching.
+ * Dispatch pause utilities — detect API rate limits and pause agent dispatching.
  *
  * When Claude CLI returns a "hit your limit" error, we parse the reset time
- * and pause all agent dispatching until credits refresh. Uses the settings
+ * and pause all agent dispatching until the limit resets. Uses the settings
  * table (key/value) — no schema changes needed.
  */
 
-// Settings keys
+// Settings keys (base — used as prefixes for per-project scoping)
 export const CREDITS_PAUSED_UNTIL = "credits_paused_until";
 export const CREDITS_PAUSE_REASON = "credits_pause_reason";
 export const AUTH_EXPIRED = "auth_expired";
+
+/** Project-scoped settings key for pause timestamp */
+export function projectPauseKey(projectSlug: string): string {
+  return `${CREDITS_PAUSED_UNTIL}:${projectSlug}`;
+}
+
+/** Project-scoped settings key for pause reason */
+export function projectPauseReasonKey(projectSlug: string): string {
+  return `${CREDITS_PAUSE_REASON}:${projectSlug}`;
+}
 
 // Patterns that indicate a credit/rate limit error
 const CREDIT_PATTERNS = [

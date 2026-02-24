@@ -11,6 +11,8 @@ interface AddTicketModalProps {
 }
 
 import { ticketTypes } from "@/lib/ticket-types";
+import { extractPathsFromDrop, pathToMarkdown, type DroppedPath } from "@/lib/drop-paths";
+import { DroppedPathBadges } from "@/components/dropped-path-badges";
 
 // Web Speech API TypeScript declarations
 interface SpeechRecognitionEvent extends Event {
@@ -75,6 +77,8 @@ export function AddTicketModal({ open, onClose, projectSlug }: AddTicketModalPro
   const [epicOptions, setEpicOptions] = useState<Array<{ id: string; title: string }>>([]);
   const descRef = useRef<HTMLTextAreaElement>(null);
   const pendingVoiceBlurRef = useRef(false);
+  const [droppedPaths, setDroppedPaths] = useState<DroppedPath[]>([]);
+  const [dragOver, setDragOver] = useState(false);
 
   // Speech-to-text state
   const [isRecording, setIsRecording] = useState(false);
@@ -265,6 +269,17 @@ export function AddTicketModal({ open, onClose, projectSlug }: AddTicketModalPro
       setInterimTranscript('');
     }
   };
+
+  function handleDescDrop(e: React.DragEvent<HTMLTextAreaElement>) {
+    e.preventDefault();
+    setDragOver(false);
+    const paths = extractPathsFromDrop(e.dataTransfer);
+    if (paths.length > 0) {
+      setDroppedPaths((prev) => [...prev, ...paths]);
+      const markdown = paths.map(pathToMarkdown).join("\n");
+      setDescription((prev) => prev ? `${prev}\n\n${markdown}` : markdown);
+    }
+  }
 
   async function generateFromDescription(opts?: { skipEnhance?: boolean }) {
     if (!description.trim()) return;
@@ -457,9 +472,12 @@ export function AddTicketModal({ open, onClose, projectSlug }: AddTicketModalPro
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   onBlur={() => generateFromDescription()}
+                  onDrop={handleDescDrop}
+                  onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                  onDragLeave={() => setDragOver(false)}
                   placeholder={isRecording ? interimTranscript || "Listening..." : ticketTypes[type].placeholder}
-                  className="flex-1 w-full h-full px-4 py-3 rounded-lg text-sm outline-none transition-all resize-none bg-[var(--bg-input)] border border-[var(--border-medium)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
-                  style={{ "--accent": accent } as React.CSSProperties}
+                  className="flex-1 w-full h-full px-4 py-3 rounded-lg text-sm outline-none transition-all resize-none bg-[var(--bg-input)] border text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:border-[var(--accent)]"
+                  style={{ "--accent": accent, borderColor: dragOver ? "var(--accent-blue)" : undefined } as React.CSSProperties}
                   disabled={isProcessingAI}
                 />
                 {isProcessingAI && (
@@ -474,6 +492,16 @@ export function AddTicketModal({ open, onClose, projectSlug }: AddTicketModalPro
                   </div>
                 )}
               </div>
+              <DroppedPathBadges
+                paths={droppedPaths}
+                onRemove={(id) => {
+                  const removed = droppedPaths.find((p) => p.id === id);
+                  setDroppedPaths((prev) => prev.filter((p) => p.id !== id));
+                  if (removed) {
+                    setDescription((prev) => prev.replace(pathToMarkdown(removed), "").replace(/\n{3,}/g, "\n\n").trim());
+                  }
+                }}
+              />
             </div>
 
             {/* Acceptance Criteria */}

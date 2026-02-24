@@ -24,34 +24,52 @@ export function BoardActions({ project, shippedCount, hasCommands, previewMode, 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsNotice, setSettingsNotice] = useState("");
   const [paused, setPaused] = useState(false);
+  const [anyPaused, setAnyPaused] = useState(false);
   const [pauseLoading, setPauseLoading] = useState(false);
 
   // Poll pause state every 10s
   useEffect(() => {
     async function fetchPauseState() {
       try {
-        const res = await fetch("/api/credit-pause");
-        if (res.ok) {
-          const data = await res.json();
+        const [projRes, allRes] = await Promise.all([
+          fetch(`/api/credit-pause?projectSlug=${project.slug}`),
+          fetch("/api/credit-pause?all=true"),
+        ]);
+        if (projRes.ok) {
+          const data = await projRes.json();
           setPaused(data.paused);
+        }
+        if (allRes.ok) {
+          const data = await allRes.json();
+          setAnyPaused(data.paused);
         }
       } catch {}
     }
     fetchPauseState();
     const interval = setInterval(fetchPauseState, 10_000);
     return () => clearInterval(interval);
-  }, []);
+  }, [project.slug]);
 
   async function togglePause() {
     setPauseLoading(true);
     try {
       if (paused) {
-        await fetch("/api/credit-pause", { method: "DELETE" });
+        await fetch(`/api/credit-pause?projectSlug=${project.slug}`, { method: "DELETE" });
         setPaused(false);
       } else {
-        await fetch("/api/credit-pause", { method: "PUT" });
+        await fetch(`/api/credit-pause?projectSlug=${project.slug}`, { method: "PUT" });
         setPaused(true);
       }
+    } catch {}
+    setPauseLoading(false);
+  }
+
+  async function resumeAll() {
+    setPauseLoading(true);
+    try {
+      await fetch("/api/credit-pause?all=true", { method: "DELETE" });
+      setPaused(false);
+      setAnyPaused(false);
     } catch {}
     setPauseLoading(false);
   }
@@ -136,6 +154,27 @@ export function BoardActions({ project, shippedCount, hasCommands, previewMode, 
           )}
           {paused ? t.board.paused : t.board.pause}
         </button>
+
+        {anyPaused && (
+          <button
+            onClick={resumeAll}
+            disabled={pauseLoading}
+            title="Resume all paused projects"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all"
+            style={{
+              backgroundColor: "rgba(34, 197, 94, 0.12)",
+              border: "1px solid rgba(34, 197, 94, 0.4)",
+              color: "#4ade80",
+              opacity: pauseLoading ? 0.5 : 1,
+              cursor: pauseLoading ? "wait" : "pointer",
+            }}
+          >
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+            Resume All
+          </button>
+        )}
 
         <button
           onClick={handlePreview}

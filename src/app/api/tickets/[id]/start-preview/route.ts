@@ -2,22 +2,10 @@ import { NextResponse } from "next/server";
 import { getTicketById } from "@/db/data/tickets";
 import { getProjectById } from "@/db/data/projects";
 import { getWorktreePath } from "@/lib/worktree-paths";
+import { allocatePreviewPort, updatePortPid } from "@/lib/preview-ports";
 import { spawn, execSync } from "node:child_process";
 import * as path from "node:path";
 import * as fs from "node:fs";
-import * as net from "node:net";
-
-function isPortInUse(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const server = net.createServer();
-    server.once("error", () => resolve(true));
-    server.once("listening", () => {
-      server.close();
-      resolve(false);
-    });
-    server.listen(port, "127.0.0.1");
-  });
-}
 
 // POST /api/tickets/[id]/start-preview — start dev server in ticket's worktree
 export async function POST(
@@ -117,16 +105,15 @@ export async function POST(
     }
   }
 
-  // Use ticket ID for port allocation (4000-4999 range)
-  const port = 4000 + (ticketId % 1000);
+  // Allocate a port from the project's 10-port pool (round-robin, evicts oldest)
+  const { port, reused } = await allocatePreviewPort(project.id, project.localPath, ticketId);
 
-  const host = "localhost";
-  const previewPath = project.slug ? `/p/${project.slug}/board` : '/';
+  // Use the requesting host so URLs work from LAN devices
+  const reqHost = new URL(req.url).hostname;
+  const host = reqHost === "localhost" || reqHost === "127.0.0.1" ? "localhost" : reqHost;
 
-  // Check if dev server is already running on this port
-  const inUse = await isPortInUse(port);
-  if (inUse) {
-    return NextResponse.json({ url: `http://${host}:${port}${previewPath}`, alreadyRunning: true, port });
+  if (reused) {
+    return NextResponse.json({ url: `http://${host}:${port}`, alreadyRunning: true, port });
   }
 
   // Ensure package.json exists in worktree
@@ -198,9 +185,10 @@ export async function POST(
   child.unref();
 
   console.log(`[ticket-preview] Started dev server for ticket ${ticketId} in worktree on port ${port} (pid ${child.pid})`);
+  updatePortPid(project.localPath, ticketId, child.pid!);
 
   return NextResponse.json({
-    url: `http://${host}:${port}${previewPath}`,
+    url: `http://${host}:${port}`,
     pid: child.pid,
     port,
     worktreePath

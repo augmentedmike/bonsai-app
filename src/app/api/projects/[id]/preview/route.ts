@@ -70,7 +70,9 @@ export async function POST(
   const logDir = path.dirname(logFile);
   if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
 
-  const envVars = { ...process.env, PORT: String(port) };
+  // Override NODE_ENV for the build — the parent process runs in "development"
+  // which causes Next.js prerender failures (useContext TypeError).
+  const envVars = { ...process.env, PORT: String(port), NODE_ENV: "production" };
 
   // Run build command synchronously before starting the dev server
   if (project.buildCommand) {

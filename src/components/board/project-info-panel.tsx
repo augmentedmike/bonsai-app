@@ -7,9 +7,12 @@ interface ProjectInfoPanelProps {
   awakePersonaIds?: Set<string>;
   onPersonaClick?: (personaId: string) => void;
   onChatOpen?: () => void;
+  hideOnHold?: boolean;
+  onHideOnHoldChange?: (value: boolean) => void;
+  holdCount?: number;
 }
 
-export function ProjectInfoPanel({ project, personas, ticketStats, awakePersonaIds = new Set(), onPersonaClick, onChatOpen }: ProjectInfoPanelProps) {
+export function ProjectInfoPanel({ project, personas, ticketStats, awakePersonaIds = new Set(), onPersonaClick, onChatOpen, hideOnHold, onHideOnHoldChange, holdCount = 0 }: ProjectInfoPanelProps) {
   const total = ticketStats.planning + ticketStats.building + ticketStats.shipped;
 
   return (
@@ -27,6 +30,19 @@ export function ProjectInfoPanel({ project, personas, ticketStats, awakePersonaI
             <span>{total} tickets</span>
             <span>{ticketStats.shipped} done</span>
           </div>
+          {holdCount > 0 && onHideOnHoldChange && (
+            <label className="flex items-center gap-1.5 cursor-pointer select-none" title="Hide on-hold tickets from the board">
+              <input
+                type="checkbox"
+                checked={hideOnHold ?? false}
+                onChange={(e) => onHideOnHoldChange(e.target.checked)}
+                className="accent-amber-400 w-3.5 h-3.5 cursor-pointer"
+              />
+              <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                Hide held ({holdCount})
+              </span>
+            </label>
+          )}
           <div className="flex items-center gap-3">
             {[...personas].sort((a, b) => {
               const aAwake = awakePersonaIds.has(a.id) ? 0 : 1;

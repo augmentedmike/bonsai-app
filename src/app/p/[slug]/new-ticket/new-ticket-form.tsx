@@ -17,15 +17,35 @@ interface NewTicketFormProps {
   projectSlug: string;
 }
 
+const STORAGE_KEY_PREFIX = "bonsai-new-ticket-";
+
+function loadDraft(slug: string) {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_PREFIX + slug);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function saveDraft(slug: string, draft: { title: string; description: string; type: TicketType | null; acceptanceCriteria: string }) {
+  try {
+    localStorage.setItem(STORAGE_KEY_PREFIX + slug, JSON.stringify(draft));
+  } catch { /* quota exceeded — ignore */ }
+}
+
+function clearDraft(slug: string) {
+  try { localStorage.removeItem(STORAGE_KEY_PREFIX + slug); } catch {}
+}
+
 export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
   const router = useRouter();
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [type, setType] = useState<TicketType | null>(null);
+  const draft = useRef(loadDraft(projectSlug)).current;
+  const [title, setTitle] = useState(draft?.title ?? "");
+  const [description, setDescription] = useState(draft?.description ?? "");
+  const [type, setType] = useState<TicketType | null>(draft?.type ?? null);
   // EPIC FEATURES DISABLED
   // const [isEpic, setIsEpic] = useState(false);
   // const [epicAutoSelected, setEpicAutoSelected] = useState(false);
-  const [acceptanceCriteria, setAcceptanceCriteria] = useState("");
+  const [acceptanceCriteria, setAcceptanceCriteria] = useState(draft?.acceptanceCriteria ?? "");
   const [saving, setSaving] = useState(false);
   const [generatingTitle, setGeneratingTitle] = useState(false);
   const [generatingCriteria, setGeneratingCriteria] = useState(false);
@@ -37,6 +57,11 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
   // EPIC FEATURES DISABLED
   // const [wizardEpic, setWizardEpic] = useState<{ id: number; title: string } | null>(null);
   const descRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-save draft to localStorage on every change
+  useEffect(() => {
+    saveDraft(projectSlug, { title, description, type, acceptanceCriteria });
+  }, [projectSlug, title, description, type, acceptanceCriteria]);
 
   const pendingVoiceBlurRef = useRef(false);
 
@@ -60,7 +85,7 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
       const reader = new FileReader();
       reader.onload = () => {
         const dataUrl = reader.result as string;
-        setImages((prev) => [...prev, { id: crypto.randomUUID(), name: file.name, dataUrl }]);
+        setImages((prev) => [...prev, { id: Math.random().toString(36).slice(2) + Date.now().toString(36), name: file.name, dataUrl }]);
       };
       reader.readAsDataURL(file);
     });
@@ -69,7 +94,7 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
       const reader = new FileReader();
       reader.onload = () => {
         const dataUrl = reader.result as string;
-        setFileAttachments((prev) => [...prev, { id: crypto.randomUUID(), name: file.name, dataUrl, mimeType: file.type || "application/octet-stream" }]);
+        setFileAttachments((prev) => [...prev, { id: Math.random().toString(36).slice(2) + Date.now().toString(36), name: file.name, dataUrl, mimeType: file.type || "application/octet-stream" }]);
         setDescription((prev) => {
           const ref = `[Attached: ${file.name}]`;
           return prev ? `${prev}\n${ref}` : ref;
@@ -118,7 +143,7 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
 
   const accent = type ? ticketTypes[type].color : "var(--badge-feature)";
 
-  async function generateFromDescription() {
+  async function generateFromDescription(force = false) {
     if (!description.trim()) return;
     const jobs: Promise<void>[] = [];
 
@@ -132,7 +157,7 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
       ]);
     };
 
-    if (!title.trim()) {
+    if (force || !title.trim()) {
       jobs.push((async () => {
         setGeneratingTitle(true);
         try {
@@ -155,7 +180,7 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
         }
       })());
     }
-    if (!acceptanceCriteria.trim()) {
+    if (force || !acceptanceCriteria.trim()) {
       jobs.push((async () => {
         setGeneratingCriteria(true);
         try {
@@ -239,6 +264,7 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
     //   setSaving(false);
     //   return;
     // }
+    clearDraft(projectSlug);
     router.push(`/p/${projectSlug}${ticketId ? `?openTicket=${ticketId}` : ""}`);
   }
 
@@ -262,6 +288,29 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
       <div className="flex-1 flex overflow-hidden">
         {/* Left: main content */}
         <div className="flex-1 flex flex-col px-10 py-8 gap-6 overflow-y-auto min-h-0">
+          {/* Clear all */}
+          <div className="flex justify-end -mb-4">
+            <button
+              onClick={() => {
+                setTitle("");
+                setDescription("");
+                setType(null);
+                setAcceptanceCriteria("");
+                setImages([]);
+                setFileAttachments([]);
+                setDroppedPaths([]);
+                clearDraft(projectSlug);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors hover:bg-white/5"
+              style={{ color: "var(--text-muted)" }}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+              </svg>
+              Clear all
+            </button>
+          </div>
+
           {/* Description */}
           <div className="flex flex-col" style={{ height: "50vh" }}>
             <div className="flex items-center justify-between mb-2">
@@ -356,6 +405,23 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
                 }
               }}
             />
+          </div>
+
+          {/* Divider + Regen */}
+          <div className="flex flex-col items-center gap-2">
+            <hr className="w-full border-t" style={{ borderColor: "var(--border-subtle)" }} />
+            <button
+              onClick={() => generateFromDescription(true)}
+              disabled={!description.trim() || generatingTitle || generatingCriteria}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed"
+              style={{ color: "var(--text-muted)" }}
+              title="Regenerate title and acceptance criteria from description"
+            >
+              <svg className={`w-3.5 h-3.5 ${generatingTitle || generatingCriteria ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.992 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+              </svg>
+              {generatingTitle || generatingCriteria ? "Regenerating..." : "Regen"}
+            </button>
           </div>
 
           {/* Title */}

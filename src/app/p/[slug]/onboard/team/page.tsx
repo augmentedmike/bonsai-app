@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { GeminiSetupModal } from "@/components/gemini-setup-modal";
 import type { Role, Persona } from "@/types";
 
@@ -10,6 +10,7 @@ const DEFAULT_STYLE = "A real photograph — NOT an illustration, NOT a cartoon,
 export default function TeamPage() {
   const router = useRouter();
   const { slug } = useParams<{ slug: string }>();
+  const searchParams = useSearchParams();
   const [projectId, setProjectId] = useState<number | null>(null);
   const [_roles, setRoles] = useState<Role[]>([]);
   const [existingPersonas, setExistingPersonas] = useState<Persona[]>([]);
@@ -107,9 +108,12 @@ export default function TeamPage() {
       const unfilled = enabledRoles.filter((r) => !filledRoleIds.has(r.id));
       setUnfilledRoles(unfilled);
 
+      // Force step 0 if ?artDirection=true (editing art direction from team page)
+      const forceArtDirection = searchParams.get("artDirection") === "true";
+
       // Skip step 0 only if art direction is set AND project already has personas
       // New projects always show art direction so user can pick fresh style
-      if (artDirectionDone && allPersonas.length > 0) {
+      if (!forceArtDirection && artDirectionDone && allPersonas.length > 0) {
         setStep(1);
       } else {
         // Auto-generate a preview on first load
@@ -264,6 +268,12 @@ export default function TeamPage() {
       await fetch("/api/settings/style-image", { method: "DELETE" });
     }
     setSavedStylePrompt(styleMode === "text" ? stylePromptText : null);
+
+    // If we came from ?artDirection=true, go back to the team page
+    if (searchParams.get("artDirection") === "true") {
+      router.push(`/p/${slug}/team`);
+      return;
+    }
     setStep(1);
     resetForm();
   }
@@ -670,7 +680,7 @@ export default function TeamPage() {
     const styleAccent = "#6366f1";
     return (
       <div
-        className="flex flex-col h-full items-center justify-center"
+        className="flex flex-col min-h-screen items-center justify-center"
         style={{
           background: `radial-gradient(ellipse at 50% 30%, ${styleAccent}12 0%, transparent 60%), var(--bg-primary)`,
         }}
@@ -811,16 +821,17 @@ export default function TeamPage() {
 
     return (
       <div
-        className="flex flex-col h-full relative overflow-hidden"
+        className="flex flex-col min-h-screen relative"
         style={{
           background: `radial-gradient(ellipse at 50% 20%, ${styleAccent}10 0%, transparent 50%), var(--bg-primary)`,
         }}
       >
-        <div className="flex-1 overflow-y-auto" style={{ padding: "32px 40px 0" }}>
+        <div className="style-content" style={{ padding: "32px 40px 0" }}>
           <div style={{ maxWidth: 900, margin: "0 auto" }}>
 
             {/* ── Two-Column Layout: Avatar Left, Controls Right ── */}
             <div
+              className="style-two-col"
               style={{
                 display: "flex",
                 gap: 40,
@@ -1333,6 +1344,10 @@ export default function TeamPage() {
           .avatar-reroll-overlay:hover {
             opacity: 1 !important;
           }
+          @media (max-width: 1024px) {
+            .style-content { padding: 24px 24px 0 !important; }
+            .style-two-col { flex-direction: column !important; align-items: center; gap: 24px !important; }
+          }
         `}</style>
         <GeminiSetupModal
           open={showGeminiSetup}
@@ -1365,20 +1380,19 @@ export default function TeamPage() {
 
   return (
     <div
-      className="flex flex-col h-full relative overflow-hidden"
+      className="flex flex-col min-h-screen relative"
       style={{
         background: `radial-gradient(ellipse at 35% 50%, ${accent}12 0%, transparent 60%), var(--bg-primary)`,
       }}
     >
-      {/* ── Top: Progress Bar + Party Slots ── */}
-      <div style={{ padding: "24px 40px 0" }}>
-        {/* Segmented progress bar */}
-        <div className="flex items-center gap-3 mb-4">
-          <div className="flex gap-1 flex-1" style={{ maxWidth: 200 }}>
+      {/* ── Top Bar: Steps Left, Party Slots Right ── */}
+      <div className="hire-topbar" style={{ padding: "16px 40px 0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        {/* Left: Progress bar + step label */}
+        <div className="flex items-center gap-3">
+          <div className="flex gap-1" style={{ width: 160 }}>
             {unfilledRoles.map((r, i) => {
-              const stepIndex = i; // 0-based index into unfilledRoles
-              const isCompleted = stepIndex < step - 1; // steps before current
-              const isCurrent = stepIndex === step - 1;
+              const isCompleted = i < step - 1;
+              const isCurrent = i === step - 1;
               return (
                 <div
                   key={r.id}
@@ -1407,106 +1421,61 @@ export default function TeamPage() {
           </span>
         </div>
 
-        {/* Party slots */}
-        <div className="flex items-end gap-3">
-          {/* Already-hired from previous sessions */}
+        {/* Right: Party slots */}
+        <div className="flex items-center gap-3">
           {existingPersonas.map((w) => (
-            <div key={`existing-${w.id}`} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flexShrink: 0 }}>
-              <div
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: "50%",
-                  border: `2px solid ${w.color || "var(--border-medium)"}`,
-                  overflow: "hidden",
-                }}
-              >
+            <div key={`existing-${w.id}`} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, flexShrink: 0 }}>
+              <div style={{ width: 40, height: 40, borderRadius: "50%", border: `2px solid ${w.color || "var(--border-medium)"}`, overflow: "hidden" }}>
                 {w.avatar ? (
                   <img src={w.avatar} alt={w.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                 ) : (
-                  <div style={{ width: "100%", height: "100%", backgroundColor: w.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "#fff" }}>
-                    {w.name[0].toUpperCase()}
-                  </div>
+                  <div style={{ width: "100%", height: "100%", backgroundColor: w.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#fff" }}>{w.name[0].toUpperCase()}</div>
                 )}
               </div>
-              <span style={{ fontSize: 9, fontWeight: 600, color: w.color || "var(--text-muted)", maxWidth: 52, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{w.name}</span>
+              <span style={{ fontSize: 8, fontWeight: 600, color: w.color || "var(--text-muted)", maxWidth: 48, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{w.name}</span>
             </div>
           ))}
-          {/* Newly hired this session */}
           {hiredWorkers.map((w) => (
-            <div key={`hired-${w.id}`} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flexShrink: 0 }}>
-              <div
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: "50%",
-                  border: `2px solid ${w.color || "var(--border-medium)"}`,
-                  overflow: "hidden",
-                }}
-              >
+            <div key={`hired-${w.id}`} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, flexShrink: 0 }}>
+              <div style={{ width: 40, height: 40, borderRadius: "50%", border: `2px solid ${w.color || "var(--border-medium)"}`, overflow: "hidden" }}>
                 {w.avatar ? (
                   <img src={w.avatar} alt={w.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                 ) : (
-                  <div style={{ width: "100%", height: "100%", backgroundColor: w.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "#fff" }}>
-                    {w.name[0].toUpperCase()}
-                  </div>
+                  <div style={{ width: "100%", height: "100%", backgroundColor: w.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#fff" }}>{w.name[0].toUpperCase()}</div>
                 )}
               </div>
-              <span style={{ fontSize: 9, fontWeight: 600, color: w.color || "var(--text-muted)", maxWidth: 52, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{w.name}</span>
+              <span style={{ fontSize: 8, fontWeight: 600, color: w.color || "var(--text-muted)", maxWidth: 48, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{w.name}</span>
             </div>
           ))}
-          {/* Current role slot — pulsing ring */}
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flexShrink: 0 }}>
-            <div
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: "50%",
-                border: `2px solid ${accent}`,
-                boxShadow: `0 0 12px ${accent}50`,
-                overflow: "hidden",
-                animation: "gauntlet-pulse 2s ease-in-out infinite",
-              }}
-            >
+          {/* Current role slot — pulsing */}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, flexShrink: 0 }}>
+            <div style={{ width: 40, height: 40, borderRadius: "50%", border: `2px solid ${accent}`, boxShadow: `0 0 12px ${accent}50`, overflow: "hidden", animation: "gauntlet-pulse 2s ease-in-out infinite" }}>
               {avatarUrl ? (
                 <img src={avatarUrl} alt={name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               ) : (
-                <div style={{ width: "100%", height: "100%", backgroundColor: `${accent}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: accent }}>
-                  {initial}
-                </div>
+                <div style={{ width: "100%", height: "100%", backgroundColor: `${accent}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: accent }}>{initial}</div>
               )}
             </div>
-            <span style={{ fontSize: 9, fontWeight: 600, color: accent, maxWidth: 52, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name.trim() || role.title}</span>
+            <span style={{ fontSize: 8, fontWeight: 600, color: accent, maxWidth: 48, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name.trim() || role.title}</span>
           </div>
           {/* Remaining locked slots */}
           {unfilledRoles.slice(step).map((r, i) => (
-            <div key={`locked-${i}`} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flexShrink: 0 }}>
-              <div
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: "50%",
-                  border: `2px solid ${r.color}25`,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: `${r.color}08`,
-                }}
-              >
-                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke={`${r.color}40`} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg>
+            <div key={`locked-${i}`} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, flexShrink: 0 }}>
+              <div style={{ width: 40, height: 40, borderRadius: "50%", border: `2px solid ${r.color}25`, display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: `${r.color}08` }}>
+                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke={`${r.color}40`} strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg>
               </div>
-              <span style={{ fontSize: 9, fontWeight: 600, color: `${r.color}40`, maxWidth: 52, textAlign: "center" }}>{r.title}</span>
+              <span style={{ fontSize: 8, fontWeight: 600, color: `${r.color}40`, maxWidth: 48, textAlign: "center" }}>{r.title}</span>
             </div>
           ))}
         </div>
       </div>
 
       {/* ── Main Content: Pedestal + Traits Panel ── */}
-      <div className="flex-1 overflow-y-auto" style={{ padding: "24px 40px 0" }}>
-        <div className="flex gap-10" style={{ maxWidth: 1400, margin: "0 auto" }}>
+      <div className="hire-content" style={{ padding: "24px 40px 0" }}>
+        <div className="hire-main-layout" style={{ maxWidth: 1400, margin: "0 auto", display: "flex", gap: 40 }}>
 
           {/* ── Left Column: Character Pedestal ── */}
-          <div className="flex flex-col items-center" style={{ width: 340, flexShrink: 0 }}>
+          <div className="hire-pedestal flex flex-col items-center" style={{ width: 340, flexShrink: 0 }}>
             {/* Avatar sizes layout: Large left, Small+Medium stacked right */}
             <div style={{ display: "flex", alignItems: "flex-start", gap: 16, marginBottom: 0 }}>
               {/* Large avatar */}
@@ -1723,6 +1692,7 @@ export default function TeamPage() {
 
           {/* ── Right Column: Character Traits Panel ── */}
           <div
+            className="hire-traits-panel"
             style={{
               flex: 1,
               border: `1px solid ${accent}30`,
@@ -1734,69 +1704,67 @@ export default function TeamPage() {
               gap: 16,
             }}
           >
-            {/* Role header with Regen All */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                justifyContent: "space-between",
-                paddingBottom: 12,
-                borderBottom: `1px solid ${accent}20`,
-              }}
-            >
-              <button
-                onClick={regenerateAll}
-                disabled={generating || !!rerolling}
-                style={{
-                  padding: "5px 10px",
-                  borderRadius: 6,
-                  border: `1px solid ${accent}40`,
-                  backgroundColor: `${accent}10`,
-                  color: accent,
-                  fontSize: 10,
-                  fontWeight: 700,
-                  letterSpacing: "0.05em",
-                  textTransform: "uppercase" as const,
-                  cursor: generating || rerolling ? "not-allowed" : "pointer",
-                  opacity: generating || rerolling ? 0.4 : 1,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 5,
-                  transition: "all 0.2s",
-                }}
-              >
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
-                </svg>
-                {generatingPhase === "text" ? "Generating..." : generatingPhase === "avatar" ? "Painting..." : "Regen All"}
-              </button>
-              <div style={{ flex: 1, textAlign: "center" as const }}>
-                <div
-                  style={{
-                    fontSize: 20,
-                    fontWeight: 700,
-                    letterSpacing: "0.08em",
-                    textTransform: "uppercase" as const,
-                    color: accent,
-                    lineHeight: 1.2,
-                  }}
-                >
-                  {role.title}
-                </div>
-                {role.description && (
-                  <p style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 6, lineHeight: 1.5 }}>
-                    {role.description}
-                  </p>
-                )}
-              </div>
-              <div style={{ width: 80 }} />
-            </div>
+            {/* 3-column layout: Role | Visual | Communication */}
+            <div className="hire-traits-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr 1.2fr", gap: 20, flex: 1, minHeight: 0 }}>
 
-            {/* Two textareas side by side */}
-            <div style={{ display: "flex", gap: 12, flex: 1, minHeight: 0 }}>
-              {/* Visual Description */}
-              <div style={{ flex: 1, display: "flex", flexDirection: "column" as const }}>
-                <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" as const, color: "var(--text-muted)", display: "block", marginBottom: 6 }}>
+              {/* Column 1: Role identity */}
+              <div style={{ display: "flex", flexDirection: "column" as const, gap: 12 }}>
+                <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" as const, color: "var(--text-muted)" }}>
+                  Role
+                </label>
+                <div>
+                  <div
+                    style={{
+                      fontSize: 20,
+                      fontWeight: 700,
+                      letterSpacing: "0.06em",
+                      textTransform: "uppercase" as const,
+                      color: accent,
+                      lineHeight: 1.2,
+                      marginBottom: 10,
+                    }}
+                  >
+                    {role.title}
+                  </div>
+                  {role.description && (
+                    <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.7 }}>
+                      {role.description}
+                    </p>
+                  )}
+                </div>
+                <div style={{ marginTop: "auto" }}>
+                  <button
+                    onClick={regenerateAll}
+                    disabled={generating || !!rerolling}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 6,
+                      border: `1px solid ${accent}40`,
+                      backgroundColor: `${accent}10`,
+                      color: accent,
+                      fontSize: 10,
+                      fontWeight: 700,
+                      letterSpacing: "0.05em",
+                      textTransform: "uppercase" as const,
+                      cursor: generating || rerolling ? "not-allowed" : "pointer",
+                      opacity: generating || rerolling ? 0.4 : 1,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 5,
+                      transition: "all 0.2s",
+                    }}
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                    </svg>
+                    {generatingPhase === "text" ? "Generating..." : generatingPhase === "avatar" ? "Painting..." : "Regen All"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Column 2: Visual Description */}
+              <div style={{ display: "flex", flexDirection: "column" as const }}>
+                <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" as const, color: "var(--text-muted)", marginBottom: 6 }}>
                   Visual Description
                 </label>
                 <div style={{ position: "relative" as const, flex: 1, display: "flex", flexDirection: "column" as const }}>
@@ -1805,18 +1773,18 @@ export default function TeamPage() {
                     onChange={(e) => setAppearance(e.target.value)}
                     placeholder="Physical features, hair, clothing..."
                     style={{
-                      flex: 1,
                       width: "100%",
-                      minHeight: 120,
-                      padding: "10px 14px 10px 14px",
-                      borderRadius: 6,
-                      fontSize: 12,
+                      flex: 1,
+                      minHeight: 100,
+                      padding: "12px 14px",
+                      borderRadius: 8,
+                      fontSize: 13,
                       backgroundColor: "var(--bg-input)",
                       border: "1px solid var(--border-medium)",
                       color: "var(--text-primary)",
                       outline: "none",
                       resize: "none" as const,
-                      lineHeight: 1.5,
+                      lineHeight: 1.7,
                     }}
                     onFocus={(e) => { e.currentTarget.style.borderColor = accent; }}
                     onBlur={(e) => { e.currentTarget.style.borderColor = "var(--border-medium)"; }}
@@ -1847,9 +1815,9 @@ export default function TeamPage() {
                 </div>
               </div>
 
-              {/* Communication Style */}
-              <div style={{ flex: 1, display: "flex", flexDirection: "column" as const }}>
-                <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" as const, color: "var(--text-muted)", display: "block", marginBottom: 6 }}>
+              {/* Column 3: Communication Style */}
+              <div style={{ display: "flex", flexDirection: "column" as const }}>
+                <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" as const, color: "var(--text-muted)", marginBottom: 6 }}>
                   Communication Style
                 </label>
                 <div style={{ position: "relative" as const, flex: 1, display: "flex", flexDirection: "column" as const }}>
@@ -1858,18 +1826,18 @@ export default function TeamPage() {
                     onChange={(e) => setCommStyle(e.target.value)}
                     placeholder="Tone, energy, quirks..."
                     style={{
-                      flex: 1,
                       width: "100%",
-                      minHeight: 120,
-                      padding: "10px 14px 10px 14px",
-                      borderRadius: 6,
-                      fontSize: 12,
+                      flex: 1,
+                      minHeight: 100,
+                      padding: "12px 14px",
+                      borderRadius: 8,
+                      fontSize: 13,
                       backgroundColor: "var(--bg-input)",
                       border: "1px solid var(--border-medium)",
                       color: "var(--text-primary)",
                       outline: "none",
                       resize: "none" as const,
-                      lineHeight: 1.5,
+                      lineHeight: 1.7,
                     }}
                     onFocus={(e) => { e.currentTarget.style.borderColor = accent; }}
                     onBlur={(e) => { e.currentTarget.style.borderColor = "var(--border-medium)"; }}
@@ -1912,7 +1880,7 @@ export default function TeamPage() {
         </button>
       </div>
 
-      {/* Keyframe animation for pulsing party slot */}
+      {/* Keyframe animation + responsive */}
       <style>{`
         @keyframes gauntlet-pulse {
           0%, 100% { box-shadow: 0 0 8px ${accent}40; }
@@ -1920,6 +1888,49 @@ export default function TeamPage() {
         }
         .avatar-reroll-overlay:hover {
           opacity: 1 !important;
+        }
+
+        /* Tablet: ≤1024px — stack pedestal above traits */
+        @media (max-width: 1024px) {
+          .hire-topbar { padding: 12px 24px 0 !important; }
+          .hire-content { padding: 16px 24px 0 !important; }
+          .hire-main-layout {
+            flex-direction: column !important;
+            gap: 24px !important;
+          }
+          .hire-pedestal {
+            width: 100% !important;
+            flex-direction: row !important;
+            align-items: center !important;
+            gap: 24px;
+          }
+          .hire-traits-grid {
+            grid-template-columns: 1fr 1fr !important;
+          }
+          .hire-traits-grid > div:first-child {
+            grid-column: 1 / -1;
+            flex-direction: row !important;
+            align-items: center;
+            gap: 20px;
+          }
+        }
+
+        /* Narrow tablet: ≤768px — single column traits */
+        @media (max-width: 768px) {
+          .hire-topbar {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 12px;
+          }
+          .hire-pedestal {
+            flex-direction: column !important;
+          }
+          .hire-traits-grid {
+            grid-template-columns: 1fr !important;
+          }
+          .hire-traits-grid > div:first-child {
+            flex-direction: column !important;
+          }
         }
       `}</style>
       <GeminiSetupModal

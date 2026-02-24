@@ -134,6 +134,10 @@ export const tickets = sqliteTable("tickets", {
   blocked: integer("blocked", { mode: "boolean" }).default(false),
   blockedReason: text("blocked_reason"),
   blockedAt: text("blocked_at"),
+  // Hold flag — ticket stays in column, all dispatches suppressed until removed
+  onHold: integer("on_hold", { mode: "boolean" }).default(false),
+  holdReason: text("hold_reason"),
+  holdAt: text("hold_at"),
   // Epic hierarchy
   isEpic: integer("is_epic", { mode: "boolean" }).default(false),
   epicId: integer("epic_id"), // references tickets.id (self-ref handled at app layer)

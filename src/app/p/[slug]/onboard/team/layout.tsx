@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { Modal } from "@/components/ui/modal";
 import { getProjectBySlug } from "@/db/data/projects";
 import { isTeamComplete } from "@/db/data/personas";
 
@@ -19,5 +18,9 @@ export default async function TeamOnboardLayout({
   if (await isTeamComplete(Number(project.id))) {
     redirect(`/p/${slug}`);
   }
-  return <Modal>{children}</Modal>;
+  return (
+    <div className="min-h-screen w-full" style={{ backgroundColor: "var(--bg-primary)" }}>
+      {children}
+    </div>
+  );
 }

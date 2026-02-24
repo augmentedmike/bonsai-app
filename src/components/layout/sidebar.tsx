@@ -142,16 +142,6 @@ export function Sidebar({ userName }: { userName?: string }) {
           </span>
         </div>
 
-        {/* Ideas (global, not project-scoped) */}
-        <button
-          onClick={() => router.push("/ideas")}
-          className="group relative w-10 h-10 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5"
-          style={pathname.startsWith("/ideas") ? { backgroundColor: "rgba(91, 141, 249, 0.1)" } : undefined}
-          title={t.nav.ideas}
-        >
-          <NavIcon icon="ideas" active={pathname.startsWith("/ideas")} />
-        </button>
-
         {/* Project-scoped nav items */}
         {activeSlug && projectNavItems.map((item) => {
           const isActive = item.match(subPage);

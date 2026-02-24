@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import type { Ticket } from "@/types";
 import { ticketTypes } from "@/lib/ticket-types";
@@ -41,6 +42,7 @@ const statusColors = {
 
 
 export function TicketCard({ ticket, onDragStart, onDragEnd, onEdit, onViewDocument, onOpenEpic }: TicketCardProps) {
+  const router = useRouter();
   const style = ticketTypes[ticket.type];
   const [dragging, setDragging] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -108,7 +110,9 @@ export function TicketCard({ ticket, onDragStart, onDragEnd, onEdit, onViewDocum
           ? "1px solid rgba(91, 141, 249, 0.5)"
           : ticket.blocked
             ? "1px solid rgba(239, 68, 68, 0.4)"
-            : "1px solid var(--border-subtle)",
+            : ticket.onHold
+              ? "1px solid rgba(245, 158, 11, 0.4)"
+              : "1px solid var(--border-subtle)",
         boxShadow: dragging
           ? "0 20px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(91, 141, 249, 0.15), 0 0 24px rgba(91, 141, 249, 0.08)"
           : "0 1px 3px rgba(0, 0, 0, 0.1)",
@@ -179,6 +183,28 @@ export function TicketCard({ ticket, onDragStart, onDragEnd, onEdit, onViewDocum
               Blocked
             </span>
           )}
+          <button
+            onClick={async (e) => {
+              e.stopPropagation();
+              await fetch(`/api/tickets/${ticket.id}/hold`, {
+                method: ticket.onHold ? "DELETE" : "POST",
+              });
+              router.refresh();
+            }}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all hover:brightness-125"
+            style={{
+              backgroundColor: ticket.onHold ? "rgba(245, 158, 11, 0.18)" : "rgba(255,255,255,0.06)",
+              color: ticket.onHold ? "#fbbf24" : "rgba(255,255,255,0.35)",
+              border: ticket.onHold ? "1px solid rgba(245, 158, 11, 0.4)" : "1px solid rgba(255,255,255,0.12)",
+              cursor: "pointer",
+            }}
+            title={ticket.onHold ? "Resume (remove hold)" : "Put on hold"}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
+            </svg>
+            Hold
+          </button>
           {ticket.state === "shipped" && ticket.mergedAt && (
             <span
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold"

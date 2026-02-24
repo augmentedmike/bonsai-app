@@ -534,66 +534,84 @@ function buildCartoonPrompt(): string {
   return `${constraints} ${style}.`;
 }
 
-// ── Pop culture styles (ONE reference only) ──────────────────────────────────
-// Specific movies, TV shows, games, comics, music artists - NOT aesthetic movements or generic styles
+// ── Pop culture styles ──────────────────────────────────────────────────────
+// Each entry describes the VISUAL AESTHETIC of the reference, not just the name.
+// This ensures the image model generates a portrait in that style, not a scene from the show.
 
 const POP_CULTURE_REFS = [
-  // Movies
-  "Kill Bill style",
-  "Pulp Fiction style",
-  "Blade Runner style",
-  "The Matrix style",
-  "Mad Max: Fury Road style",
-  "Sin City style",
-  "300 style",
-  "Scott Pilgrim vs. the World style",
-  "Drive style",
-  "Tron style",
-  "Reservoir Dogs style",
-  "Django Unchained style",
-  "Inglourious Basterds style",
+  // Movies — describe the look, not the plot
+  "Stylized like a Quentin Tarantino film poster — bold saturated colors, high-contrast dramatic lighting, retro 70s film grain, pulpy and cinematic.",
+  "Blade Runner 2049 aesthetic — hazy orange-teal color grade, diffused neon light through fog, cinematic anamorphic lens flare, moody and contemplative.",
+  "The Matrix aesthetic — green-tinted color grade, dark leather and reflective surfaces, rain-slicked highlights, digital code motifs in the background.",
+  "Mad Max: Fury Road aesthetic — sun-scorched warm tones, dust and grime on skin, war paint, harsh directional sunlight, raw survivalist intensity.",
+  "Sin City aesthetic — stark black and white with a single color accent (red lips or eyes), heavy noir shadows, comic book ink contrast, rain-streaked.",
+  "300 aesthetic — desaturated bronze and sepia tones, sculpted dramatic lighting, oil-on-skin sheen, epic and mythological, high contrast muscle definition.",
+  "Scott Pilgrim aesthetic — bold flat comic colors, Ben-Day dots, speech bubble energy, vibrant pop-art linework, exaggerated expressions.",
+  "Drive aesthetic — saturated neon pink and electric blue, Los Angeles nighttime glow, 80s synth-wave mood, cool detachment, satin jacket sheen.",
+  "Wes Anderson aesthetic — perfectly symmetrical composition, pastel color palette, flat theatrical lighting, whimsical deadpan expression, vintage textures.",
+  "A24 horror aesthetic — unsettling natural lighting, muted earth tones, lingering dread in the eyes, folk horror floral motifs, grain and texture.",
 
-  // TV Shows
-  "iCarly style",
-  "Breaking Bad style",
-  "Stranger Things style",
-  "The Mandalorian style",
-  "Game of Thrones style",
+  // TV Shows — visual identity, not setting
+  "Stranger Things aesthetic — 1980s warm film grain, Spielbergian golden-hour lighting, nostalgic Kodak color science, walkie-talkie-era styling.",
+  "Euphoria aesthetic — glitter on skin, neon gel lighting in pink and purple, shallow depth of field, jewel-encrusted eye makeup, dreamlike and intimate.",
 
-  // Animation
-  "Toy Story style",
-  "Shrek style",
-  "Spider-Verse style",
-  "Arcane style",
-  "Studio Ghibli style",
-  "The Incredibles style",
-  "Akira style",
+  // Animation — the actual art style
+  "Spider-Verse animation style — halftone dots, visible print misregistration, Ben-Day dot shading, bold comic ink outlines, multiple art styles colliding.",
+  "Arcane animation style — painterly digital brushstrokes visible in every surface, dramatic chiaroscuro lighting, oil-paint texture, gritty steampunk detail.",
+  "Studio Ghibli style — soft watercolor washes, gentle natural light, warm earth tones, hand-painted background textures, serene and contemplative expression.",
+  "Akira anime style — high-detail cel animation, neon city light reflections on skin, dramatic speed lines, 1988 cyberpunk Tokyo aesthetic, intense eyes.",
+  "Invincible comic style — thick confident ink outlines, flat bold color fills, dynamic comic panel energy, Kirkman/Ottley superhero illustration.",
+  "Samurai Jack style — geometric minimalism, bold flat shapes, dramatic negative space, limited color palette, woodblock-print-inspired composition.",
 
-  // Games
-  "Fortnite style",
-  "Borderlands style",
-  "Overwatch style",
-  "Cyberpunk 2077 style",
-  "Bioshock style",
-  "Team Fortress 2 style",
+  // Games — the rendering style
+  "Borderlands style — heavy black cel-shaded outlines, crosshatch ink shading, comic book coloring, exaggerated proportions, hand-drawn texture overlay.",
+  "Hades game style — Supergiant art style, rich jewel-tone colors, flowing Art Nouveau hair and clothing, god-like radiance, Jen Zee illustration style.",
+  "Persona 5 style — high contrast red-black-white, sharp angular graphic design, rebellious punk energy, stylized pop-art portrait with geometric frames.",
 
-  // Comics & Superheroes
-  "Superman comic style",
-  "Marvel Comics style",
-  "DC Comics style",
-  "Batman comic style",
-  "Spider-Man comic style",
+  // Comics — specific visual languages
+  "Moebius / Jean Giraud style — fine crosshatch linework, vast atmospheric color washes, science-fiction serenity, meticulous detail with dreamlike calm.",
+  "Frank Miller Dark Knight style — heavy black ink, jagged angular shadows, brutal contrast, aged weathered face, rain and grime, noir brutalism.",
+  "Mike Mignola / Hellboy style — massive black shadow shapes, minimal detail, gothic atmosphere, bold flat color with dramatic silhouettes.",
+  "Gorillaz / Jamie Hewlett style — loose ink outlines, urban grime, pop-art color, character design with attitude, cartoon meets street art, Tank Girl energy.",
 
-  // Music Artists
-  "Bad Bunny aesthetic",
-  "Tyler, the Creator aesthetic",
-  "Billie Eilish aesthetic",
+  // Anime & manga — iconic visual styles
+  "Cowboy Bebop style — late 90s anime cel shading, warm jazz-era color palette, sharp character design, cinematic widescreen framing, cool effortless attitude.",
+  "Neon Genesis Evangelion style — early digital anime, high-contrast dramatic shadows, psychological intensity in the eyes, NERV-era mecha aesthetic, angular faces.",
+  "Ghost in the Shell style — detailed cyberpunk anime, reflective surfaces, rain and city light on skin, philosophical calm, Mamoru Oshii's cinematic stillness.",
+  "Dragon Ball Z style — bold thick outlines, exaggerated hair, intense battle energy aura, vibrant saturated colors, Toriyama character design.",
+  "Demon Slayer style — ufotable animation quality, flowing water/flame breath effects as decorative elements, Japanese woodblock-inspired patterns, vivid color.",
+  "One Piece style — Eiichiro Oda character design, exaggerated proportions, bold ink outlines, adventure-spirit energy, distinctive silhouette.",
+  "Attack on Titan style — WIT Studio shading, intense determined eyes, military uniform detail, muted earth tones with blood-red accents, dramatic tension.",
+  "Jojo's Bizarre Adventure style — flamboyant poses, muscular fashion-model proportions, bold color blocking, menacing aura, Araki's fashion-illustration linework.",
+
+  // Fantasy & RPG — visual languages
+  "Dungeons & Dragons style — high fantasy character portrait, detailed armor and weapons, dramatic torchlit lighting, painted illustration like a Player's Handbook cover.",
+  "The Witcher style — dark Slavic fantasy, weathered leather and scars, muted gray-green palette, monster-hunter grime, candlelit tavern warmth on battle-worn face.",
+  "Dark Souls aesthetic — oppressive dark fantasy, tarnished metal armor reflections, desaturated dying-world palette, solemn and haunted, Miyazaki's melancholic grandeur.",
+  "World of Warcraft style — stylized Blizzard art, exaggerated heroic proportions, rich painted textures, glowing magical effects, character select screen quality.",
+  "Final Fantasy style — Yoshitaka Amano-inspired ethereal beauty, flowing fabric and hair, soft luminous colors, otherworldly elegance, JRPG character art.",
+  "Legend of Zelda: Breath of the Wild style — cel-shaded with soft watercolor undertones, warm natural lighting, Studio Ghibli meets Nintendo, serene adventure spirit.",
+
+  // Classic film & retro — the visual feel
+  "Tron aesthetic — glowing neon circuit lines on black, electric cyan and white light trails, digital grid world, sleek geometric identity disc glow, 1982 computer-world futurism.",
+  "Star Wars aesthetic — ILM practical effects look, warm desert and cold space-station lighting, worn-universe texture, classic hero lighting on the face, galactic adventure energy.",
+
+  // Disney & Pixar — character art styles
+  "Classic Disney animation style — hand-drawn 2D animation, flowing expressive lines, warm fairy-tale lighting, Glen Keane character design, Renaissance-era Disney warmth.",
+  "Modern Disney style — Frozen/Tangled 3D rendering, soft subsurface skin glow, large expressive eyes, warm fairy-tale palette, magical sparkle particles.",
+  "Pixar animation style — stylized 3D with appealing proportions, detailed fabric and hair simulation, warm Luxo Jr. lighting, emotionally expressive eyes, Toy Story quality.",
+
+  // Sci-fi horror & action — distinct visual tones
+  "Aliens aesthetic — Ridley Scott industrial sci-fi, harsh fluorescent and emergency-red lighting, sweat and grime on face, motion tracker green glow, blue-steel military hardware, claustrophobic tension.",
+  "Terminator 2 aesthetic — blue-steel moonlight, chrome liquid metal reflections, red laser targeting dots, 1990s action-film grain, stoic determination.",
+  "The Fifth Element aesthetic — Jean-Paul Gaultier futurism, saturated candy-colored sci-fi, Luc Besson's maximalist future, eclectic costume design, warm orange and cool blue.",
+  "Dune aesthetic — Denis Villeneuve's desert grandeur, vast golden-hour sand tones, minimalist futurism, stillsuit textures, piercing blue-within-blue eyes.",
 ];
 
 function buildPopCulturePrompt(): string {
   const constraints = "Bust portrait, head and shoulders only, face fills most of the frame. No full body. Square format, no text or logos.";
   const ref = POP_CULTURE_REFS[Math.floor(Math.random() * POP_CULTURE_REFS.length)];
-  return `${constraints} ${ref}.`;
+  return `${constraints} ${ref}`;
 }
 
 export async function POST(req: Request) {

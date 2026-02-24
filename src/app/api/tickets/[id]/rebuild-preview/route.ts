@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getTicketById } from "@/db/data/tickets";
 import { getProjectById } from "@/db/data/projects";
 import { getWorktreePath } from "@/lib/worktree-paths";
+import { allocatePreviewPort, updatePortPid } from "@/lib/preview-ports";
 import { spawn, execSync } from "node:child_process";
 import * as path from "node:path";
 import * as fs from "node:fs";
@@ -34,8 +35,8 @@ export async function POST(
     return NextResponse.json({ error: "Worktree not found" }, { status: 404 });
   }
 
-  // Use ticket ID for port allocation (4000-4999 range)
-  const port = 4000 + (ticketId % 1000);
+  // Allocate a port from the project's 10-port pool (reuses existing or evicts oldest)
+  const { port } = await allocatePreviewPort(project.id, project.localPath!, ticketId);
 
   // Kill any existing process on this port
   try {
@@ -58,7 +59,7 @@ export async function POST(
   if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
   const logFile = path.join(logDir, `preview-ticket-${ticketId}.log`);
 
-  const envVars = { ...process.env, PORT: String(port) };
+  const envVars = { ...process.env, PORT: String(port), NODE_ENV: "production" };
 
   // Run build command if specified (synchronously)
   if (project.buildCommand) {
@@ -106,10 +107,14 @@ export async function POST(
   child.unref();
 
   console.log(`[rebuild-preview] Rebuilt and restarted dev server for ticket ${ticketId} on port ${port} (pid ${child.pid})`);
+  updatePortPid(project.localPath!, ticketId, child.pid!);
+
+  const reqHost = new URL(req.url).hostname;
+  const host = reqHost === "localhost" || reqHost === "127.0.0.1" ? "localhost" : reqHost;
 
   return NextResponse.json({
     success: true,
-    url: `http://localhost:${port}`,
+    url: `http://${host}:${port}`,
     pid: child.pid,
     port
   });

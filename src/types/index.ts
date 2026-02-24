@@ -39,6 +39,10 @@ export interface Ticket {
   blocked?: boolean;
   blockedReason?: string;
   blockedAt?: string;
+  // Hold flag — suppresses all dispatches
+  onHold?: boolean;
+  holdReason?: string;
+  holdAt?: string;
   // Epic hierarchy
   isEpic?: boolean;
   epicId?: number;
