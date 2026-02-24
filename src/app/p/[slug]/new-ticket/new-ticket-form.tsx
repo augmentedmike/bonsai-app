@@ -7,6 +7,8 @@ import type { TicketType } from "@/types";
 import { ticketTypes } from "@/lib/ticket-types";
 import { useVoiceInput } from "@/hooks/use-voice-input";
 import { VoiceButton } from "@/components/voice-button";
+import { extractPathsFromDrop, pathToMarkdown, type DroppedPath } from "@/lib/drop-paths";
+import { DroppedPathBadges } from "@/components/dropped-path-badges";
 // EPIC FEATURES DISABLED
 // import { EpicBreakdownWizard } from "@/components/board/epic-breakdown-wizard";
 
@@ -31,6 +33,7 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
   const [dragOver, setDragOver] = useState(false);
   const [images, setImages] = useState<{ id: string; name: string; dataUrl: string }[]>([]);
   const [fileAttachments, setFileAttachments] = useState<{ id: string; name: string; dataUrl: string; mimeType: string }[]>([]);
+  const [droppedPaths, setDroppedPaths] = useState<DroppedPath[]>([]);
   // EPIC FEATURES DISABLED
   // const [wizardEpic, setWizardEpic] = useState<{ id: number; title: string } | null>(null);
   const descRef = useRef<HTMLTextAreaElement>(null);
@@ -79,6 +82,17 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
   function handleDescDrop(e: React.DragEvent<HTMLTextAreaElement>) {
     e.preventDefault();
     setDragOver(false);
+
+    // Try to extract local file/folder paths (Finder drag)
+    const paths = extractPathsFromDrop(e.dataTransfer);
+    if (paths.length > 0) {
+      setDroppedPaths((prev) => [...prev, ...paths]);
+      const markdown = paths.map(pathToMarkdown).join("\n");
+      setDescription((prev) => prev ? `${prev}\n\n${markdown}` : markdown);
+      return;
+    }
+
+    // Fall back to file content handling (images, attachments)
     addFiles(Array.from(e.dataTransfer.files));
   }
 
@@ -243,39 +257,6 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
 
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ backgroundColor: "var(--bg-primary)" }}>
-      {/* Header */}
-      <div
-        className="grid grid-cols-3 items-center px-10 py-6 border-b"
-        style={{ borderBottomColor: "var(--border-subtle)" }}
-      >
-        <div>
-          <h1
-            className="text-xl font-semibold"
-            style={{ color: "var(--text-primary)" }}
-          >
-            New ticket
-          </h1>
-          <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-            What should your team work on?
-          </p>
-        </div>
-        <div className="flex flex-col items-center gap-1 justify-self-center">
-          <Image
-            src="/bonsai-os-logo-d.png"
-            alt="Bonsai"
-            width={56}
-            height={56}
-            className="rounded-full"
-          />
-        </div>
-        <button
-          onClick={() => router.push(`/p/${projectSlug}`)}
-          className="px-4 py-2 rounded-lg text-sm font-medium transition-colors hover:bg-white/5 justify-self-end"
-          style={{ color: "var(--text-secondary)" }}
-        >
-          Cancel
-        </button>
-      </div>
 
       {/* Body — two columns */}
       <div className="flex-1 flex overflow-hidden">
@@ -364,6 +345,17 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
                 ))}
               </div>
             )}
+            {/* Dropped path badges */}
+            <DroppedPathBadges
+              paths={droppedPaths}
+              onRemove={(id) => {
+                const removed = droppedPaths.find((p) => p.id === id);
+                setDroppedPaths((prev) => prev.filter((p) => p.id !== id));
+                if (removed) {
+                  setDescription((prev) => prev.replace(pathToMarkdown(removed), "").replace(/\n{3,}/g, "\n\n").trim());
+                }
+              }}
+            />
           </div>
 
           {/* Title */}
