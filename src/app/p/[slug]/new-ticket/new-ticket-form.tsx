@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import type { TicketType } from "@/types";
 import { ticketTypes } from "@/lib/ticket-types";
 import { useVoiceInput } from "@/hooks/use-voice-input";
@@ -41,7 +40,7 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
   const draft = useRef(loadDraft(projectSlug)).current;
   const [title, setTitle] = useState(draft?.title ?? "");
   const [description, setDescription] = useState(draft?.description ?? "");
-  const [type, setType] = useState<TicketType | null>(draft?.type ?? null);
+  const [type, setType] = useState<TicketType | null>(draft?.type ?? "feature");
   // EPIC FEATURES DISABLED
   // const [isEpic, setIsEpic] = useState(false);
   // const [epicAutoSelected, setEpicAutoSelected] = useState(false);
@@ -57,6 +56,7 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
   // EPIC FEATURES DISABLED
   // const [wizardEpic, setWizardEpic] = useState<{ id: number; title: string } | null>(null);
   const descRef = useRef<HTMLTextAreaElement>(null);
+  const [descExpanded, setDescExpanded] = useState(false);
 
   // Auto-save draft to localStorage on every change
   useEffect(() => {
@@ -203,6 +203,24 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
         }
       })());
     }
+    // Always infer type from description
+    jobs.push((async () => {
+      try {
+        const res = await fetchWithTimeout("/api/generate-title", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ description: description.trim(), field: "type" }),
+        }, 30000);
+        if (!res.ok) return;
+        const data = await res.json();
+        const inferred = data.type?.trim()?.toLowerCase();
+        if (inferred === "feature" || inferred === "bug" || inferred === "chore") {
+          setType(inferred as TicketType);
+        }
+      } catch (err) {
+        console.error("Error inferring type:", err);
+      }
+    })());
     await Promise.all(jobs);
   }
 
@@ -284,17 +302,16 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ backgroundColor: "var(--bg-primary)" }}>
 
-      {/* Body — two columns */}
+      {/* Body */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left: main content */}
-        <div className="flex-1 flex flex-col px-10 py-8 gap-6 overflow-y-auto min-h-0">
+        <div className="flex-1 flex flex-col px-10 py-8 pb-24 gap-6 overflow-y-auto min-h-0">
           {/* Clear all */}
           <div className="flex justify-end -mb-4">
             <button
               onClick={() => {
                 setTitle("");
                 setDescription("");
-                setType(null);
+                setType("feature");
                 setAcceptanceCriteria("");
                 setImages([]);
                 setFileAttachments([]);
@@ -312,17 +329,45 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
           </div>
 
           {/* Description */}
-          <div className="flex flex-col" style={{ height: "50vh" }}>
+          <div
+            className="flex flex-col"
+            style={{
+              ...(descExpanded
+                ? { position: "fixed", inset: 0, zIndex: 50, padding: 24, backgroundColor: "var(--bg-primary)", transition: "all 300ms ease" }
+                : { height: "50vh", transition: "all 300ms ease" }),
+            }}
+          >
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-medium text-[var(--text-secondary)]">Description</label>
-              <VoiceButton voice={voice} />
+              <div className="flex items-center gap-2">
+                {descExpanded && (
+                  <button
+                    onClick={() => {
+                      setDescExpanded(false);
+                      generateFromDescription();
+                    }}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors hover:bg-white/10"
+                    style={{ color: "var(--text-muted)" }}
+                    title="Restore"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 9V4.5M9 9H4.5M9 9 3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5 5.25 5.25" />
+                    </svg>
+                    Restore
+                  </button>
+                )}
+                <VoiceButton voice={voice} />
+              </div>
             </div>
-            <div className="relative flex-1 min-h-0">
+            <div
+              className="relative flex-1 min-h-0"
+              onClick={() => { if (!descExpanded) setDescExpanded(true); }}
+            >
               <textarea
                 ref={descRef}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                onBlur={() => generateFromDescription()}
+                onBlur={() => { if (!descExpanded) generateFromDescription(); }}
                 onDrop={handleDescDrop}
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
@@ -424,7 +469,7 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
             </button>
           </div>
 
-          {/* Title */}
+          {/* Title + Type row */}
           <div>
             <label className="block text-sm font-medium mb-2 text-[var(--text-secondary)]">
               Title
@@ -432,13 +477,35 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
                 <span className="ml-2 text-xs font-normal text-[var(--text-muted)]">generating...</span>
               )}
             </label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder={generatingTitle ? "Generating title..." : "Auto-generated from description"}
-              className="w-full px-5 py-4 rounded-lg text-lg outline-none transition-all bg-[var(--bg-input)] border border-[var(--border-medium)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] font-semibold focus:border-[var(--accent-blue)]"
-            />
+            <div className="flex items-stretch gap-3">
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder={generatingTitle ? "Generating title..." : "Auto-generated from description"}
+                className="flex-1 px-5 rounded-lg text-lg outline-none transition-all bg-[var(--bg-input)] border border-[var(--border-medium)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] font-semibold focus:border-[var(--accent-blue)]"
+              />
+              <div className="flex gap-1.5">
+              {(Object.keys(ticketTypes) as TicketType[]).map((key) => {
+                const opt = ticketTypes[key];
+                const selected = type === key;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setType(key)}
+                    className="px-4 py-4 rounded-lg text-sm font-medium transition-colors border whitespace-nowrap"
+                    style={{
+                      backgroundColor: selected ? `color-mix(in srgb, ${opt.color} 15%, transparent)` : "transparent",
+                      borderColor: selected ? opt.color : "var(--border-medium)",
+                      color: selected ? opt.color : "var(--text-muted)",
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+              </div>
+            </div>
           </div>
 
           {/* Acceptance Criteria */}
@@ -474,67 +541,18 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Right: metadata sidebar */}
-        <div
-          className="w-72 flex flex-col px-6 py-8 gap-6 border-l overflow-y-auto"
-          style={{ borderLeftColor: "var(--border-subtle)", backgroundColor: "var(--bg-secondary)" }}
+      {/* Sticky create button — bottom right */}
+      <div className="fixed bottom-8 right-8 z-40">
+        <button
+          onClick={handleCreate}
+          disabled={!title.trim() || saving}
+          className="px-8 py-3 rounded-lg text-sm font-medium text-white shadow-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90"
+          style={{ backgroundColor: accent }}
         >
-          <div>
-            <label className="block text-sm font-medium mb-2 text-[var(--text-secondary)]">Type</label>
-            <div className="flex flex-col gap-2">
-              {/* EPIC FEATURES DISABLED */}
-              {/* Epic option */}
-              {/* <button
-                onClick={() => { setIsEpic(true); setType(null); setEpicAutoSelected(true); }}
-                className="px-4 py-2 rounded-lg text-sm font-medium transition-colors text-left border"
-                style={{
-                  backgroundColor: isEpic ? "color-mix(in srgb, #f97316 15%, transparent)" : "transparent",
-                  borderColor: isEpic ? "#f97316" : "var(--border-medium)",
-                  color: isEpic ? "#f97316" : "var(--text-secondary)",
-                }}
-              >
-                Epic
-              </button> */}
-              {(Object.keys(ticketTypes) as TicketType[]).map((key) => {
-                const opt = ticketTypes[key];
-                const selected = type === key;
-                return (
-                  <button
-                    key={key}
-                    onClick={() => setType(key)}
-                    className="px-4 py-2 rounded-lg text-sm font-medium transition-colors text-left border"
-                    style={{
-                      backgroundColor: selected ? `color-mix(in srgb, ${opt.color} 15%, transparent)` : "transparent",
-                      borderColor: selected ? opt.color : "var(--border-medium)",
-                      color: selected ? opt.color : "var(--text-secondary)",
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-2 text-[var(--text-secondary)]">Artifacts</label>
-            <div className="rounded-lg px-4 py-3 text-xs bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[var(--text-muted)]">
-              No artifacts yet. Research and plan docs will appear here.
-            </div>
-          </div>
-
-          <div className="mt-auto pt-6">
-            <button
-              onClick={handleCreate}
-              disabled={!title.trim() || saving}
-              className="w-full px-8 py-3 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90"
-              style={{ backgroundColor: accent }}
-            >
-              {saving ? "Creating..." : `Create ${ticketTypes[type || "feature"].label.toLowerCase()}`}
-            </button>
-          </div>
-        </div>
+          {saving ? "Creating..." : `Create ${ticketTypes[type || "feature"].label.toLowerCase()}`}
+        </button>
       </div>
     </div>
   );

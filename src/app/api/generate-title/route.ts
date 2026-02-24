@@ -56,6 +56,17 @@ ${description.trim()}`,
     massage_criteria: {
       text: `Convert this spoken voice transcript into a clean markdown checklist of acceptance criteria. Each item should be a concrete, testable condition using "- [ ]" format. Fix any typos, spelling errors, and grammar. Interpret the speaker's intent and break it into clear, separate checklist items. Return ONLY the checklist, no other text.\n\nVoice transcript:\n${description.trim()}`,
     },
+    type: {
+      text: `You are a software project manager classifying a ticket. Based on the description below, determine the ticket type.
+
+Return EXACTLY one of these values (no quotes, no extra text):
+- feature (new functionality, UI additions, new capabilities)
+- bug (something is broken, errors, incorrect behavior, fixes)
+- chore (maintenance, upgrades, refactoring, config changes, docs)
+
+Description:
+${description.trim()}`,
+    },
   };
 
   const config = prompts[field || "title"];

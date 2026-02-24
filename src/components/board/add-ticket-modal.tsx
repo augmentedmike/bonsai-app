@@ -620,16 +620,6 @@ export function AddTicketModal({ open, onClose, projectSlug }: AddTicketModalPro
               </div>
             )}
 
-            {/* Artifacts */}
-            <div>
-              <label className="block text-sm font-medium mb-2 text-[var(--text-secondary)]">
-                Artifacts
-              </label>
-              <div className="rounded-lg px-4 py-3 text-xs bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[var(--text-muted)]">
-                No artifacts yet. Research and plan docs will appear here.
-              </div>
-            </div>
-
             {/* Calculated fields */}
             {titleSlug && (
               <>
