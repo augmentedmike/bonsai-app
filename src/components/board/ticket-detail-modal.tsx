@@ -23,7 +23,7 @@ interface TicketDetailModalProps {
   onDelete?: (ticketId: number) => void;
 }
 
-const typeOptions: TicketType[] = ["feature", "bug", "chore"];
+const typeOptions: TicketType[] = ["feature", "bug", "chore", "content", "story", "planning", "research"];
 const stateOptions: TicketState[] = ["planning", "building", "shipped"];
 
 // Board state mentions — referenceable via #planning, #building, etc.
@@ -1410,7 +1410,7 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
 
   if (!ticket || !mounted) return null;
 
-  const typeStyle = ticketTypes[type];
+  const typeStyle = ticketTypes[type as TicketType] ?? ticketTypes.feature;
   const currentColumn = BOARD_STATES.find((s) => s.name === state) || BOARD_STATES[0];
 
   const modal = (

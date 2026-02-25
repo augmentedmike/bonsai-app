@@ -51,7 +51,7 @@ export default function OnboardTicketPage() {
       .catch(() => {});
   }, []);
 
-  const accent = ticketTypes[type].color;
+  const accent = (ticketTypes[type as TicketType] ?? ticketTypes.feature).color;
   const titleSlug = slugify(title);
   const ticketBranch = titleSlug ? `${type}/${titleSlug}` : "";
   const worktreePath = titleSlug

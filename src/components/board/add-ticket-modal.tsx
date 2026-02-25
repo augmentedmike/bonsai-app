@@ -91,7 +91,7 @@ export function AddTicketModal({ open, onClose, projectSlug }: AddTicketModalPro
   const isSpeechSupported = typeof window !== 'undefined' &&
     ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window);
 
-  const accent = ticketTypes[type].color;
+  const accent = (ticketTypes[type as TicketType] ?? ticketTypes.feature).color;
   const titleSlug = slugify(title);
   const ticketBranch = titleSlug ? `${type}/${titleSlug}` : "";
   const worktreePath = titleSlug

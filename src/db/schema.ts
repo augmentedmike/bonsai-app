@@ -100,7 +100,7 @@ export const tickets = sqliteTable("tickets", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   title: text("title").notNull(),
   description: text("description"),
-  type: text("type", { enum: ["feature", "bug", "chore"] }).notNull(),
+  type: text("type", { enum: ["feature", "bug", "chore", "content", "story", "planning", "research"] }).notNull(),
   state: text("state", {
     enum: ["planning", "building", "shipped"],
   })
@@ -202,7 +202,7 @@ export const extractedItems = sqliteTable("extracted_items", {
     .references(() => projects.id),
   title: text("title").notNull(),
   description: text("description"),
-  type: text("type", { enum: ["feature", "bug", "chore"] })
+  type: text("type", { enum: ["feature", "bug", "chore", "content", "story", "planning", "research"] })
     .notNull()
     .default("feature"),
   status: text("status", { enum: ["pending", "approved", "rejected"] })

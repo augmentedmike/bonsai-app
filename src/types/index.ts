@@ -1,4 +1,4 @@
-export type TicketType = "feature" | "bug" | "chore" | "content";
+export type TicketType = "feature" | "bug" | "chore" | "content" | "story" | "planning" | "research";
 
 export type TicketState =
   | "planning"

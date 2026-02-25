@@ -10,12 +10,20 @@ const typeBadge: Record<TicketType, { bg: string; label: string }> = {
   feature: { bg: "#22c55e22", label: "Feature" },
   bug: { bg: "#ef444422", label: "Bug" },
   chore: { bg: "#eab30822", label: "Chore" },
+  content: { bg: "#eab30822", label: "Content" },
+  story: { bg: "#a855f722", label: "Story" },
+  planning: { bg: "#eab30822", label: "Planning" },
+  research: { bg: "#eab30822", label: "Research" },
 };
 
 const typeColor: Record<TicketType, string> = {
   feature: "#22c55e",
   bug: "#ef4444",
   chore: "#eab308",
+  content: "#eab308",
+  story: "#a855f7",
+  planning: "#eab308",
+  research: "#eab308",
 };
 
 // ── Note Card ────────────────────────────────────

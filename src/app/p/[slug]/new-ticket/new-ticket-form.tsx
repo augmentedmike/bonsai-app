@@ -190,7 +190,7 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
   //   }
   // }, [description, title, acceptanceCriteria, isEpic, epicAutoSelected]);
 
-  const accent = type ? ticketTypes[type].color : "var(--badge-feature)";
+  const accent = type ? (ticketTypes[type as TicketType] ?? ticketTypes.feature).color : "var(--badge-feature)";
 
   async function generateFromDescription(force = false) {
     if (!description.trim()) return;

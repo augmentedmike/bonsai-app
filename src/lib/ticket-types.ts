@@ -62,4 +62,43 @@ Draft a blog post covering the new dashboard redesign. Include screenshots, expl
 - [ ] Proofread for grammar and clarity
 - [ ] Published to the blog`,
   },
+  story: {
+    label: "Story",
+    color: "var(--badge-feature)",
+    bg: "var(--badge-feature)",
+    text: "var(--badge-feature-text)",
+    placeholder: `As a user, I want to reset my password via email
+
+When a user clicks "Forgot password" on the login page, they should receive an email with a secure reset link. The link should expire after 1 hour and allow setting a new password.`,
+    criteriaPlaceholder: `- [ ] Reset link sent to registered email
+- [ ] Link expires after 1 hour
+- [ ] User can set a new password via the link
+- [ ] Invalid or expired links show a clear error`,
+  },
+  planning: {
+    label: "Planning",
+    color: "var(--badge-chore)",
+    bg: "var(--badge-chore)",
+    text: "var(--badge-chore-text)",
+    placeholder: `Plan the Q2 roadmap for the mobile app
+
+Review current backlog, gather input from stakeholders, and draft a prioritized roadmap for Q2. Include capacity estimates and key milestones.`,
+    criteriaPlaceholder: `- [ ] Backlog reviewed and triaged
+- [ ] Stakeholder input collected
+- [ ] Prioritized roadmap drafted
+- [ ] Capacity estimates included`,
+  },
+  research: {
+    label: "Research",
+    color: "var(--badge-chore)",
+    bg: "var(--badge-chore)",
+    text: "var(--badge-chore-text)",
+    placeholder: `Evaluate authentication libraries for the Next.js migration
+
+Compare NextAuth, Clerk, and Auth0 for our use case. Consider pricing, DX, SSO support, and migration effort from our current custom auth.`,
+    criteriaPlaceholder: `- [ ] At least 3 options evaluated
+- [ ] Comparison matrix with key criteria
+- [ ] Recommendation with rationale
+- [ ] Migration effort estimate`,
+  },
 };
