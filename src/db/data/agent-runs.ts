@@ -45,6 +45,24 @@ export function insertAgentRun(params: {
   return Promise.resolve(Number(result.lastInsertRowid));
 }
 
+/** Check if the most recent running run for a ticket+persona was a chained dispatch */
+export function isChainedRun(ticketId: number, personaId: string): boolean {
+  const run = db
+    .select({ dispatchSource: agentRuns.dispatchSource })
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.ticketId, ticketId),
+        eq(agentRuns.personaId, personaId),
+        eq(agentRuns.status, "running")
+      )
+    )
+    .orderBy(desc(agentRuns.startedAt))
+    .limit(1)
+    .get();
+  return run?.dispatchSource === "agent-chain";
+}
+
 export function completeAgentRun(
   ticketId: number,
   personaId: string,

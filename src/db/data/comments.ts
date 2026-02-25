@@ -1,6 +1,6 @@
 import { db, asAsync, runAsync } from "./_driver";
 import { comments, tickets, personas, settings } from "../schema";
-import { eq, and, isNull, asc, desc } from "drizzle-orm";
+import { eq, and, isNull, asc, desc, gt, lt, ne, sql, inArray } from "drizzle-orm";
 
 export function getCommentsByTicket(ticketId: number, limit: number = 10) {
   const rows = db
@@ -53,6 +53,14 @@ export function enrichComments(
       .where(eq(settings.key, "user_avatar_url"))
       .get()?.value;
 
+  // Batch-fetch all personas referenced by agent comments
+  const personaIds = [...new Set(rows.filter((r) => r.authorType === "agent" && r.personaId).map((r) => r.personaId!))];
+  const personaMap = new Map<string, typeof personas.$inferSelect>();
+  if (personaIds.length > 0) {
+    const personaRows = db.select().from(personas).where(inArray(personas.id, personaIds)).all();
+    for (const p of personaRows) personaMap.set(p.id, p);
+  }
+
   const enriched = rows.map((row) => {
     let author:
       | { name: string; avatarUrl?: string; color?: string; role?: string }
@@ -61,11 +69,7 @@ export function enrichComments(
     if (row.authorType === "human") {
       author = { name: userName, avatarUrl: userAvatar || undefined };
     } else if (row.authorType === "agent" && row.personaId) {
-      const persona = db
-        .select()
-        .from(personas)
-        .where(eq(personas.id, row.personaId))
-        .get();
+      const persona = personaMap.get(row.personaId);
       if (persona) {
         author = {
           name: persona.name,
@@ -91,6 +95,8 @@ export function enrichComments(
       content: row.content,
       attachments,
       documentId: row.documentId ?? undefined,
+      editedAt: row.editedAt ?? undefined,
+      isStale: row.isStale ?? false,
       createdAt: row.createdAt,
     };
   });
@@ -231,14 +237,18 @@ export function getRecentCommentsEnriched(ticketId: number, limit = 10) {
     .all()
     .reverse();
 
+  // Batch-fetch personas for agent comments
+  const personaIds = [...new Set(recentComments.filter((c) => c.authorType === "agent" && c.personaId).map((c) => c.personaId!))];
+  const personaMap = new Map<string, typeof personas.$inferSelect>();
+  if (personaIds.length > 0) {
+    const personaRows = db.select().from(personas).where(inArray(personas.id, personaIds)).all();
+    for (const p of personaRows) personaMap.set(p.id, p);
+  }
+
   const enriched = recentComments.map((c) => {
     let authorName = "Unknown";
     if (c.authorType === "agent" && c.personaId) {
-      const p = db
-        .select()
-        .from(personas)
-        .where(eq(personas.id, c.personaId))
-        .get();
+      const p = personaMap.get(c.personaId);
       if (p) authorName = `${p.name} (${p.role})`;
     } else {
       authorName = "Human";

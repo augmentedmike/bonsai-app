@@ -2,23 +2,13 @@ import { db, asAsync } from "./_driver";
 import { personas, tickets, comments, ticketDocuments } from "../schema";
 import { eq, desc, inArray, isNull, and } from "drizzle-orm";
 
-export function getWorkerActivity(projectId?: number) {
-  const allPersonas = projectId
-    ? db
-        .select()
-        .from(personas)
-        .where(
-          and(
-            eq(personas.projectId, Number(projectId)),
-            isNull(personas.deletedAt)
-          )
-        )
-        .all()
-    : db
-        .select()
-        .from(personas)
-        .where(isNull(personas.deletedAt))
-        .all();
+export function getWorkerActivity() {
+  // Global team: always return personas with project_id IS NULL
+  const allPersonas = db
+    .select()
+    .from(personas)
+    .where(and(isNull(personas.projectId), isNull(personas.deletedAt)))
+    .all();
 
   const personaMap = new Map(allPersonas.map((p) => [p.id, p]));
   const now = new Date();

@@ -72,7 +72,7 @@ export async function POST(
 
   // Override NODE_ENV for the build — the parent process runs in "development"
   // which causes Next.js prerender failures (useContext TypeError).
-  const envVars = { ...process.env, PORT: String(port), NODE_ENV: "production" };
+  const envVars = { ...process.env, PORT: String(port), NODE_ENV: "production" as const };
 
   // Run build command synchronously before starting the dev server
   if (project.buildCommand) {
@@ -82,7 +82,8 @@ export async function POST(
         cwd: workspace,
         timeout: 120_000,
         env: envVars,
-        stdio: ["ignore", fs.openSync(logFile, "a"), fs.openSync(logFile, "a")],
+        encoding: "utf-8",
+        stdio: ["ignore", fs.openSync(logFile, "a"), fs.openSync(logFile, "a")] as ["ignore", number, number],
       });
     } catch {
       let details = "";

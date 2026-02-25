@@ -1,6 +1,6 @@
 import { db, asAsync } from "./_driver";
 import { projectMessages, personas, settings } from "../schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, ne, asc, sql, inArray } from "drizzle-orm";
 
 /** Fetch project messages with author enrichment */
 export function getProjectMessages(projectId: number, limit: number = 100) {
@@ -28,6 +28,14 @@ export function getProjectMessages(projectId: number, limit: number = 100) {
       .where(eq(settings.key, "user_avatar_url"))
       .get()?.value ?? undefined;
 
+  // Batch-fetch all personas referenced by agent messages
+  const personaIds = [...new Set(rows.filter((r) => r.authorType === "agent" && r.personaId).map((r) => r.personaId!))];
+  const personaMap = new Map<string, typeof personas.$inferSelect>();
+  if (personaIds.length > 0) {
+    const personaRows = db.select().from(personas).where(inArray(personas.id, personaIds)).all();
+    for (const p of personaRows) personaMap.set(p.id, p);
+  }
+
   const enriched = rows.map((row) => {
     let author:
       | { name: string; avatarUrl?: string; color?: string; role?: string }
@@ -36,11 +44,7 @@ export function getProjectMessages(projectId: number, limit: number = 100) {
     if (row.authorType === "human") {
       author = { name: userName, avatarUrl: userAvatar };
     } else if (row.authorType === "agent" && row.personaId) {
-      const persona = db
-        .select()
-        .from(personas)
-        .where(eq(personas.id, row.personaId))
-        .get();
+      const persona = personaMap.get(row.personaId);
       if (persona) {
         author = {
           name: persona.name,
@@ -65,6 +69,8 @@ export function getProjectMessages(projectId: number, limit: number = 100) {
       author,
       content: row.content,
       attachments,
+      editedAt: row.editedAt ?? undefined,
+      isStale: row.isStale ?? false,
       createdAt: row.createdAt,
     };
   });
@@ -121,14 +127,18 @@ export function getRecentProjectMessagesFormatted(projectId: number, limit = 20)
     .all()
     .reverse();
 
+  // Batch-fetch personas for agent messages
+  const personaIds = [...new Set(rows.filter((c) => c.authorType === "agent" && c.personaId).map((c) => c.personaId!))];
+  const personaMap = new Map<string, typeof personas.$inferSelect>();
+  if (personaIds.length > 0) {
+    const personaRows = db.select().from(personas).where(inArray(personas.id, personaIds)).all();
+    for (const p of personaRows) personaMap.set(p.id, p);
+  }
+
   const formatted = rows.map((c) => {
     let authorName = "Unknown";
     if (c.authorType === "agent" && c.personaId) {
-      const p = db
-        .select()
-        .from(personas)
-        .where(eq(personas.id, c.personaId))
-        .get();
+      const p = personaMap.get(c.personaId);
       if (p) authorName = `${p.name} (${p.role})`;
     } else if (c.authorType === "human") {
       authorName = "Human";

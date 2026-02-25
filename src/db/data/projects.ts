@@ -4,13 +4,7 @@ import { eq, and, or, isNull, sql } from "drizzle-orm";
 import type { Project } from "@/types";
 import { getSetting } from "./settings";
 
-function projectFromRow(row: typeof projects.$inferSelect): Project {
-  const count = db
-    .select()
-    .from(tickets)
-    .where(eq(tickets.projectId, row.id))
-    .all().length;
-
+function projectFromRow(row: typeof projects.$inferSelect, ticketCount?: number): Project {
   return {
     id: String(row.id),
     name: row.name,
@@ -19,13 +13,27 @@ function projectFromRow(row: typeof projects.$inferSelect): Project {
     targetCustomer: row.targetCustomer ?? undefined,
     techStack: row.techStack ?? undefined,
     visibility: row.visibility ?? undefined,
-    ticketCount: count,
+    ticketCount: ticketCount ?? 0,
     githubOwner: row.githubOwner ?? undefined,
     githubRepo: row.githubRepo ?? undefined,
     localPath: row.localPath ?? undefined,
     buildCommand: row.buildCommand ?? undefined,
     runCommand: row.runCommand ?? undefined,
   };
+}
+
+/** Single query to get ticket counts for one or more projects */
+function getTicketCounts(projectIds: number[]): Map<number, number> {
+  if (projectIds.length === 0) return new Map();
+  const rows = db
+    .select({ projectId: tickets.projectId, count: sql<number>`count(*)` })
+    .from(tickets)
+    .where(sql`${tickets.projectId} IN (${sql.join(projectIds.map(id => sql`${id}`), sql`, `)})`)
+    .groupBy(tickets.projectId)
+    .all();
+  const map = new Map<number, number>();
+  for (const r of rows) map.set(r.projectId!, r.count);
+  return map;
 }
 
 export async function getProject(): Promise<Project | null> {
@@ -40,7 +48,8 @@ export async function getProject(): Promise<Project | null> {
       db.select().from(projects).where(notDeleted).limit(1).get()
     : db.select().from(projects).where(notDeleted).limit(1).get();
   if (!row) return null;
-  return projectFromRow(row);
+  const counts = getTicketCounts([row.id]);
+  return projectFromRow(row, counts.get(row.id) ?? 0);
 }
 
 export function getProjectById(id: number) {
@@ -60,7 +69,8 @@ export function getProjectBySlug(slug: string): Promise<Project | null> {
     )
     .get();
   if (!row) return asAsync(null);
-  return asAsync(projectFromRow(row));
+  const counts = getTicketCounts([row.id]);
+  return asAsync(projectFromRow(row, counts.get(row.id) ?? 0));
 }
 
 export function getProjects(): Promise<Project[]> {
@@ -68,9 +78,9 @@ export function getProjects(): Promise<Project[]> {
     .select()
     .from(projects)
     .where(isNull(projects.deletedAt))
-    .all()
-    .map(projectFromRow);
-  return asAsync(rows);
+    .all();
+  const counts = getTicketCounts(rows.map((r) => r.id));
+  return asAsync(rows.map((r) => projectFromRow(r, counts.get(r.id) ?? 0)));
 }
 
 export function createProject(data: {

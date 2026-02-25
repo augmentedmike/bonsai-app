@@ -43,7 +43,7 @@ const statusColors = {
 
 export function TicketCard({ ticket, onDragStart, onDragEnd, onEdit, onViewDocument, onOpenEpic }: TicketCardProps) {
   const router = useRouter();
-  const style = ticketTypes[ticket.type];
+  const style = ticketTypes[ticket.type] ?? { label: ticket.type, color: "#6b7280", bg: "#6b7280", text: "#d1d5db" };
   const [dragging, setDragging] = useState(false);
   const [hovered, setHovered] = useState(false);
 

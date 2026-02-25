@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const env = process.env.BONSAI_ENV || "prod";
 const dbFile = env === "dev" ? "bonsai-dev.db" : "bonsai.db";
-const dbPath = path.join(__dirname, `../../${dbFile}`);
+const dbPath = path.join(__dirname, `../../.data/${dbFile}`);
 const sqlite = new Database(dbPath);
 sqlite.pragma("journal_mode = WAL");
 sqlite.pragma("foreign_keys = ON");

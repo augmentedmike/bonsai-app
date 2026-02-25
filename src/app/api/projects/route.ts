@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { getProjects, createProject, updateProject, softDeleteProject } from "@/db/data/projects";
 // GitHub token stored in settings table
-import { execFileSync } from "node:child_process";
+import { execFileSync, execFile } from "node:child_process";
+import { promisify } from "node:util";
 import path from "node:path";
 import fs from "node:fs";
+
+const execFileAsync = promisify(execFile);
 
 const HOME = process.env.HOME || "~";
 const PROJECTS_DIR = path.join(HOME, "development", "bonsai", "projects");
@@ -74,14 +77,33 @@ export async function POST(req: Request) {
 
       if (githubRepo && !fs.existsSync(repoPath)) {
         fs.mkdirSync(projectDir, { recursive: true });
-        try {
-          const cloneUrl = `https://${token}@github.com/${githubOwner}/${githubRepo}.git`;
-          execFileSync("git", ["clone", cloneUrl, "repo"], {
-            cwd: projectDir,
-            timeout: 30000,
-          });
-        } catch (err: unknown) {
-          console.error("[POST /api/projects] clone failed:", err);
+        // Shallow clone (--depth 1) to handle large repos; async to not block event loop
+        // Try gh CLI first (uses keyring auth), then authenticated HTTPS, then public HTTPS
+        const cloneAttempts: { cmd: string; args: string[] }[] = [
+          { cmd: "gh", args: ["repo", "clone", `${githubOwner}/${githubRepo}`, "repo", "--", "--depth", "1"] },
+          { cmd: "git", args: ["clone", "--depth", "1", `https://${token}@github.com/${githubOwner}/${githubRepo}.git`, "repo"] },
+          { cmd: "git", args: ["clone", "--depth", "1", `https://github.com/${githubOwner}/${githubRepo}.git`, "repo"] },
+        ];
+        let cloned = false;
+        for (const attempt of cloneAttempts) {
+          try {
+            await execFileAsync(attempt.cmd, attempt.args, {
+              cwd: projectDir,
+              timeout: 120_000,
+              env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+            });
+            cloned = true;
+            break;
+          } catch (err: unknown) {
+            console.error(`[POST /api/projects] clone failed (${attempt.cmd}):`, err instanceof Error ? err.message : err);
+            const partialRepo = path.join(projectDir, "repo");
+            if (fs.existsSync(partialRepo)) {
+              fs.rmSync(partialRepo, { recursive: true, force: true });
+            }
+          }
+        }
+        if (!cloned) {
+          console.error("[POST /api/projects] all clone attempts failed for", githubOwner, githubRepo);
         }
       }
     }
@@ -101,16 +123,16 @@ export async function POST(req: Request) {
 
   // CRITICAL VERIFICATION: Ensure repo/ directory exists with .git
   if (!fs.existsSync(repoDir)) {
-    throw new Error(
-      `FATAL: Project structure violation - repo/ directory missing at ${repoDir}. ` +
-      `Projects MUST have structure: {projectDir}/repo/ (git repo) and {projectDir}/worktrees/ (ticket worktrees).`
+    return NextResponse.json(
+      { error: "Failed to clone repository. Check your GitHub token or try again." },
+      { status: 500 }
     );
   }
   const gitDir = path.join(repoDir, ".git");
   if (!fs.existsSync(gitDir)) {
-    throw new Error(
-      `FATAL: Project structure violation - repo/ is not a git repository at ${repoDir}. ` +
-      `The repo/ directory MUST contain a valid git repository.`
+    return NextResponse.json(
+      { error: "Cloned directory is not a valid git repository. Try again." },
+      { status: 500 }
     );
   }
 
@@ -198,16 +220,34 @@ export async function DELETE(req: Request) {
     }
   }
 
-  // Delete associated resources to prevent orphans
+  // Delete associated resources to prevent orphans (order matters for FK constraints)
   const { db } = await import("@/db/index");
-  const { personas, tickets } = await import("@/db/schema");
-  const { eq } = await import("drizzle-orm");
+  const { personas, tickets, comments, ticketDocuments, ticketAttachments, agentRuns, projectMessages } = await import("@/db/schema");
+  const { eq, inArray, sql } = await import("drizzle-orm");
 
-  // Delete tickets first (they may reference personas)
-  db.delete(tickets).where(eq(tickets.projectId, Number(id))).run();
+  const projectId = Number(id);
+
+  // Get all ticket IDs for this project
+  const ticketRows = db.select({ id: tickets.id }).from(tickets).where(eq(tickets.projectId, projectId)).all();
+  const ticketIds = ticketRows.map((r) => r.id);
+
+  if (ticketIds.length > 0) {
+    // Delete child records that reference tickets (deepest first)
+    db.delete(comments).where(inArray(comments.ticketId, ticketIds)).run();
+    db.delete(ticketDocuments).where(inArray(ticketDocuments.ticketId, ticketIds)).run();
+    db.delete(ticketAttachments).where(inArray(ticketAttachments.ticketId, ticketIds)).run();
+    db.delete(agentRuns).where(inArray(agentRuns.ticketId, ticketIds)).run();
+    // Audit log has no FK constraint but clean it up too
+    db.run(sql`DELETE FROM ticket_audit_log WHERE ticket_id IN (${sql.join(ticketIds.map(id => sql`${id}`), sql`, `)})`);
+    // Now safe to delete tickets
+    db.delete(tickets).where(eq(tickets.projectId, projectId)).run();
+  }
+
+  // Delete project messages
+  db.delete(projectMessages).where(eq(projectMessages.projectId, projectId)).run();
   // Delete personas
-  db.delete(personas).where(eq(personas.projectId, Number(id))).run();
+  db.delete(personas).where(eq(personas.projectId, projectId)).run();
 
-  await softDeleteProject(Number(id));
+  await softDeleteProject(projectId);
   return NextResponse.json({ success: true });
 }

@@ -49,4 +49,17 @@ We're a major version behind. The upgrade unblocks server components and the new
 - [ ] All existing tests pass
 - [ ] No console warnings from deprecated APIs`,
   },
+  content: {
+    label: "Content",
+    color: "var(--badge-chore)",
+    bg: "var(--badge-chore)",
+    text: "var(--badge-chore-text)",
+    placeholder: `Write a blog post about our latest feature release
+
+Draft a blog post covering the new dashboard redesign. Include screenshots, explain the motivation, and highlight key improvements. Target 800-1200 words.`,
+    criteriaPlaceholder: `- [ ] Post is 800-1200 words
+- [ ] Includes at least 2 screenshots
+- [ ] Proofread for grammar and clarity
+- [ ] Published to the blog`,
+  },
 };

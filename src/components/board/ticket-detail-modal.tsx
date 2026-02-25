@@ -231,6 +231,7 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
   // Description cleanup state
   const [enhancingDescription, setEnhancingDescription] = useState(false);
   const descOnFocusRef = useRef<string>("");
+  const descAlreadyEnhancedRef = useRef(false);
   const [droppedPaths, setDroppedPaths] = useState<DroppedPath[]>([]);
   const [descDragOver, setDescDragOver] = useState(false);
 
@@ -301,6 +302,7 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
   const ticketId = ticket?.id;
   useEffect(() => {
     if (ticket && ticketId) {
+      descAlreadyEnhancedRef.current = false;
       setTitle(ticket.title);
       setDescription(ticket.description || "");
       // Parse existing dropped paths from description markdown
@@ -739,28 +741,21 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
   }
 
   async function enhanceDescription() {
-    console.log("[enhanceDescription] called, description length:", description.trim().length);
-    if (!description.trim()) {
-      console.log("[enhanceDescription] skipped — empty description");
-      return;
-    }
+    if (!description.trim()) return;
+    // Only enhance once per ticket — don't keep rewriting on every blur
+    if (descAlreadyEnhancedRef.current) return;
+    descAlreadyEnhancedRef.current = true;
     setEnhancingDescription(true);
     try {
-      console.log("[enhanceDescription] calling /api/generate-title with field=enhance");
       const res = await fetch("/api/generate-title", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ description: description.trim(), field: "enhance" }),
       });
       const data = await res.json();
-      console.log("[enhanceDescription] response:", JSON.stringify(data).slice(0, 200));
       if (data.enhance) {
-        console.log("[enhanceDescription] updating description");
         setDescription(data.enhance);
-        // Enhanced description becomes the new baseline — don't count AI enhancement as a user change
         baselineRef.current.description = data.enhance;
-      } else {
-        console.log("[enhanceDescription] no response from API");
       }
     } catch (err) {
       console.error("[enhanceDescription] error:", err);

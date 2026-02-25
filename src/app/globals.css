@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(6px); }
+}
+
 :root {
   --bg-primary: #0b0e14;
   --bg-secondary: #131620;

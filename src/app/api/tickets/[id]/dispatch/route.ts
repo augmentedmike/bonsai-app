@@ -386,7 +386,7 @@ export async function POST(
   const ticketId = Number(id);
   const ticketSlug = formatTicketSlug(ticketId);
 
-  const { commentContent, targetRole: requestedRole, targetPersonaName, targetPersonaId, team, silent, conversational, documentId, urgent } = await req.json();
+  const { commentContent, targetRole: requestedRole, targetPersonaName, targetPersonaId, team, silent, conversational, documentId, urgent, noChain } = await req.json();
 
   if (conversational) {
     console.log(`[dispatch] Conversational dispatch for ${ticketId}, documentId=${documentId}, targetPersonaId=${targetPersonaId}`);
@@ -484,7 +484,7 @@ export async function POST(
         phase: conversational ? "conversational" : resolvePhaseForRun(ticket),
         tools: personaTools,
         sessionDir,
-        dispatchSource: "api",
+        dispatchSource: noChain ? "agent-chain" : "api",
       });
 
       dispatched.push({
@@ -632,7 +632,7 @@ export async function POST(
     phase: conversational ? "conversational" : resolvePhaseForRun(ticket),
     tools: targetTools,
     sessionDir,
-    dispatchSource: "api",
+    dispatchSource: noChain ? "agent-chain" : "api",
   });
 
   // Post a brief "working on it" comment (skip for silent/auto dispatches)

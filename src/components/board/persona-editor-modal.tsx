@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import type { Role, Persona } from "@/types";
 
 interface PersonaEditorModalProps {
@@ -47,6 +47,7 @@ export function PersonaEditorModal({
   onSaved,
 }: PersonaEditorModalProps) {
   const { slug } = useParams<{ slug: string }>();
+  const router = useRouter();
   const [name, setName] = useState("");
   const [gender, setGender] = useState<"male" | "female" | "non-binary">("male");
   const [appearance, setAppearance] = useState("");
@@ -555,16 +556,16 @@ export function PersonaEditorModal({
                   }}
                 />
 
-                {/* Art Direction link */}
-                <a
-                  href={`/p/${slug}/onboard/team?artDirection=true`}
+                {/* Art Direction button */}
+                <button
+                  onClick={() => router.push(`/p/${slug}/onboard/team?artDirection=true`)}
                   title="Edit Art Direction"
                   style={{
                     marginTop: 10,
                     width: 30, height: 30, borderRadius: "50%",
                     border: `1px solid ${accent}40`, backgroundColor: `${accent}10`,
                     color: accent, display: "flex", alignItems: "center", justifyContent: "center",
-                    cursor: "pointer", textDecoration: "none", transition: "all 0.2s",
+                    cursor: "pointer", transition: "all 0.2s",
                     opacity: 0.7,
                   }}
                   onMouseEnter={(e) => { e.currentTarget.style.opacity = "1"; e.currentTarget.style.backgroundColor = `${accent}25`; }}
@@ -573,7 +574,7 @@ export function PersonaEditorModal({
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9.53 16.122a3 3 0 00-5.78 1.128 2.25 2.25 0 01-2.4 2.245 4.5 4.5 0 008.4-2.245c0-.399-.078-.78-.22-1.128zm0 0a15.998 15.998 0 003.388-1.62m-5.043-.025a15.994 15.994 0 011.622-3.395m3.42 3.42a15.995 15.995 0 004.764-4.648l3.876-5.814a1.151 1.151 0 00-1.597-1.597L14.146 6.32a15.996 15.996 0 00-4.649 4.763m3.42 3.42a6.776 6.776 0 00-3.42-3.42" />
                   </svg>
-                </a>
+                </button>
 
                 <div style={{ marginTop: 10, width: 220 }}>
                   <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" as const, color: "var(--text-muted)", display: "block", marginBottom: 6 }}>Name</label>
@@ -709,83 +710,6 @@ export function PersonaEditorModal({
                   </div>
                 </div>
 
-                {/* Role Permissions */}
-                {role && (
-                  <div style={{ borderTop: `1px solid ${accent}20`, paddingTop: 16 }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <svg className="w-4 h-4" style={{ color: accent }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" /></svg>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: accent }}>{role.title} Permissions</span>
-                      </div>
-                      {roleToolsDirty && (
-                        <button onClick={handleSaveRoleTools} disabled={savingRoleTools} style={{ fontSize: 11, padding: "4px 12px", borderRadius: 6, fontWeight: 600, color: "#fff", backgroundColor: accent, border: "none", cursor: savingRoleTools ? "not-allowed" : "pointer", opacity: savingRoleTools ? 0.4 : 1 }}>
-                          {savingRoleTools ? "Saving..." : "Save Permissions"}
-                        </button>
-                      )}
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column" as const, gap: 12 }}>
-                      <div>
-                        <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" as const, color: "var(--text-muted)", display: "block", marginBottom: 8 }}>Tools</label>
-                        <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 6 }}>
-                          {ALL_TOOLS.map((tool) => {
-                            const enabled = roleTools.includes(tool.name);
-                            const isWrite = tool.group === "write";
-                            const isWeb = tool.group === "web";
-                            const isAgent = tool.group === "agent";
-                            return (
-                              <button
-                                key={tool.name}
-                                onClick={() => {
-                                  const next = enabled ? roleTools.filter((t) => t !== tool.name) : [...roleTools, tool.name];
-                                  setRoleTools(next);
-                                  setRoleToolsDirty(true);
-                                }}
-                                style={{
-                                  fontSize: 12, padding: "4px 10px", borderRadius: 6, fontFamily: "monospace",
-                                  display: "flex", alignItems: "center", gap: 6, cursor: "pointer", transition: "all 0.15s",
-                                  backgroundColor: enabled
-                                    ? isWrite ? "rgba(239,68,68,0.15)" : isWeb ? "rgba(59,130,246,0.15)" : isAgent ? "rgba(168,85,247,0.15)" : "rgba(255,255,255,0.1)"
-                                    : "rgba(255,255,255,0.02)",
-                                  color: enabled
-                                    ? isWrite ? "#f87171" : isWeb ? "#60a5fa" : isAgent ? "#a855f7" : "var(--text-primary)"
-                                    : "var(--text-muted)",
-                                  border: `1px solid ${enabled ? "transparent" : "var(--border-medium)"}`,
-                                  opacity: enabled ? 1 : 0.5,
-                                }}
-                                title={tool.description}
-                              >
-                                {enabled ? (
-                                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-                                ) : (
-                                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-                                )}
-                                {tool.name}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                      <div>
-                        <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" as const, color: "var(--text-muted)", display: "block", marginBottom: 6 }}>Active Phases</label>
-                        <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 6 }}>
-                          {(role.slug === "researcher" ? ["Research"] : role.slug === "developer" ? ["Planning", "Building"] : role.slug === "designer" ? ["Design"] : role.slug === "critic" ? ["Review"] : [role.title]).map((phase) => (
-                            <span key={phase} style={{ fontSize: 12, padding: "4px 8px", borderRadius: 6, backgroundColor: `color-mix(in srgb, ${accent} 12%, transparent)`, color: accent }}>{phase}</span>
-                          ))}
-                        </div>
-                      </div>
-                      {role.skillDefinitions && role.skillDefinitions.length > 0 && (
-                        <div>
-                          <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" as const, color: "var(--text-muted)", display: "block", marginBottom: 6 }}>Skills</label>
-                          <div style={{ display: "flex", flexWrap: "wrap" as const, gap: 6 }}>
-                            {role.skillDefinitions.map((skill, idx) => (
-                              <span key={idx} style={{ fontSize: 12, padding: "4px 8px", borderRadius: 6, fontFamily: "monospace", backgroundColor: `color-mix(in srgb, ${accent} 15%, transparent)`, color: accent }}>/{skill.name}</span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
           </div>

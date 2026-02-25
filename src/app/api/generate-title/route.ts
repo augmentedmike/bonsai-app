@@ -2,7 +2,15 @@ import { NextResponse } from "next/server";
 import { geminiRequest, extractText, GeminiKeyError } from "@/lib/gemini";
 
 const MODEL = "gemini-2.5-flash";
-const MAX_OUTPUT_TOKENS = 65536;
+
+const TOKEN_LIMITS: Record<string, number> = {
+  title: 100,
+  type: 20,
+  criteria: 1024,
+  enhance: 8192,
+  massage: 8192,
+  massage_criteria: 1024,
+};
 
 // field: "title" | "criteria" | "enhance"
 export async function POST(req: Request) {
@@ -15,15 +23,17 @@ export async function POST(req: Request) {
     title: {
       text: `You are a software project manager writing a concise ticket title.
 
-Read the description below and extract the MAIN task or feature being requested. Return a clear, actionable title (max 8 words).
+Read the ENTIRE description below. Identify the SINGLE OVERARCHING task or deliverable — what is the user asking to be built or done at the highest level?
 
 CRITICAL RULES:
-- Return ONLY the title text itself, nothing else
+- Return ONLY the title text, nothing else
 - No quotes, no punctuation at the end, no preamble
-- NEVER return meta-text like "Task description missing" or "Error" or "No description" - if the description is unclear, make your best guess at what they want
-- Focus on the PRIMARY action/feature, ignore tangents or background
-- Use imperative form: "Add X", "Fix Y", "Build Z", "Implement W"
-- If description is long, extract the core request
+- NEVER return meta-text like "Task description missing" or "Error"
+- The title MUST capture the TOP-LEVEL deliverable, NOT a random sub-detail
+- If the description contains multiple steps, sections, or bullet points, the title should describe THE WHOLE THING (e.g. "Add How It Works section to homepage"), not one sub-item
+- If the first line or sentence names the feature (e.g. "Homepage how it works section"), use that as the basis for the title
+- Use imperative form: "Add X", "Fix Y", "Build Z", "Create W"
+- Max 8 words
 
 Description:
 ${description.trim()}`,
@@ -57,12 +67,16 @@ ${description.trim()}`,
       text: `Convert this spoken voice transcript into a clean markdown checklist of acceptance criteria. Each item should be a concrete, testable condition using "- [ ]" format. Fix any typos, spelling errors, and grammar. Interpret the speaker's intent and break it into clear, separate checklist items. Return ONLY the checklist, no other text.\n\nVoice transcript:\n${description.trim()}`,
     },
     type: {
-      text: `You are a software project manager classifying a ticket. Based on the description below, determine the ticket type.
+      text: `You are a software project manager classifying a ticket. Based on the description below, determine what TYPE of work is being requested.
+
+IMPORTANT: Focus on what the ticket is ASKING TO BE BUILT OR DONE, not what the description text looks like. If someone describes a new page, flow, UI, content, feature, or capability they want created — that is a feature, even if the description contains documentation-style writing or step-by-step guides.
 
 Return EXACTLY one of these values (no quotes, no extra text):
-- feature (new functionality, UI additions, new capabilities)
-- bug (something is broken, errors, incorrect behavior, fixes)
-- chore (maintenance, upgrades, refactoring, config changes, docs)
+- feature — building something new: new pages, UI, flows, content, integrations, capabilities, landing pages, onboarding steps, product copy
+- bug — something existing is broken, has errors, wrong behavior, or needs a fix
+- chore — purely internal maintenance with no user-facing change: dependency upgrades, CI/CD config, refactoring internals, renaming variables
+
+When in doubt, choose feature. Most tickets are features.
 
 Description:
 ${description.trim()}`,
@@ -79,7 +93,7 @@ ${description.trim()}`,
   try {
     const res = await geminiRequest(MODEL, {
       contents: [{ parts: [{ text: config.text }] }],
-      generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS },
+      generationConfig: { maxOutputTokens: TOKEN_LIMITS[field || "title"] || 1024 },
     });
 
     const data = await res.json();
