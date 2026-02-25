@@ -34,20 +34,13 @@ function personaFromRow(row: typeof personas.$inferSelect): Persona {
   };
 }
 
-export function getPersonas(projectId?: number): Promise<Persona[]> {
-  const rows = projectId
-    ? db
-        .select()
-        .from(personas)
-        .where(
-          and(eq(personas.projectId, projectId), isNull(personas.deletedAt))
-        )
-        .all()
-    : db
-        .select()
-        .from(personas)
-        .where(isNull(personas.deletedAt))
-        .all();
+export function getPersonas(_projectId?: number): Promise<Persona[]> {
+  // Global team: always return personas with project_id IS NULL (shared across all projects)
+  const rows = db
+    .select()
+    .from(personas)
+    .where(and(isNull(personas.projectId), isNull(personas.deletedAt)))
+    .all();
   return asAsync(rows.map(personaFromRow));
 }
 
@@ -71,12 +64,12 @@ export function getPersonaRaw(personaId: string) {
   return asAsync(row ?? null);
 }
 
-/** Get all non-deleted personas for a project (raw rows for dispatch) */
-export function getProjectPersonasRaw(projectId: number) {
+/** Get all global sims (project_id IS NULL) — dispatch uses this, needs the full team */
+export function getProjectPersonasRaw(_projectId: number) {
   const rows = db
     .select()
     .from(personas)
-    .where(and(eq(personas.projectId, projectId), isNull(personas.deletedAt)))
+    .where(isNull(personas.projectId))
     .all();
   return asAsync(rows);
 }
@@ -182,8 +175,8 @@ export function getPersonasByRole(
   return asAsync(rows);
 }
 
-export function isTeamComplete(projectId?: number): Promise<boolean> {
-  // ONLY CHECK FOR ENABLED ROLES: researcher, developer
+export function isTeamComplete(_projectId?: number): Promise<boolean> {
+  // Check global team has researcher + developer at minimum
   const enabledRoleSlugs = ["researcher", "developer"];
   const allRoles = db
     .select({ id: roles.id, slug: roles.slug })
@@ -192,19 +185,11 @@ export function isTeamComplete(projectId?: number): Promise<boolean> {
     .filter((r) => enabledRoleSlugs.includes(r.slug));
 
   if (allRoles.length === 0) return asAsync(false);
-  const personaQuery = projectId
-    ? db
-        .select({ roleId: personas.roleId })
-        .from(personas)
-        .where(
-          and(eq(personas.projectId, projectId), isNull(personas.deletedAt))
-        )
-        .all()
-    : db
-        .select({ roleId: personas.roleId })
-        .from(personas)
-        .where(isNull(personas.deletedAt))
-        .all();
+  const personaQuery = db
+    .select({ roleId: personas.roleId })
+    .from(personas)
+    .where(and(isNull(personas.projectId), isNull(personas.deletedAt)))
+    .all();
   const filledRoleIds = new Set(
     personaQuery.map((r) => r.roleId).filter(Boolean)
   );

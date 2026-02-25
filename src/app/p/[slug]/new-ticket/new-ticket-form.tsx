@@ -57,6 +57,36 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
   // const [wizardEpic, setWizardEpic] = useState<{ id: number; title: string } | null>(null);
   const descRef = useRef<HTMLTextAreaElement>(null);
   const [descExpanded, setDescExpanded] = useState(false);
+  const [descIdleSeconds, setDescIdleSeconds] = useState(0);
+  const descIdleTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const descLastKeystrokeRef = useRef<number>(Date.now());
+  const lastGeneratedDescRef = useRef<string>("");
+
+  // Idle timer: counts seconds since last keystroke while expanded
+  useEffect(() => {
+    if (descExpanded) {
+      descLastKeystrokeRef.current = Date.now();
+      setDescIdleSeconds(0);
+      descIdleTimerRef.current = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - descLastKeystrokeRef.current) / 1000);
+        setDescIdleSeconds(elapsed);
+      }, 1000);
+    } else {
+      setDescIdleSeconds(0);
+      if (descIdleTimerRef.current) clearInterval(descIdleTimerRef.current);
+    }
+    return () => { if (descIdleTimerRef.current) clearInterval(descIdleTimerRef.current); };
+  }, [descExpanded]);
+
+  function handleDescKeystroke() {
+    descLastKeystrokeRef.current = Date.now();
+    setDescIdleSeconds(0);
+  }
+
+  function collapseDesc() {
+    setDescExpanded(false);
+    generateFromDescription();
+  }
 
   // Auto-save draft to localStorage on every change
   useEffect(() => {
@@ -77,6 +107,27 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
     aiField: "massage_criteria",
   });
 
+  function insertAtCursor(text: string) {
+    const ta = descRef.current;
+    if (!ta) {
+      setDescription((prev: string) => prev ? `${prev}\n${text}` : text);
+      return;
+    }
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const before = description.slice(0, start);
+    const after = description.slice(end);
+    const needsNewline = before.length > 0 && !before.endsWith("\n") ? "\n" : "";
+    const inserted = `${before}${needsNewline}${text}\n${after}`;
+    setDescription(inserted);
+    // Restore cursor after the inserted text
+    requestAnimationFrame(() => {
+      const pos = before.length + needsNewline.length + text.length + 1;
+      ta.setSelectionRange(pos, pos);
+      ta.focus();
+    });
+  }
+
   function addFiles(files: File[]) {
     const imageFiles = files.filter((f) => f.type.startsWith("image/"));
     const nonImageFiles = files.filter((f) => !f.type.startsWith("image/"));
@@ -86,6 +137,7 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
       reader.onload = () => {
         const dataUrl = reader.result as string;
         setImages((prev) => [...prev, { id: Math.random().toString(36).slice(2) + Date.now().toString(36), name: file.name, dataUrl }]);
+        insertAtCursor(`![${file.name}](attachment)`);
       };
       reader.readAsDataURL(file);
     });
@@ -95,10 +147,7 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
       reader.onload = () => {
         const dataUrl = reader.result as string;
         setFileAttachments((prev) => [...prev, { id: Math.random().toString(36).slice(2) + Date.now().toString(36), name: file.name, dataUrl, mimeType: file.type || "application/octet-stream" }]);
-        setDescription((prev) => {
-          const ref = `[Attached: ${file.name}]`;
-          return prev ? `${prev}\n${ref}` : ref;
-        });
+        insertAtCursor(`[Attached: ${file.name}]`);
       };
       reader.readAsDataURL(file);
     });
@@ -113,7 +162,7 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
     if (paths.length > 0) {
       setDroppedPaths((prev) => [...prev, ...paths]);
       const markdown = paths.map(pathToMarkdown).join("\n");
-      setDescription((prev) => prev ? `${prev}\n\n${markdown}` : markdown);
+      setDescription((prev: string) => prev ? `${prev}\n\n${markdown}` : markdown);
       return;
     }
 
@@ -145,10 +194,13 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
 
   async function generateFromDescription(force = false) {
     if (!description.trim()) return;
+    // Skip if description hasn't changed since last generation (unless forced)
+    if (!force && description.trim() === lastGeneratedDescRef.current) return;
+    lastGeneratedDescRef.current = description.trim();
     const jobs: Promise<void>[] = [];
 
     // Helper to add timeout to fetch
-    const fetchWithTimeout = (url: string, options: RequestInit, timeout = 30000) => {
+    const fetchWithTimeout = (url: string, options: RequestInit, timeout = 60000) => {
       return Promise.race([
         fetch(url, options),
         new Promise<Response>((_, reject) =>
@@ -283,7 +335,7 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
     //   return;
     // }
     clearDraft(projectSlug);
-    router.push(`/p/${projectSlug}${ticketId ? `?openTicket=${ticketId}` : ""}`);
+    router.push(`/p/${projectSlug}?openTicket=${ticketId}`);
   }
 
   // EPIC FEATURES DISABLED
@@ -330,7 +382,12 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
 
           {/* Description */}
           <div
+            data-desc-container
             className="flex flex-col"
+            onClick={(e) => {
+              // Clicking the backdrop area (not textarea/buttons) collapses
+              if (descExpanded && e.target === e.currentTarget) collapseDesc();
+            }}
             style={{
               ...(descExpanded
                 ? { position: "fixed", inset: 0, zIndex: 50, padding: 24, backgroundColor: "var(--bg-primary)", transition: "all 300ms ease" }
@@ -342,10 +399,7 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
               <div className="flex items-center gap-2">
                 {descExpanded && (
                   <button
-                    onClick={() => {
-                      setDescExpanded(false);
-                      generateFromDescription();
-                    }}
+                    onClick={collapseDesc}
                     className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors hover:bg-white/10"
                     style={{ color: "var(--text-muted)" }}
                     title="Restore"
@@ -362,12 +416,21 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
             <div
               className="relative flex-1 min-h-0"
               onClick={() => { if (!descExpanded) setDescExpanded(true); }}
+              onDrop={handleDescDrop}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
             >
               <textarea
                 ref={descRef}
                 value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                onBlur={() => { if (!descExpanded) generateFromDescription(); }}
+                onChange={(e) => { setDescription(e.target.value); handleDescKeystroke(); }}
+                onBlur={(e) => {
+                  if (!descExpanded) { generateFromDescription(); return; }
+                  // If focus moved to a button inside the desc container, don't collapse
+                  const container = e.currentTarget.closest('[data-desc-container]');
+                  if (container && e.relatedTarget && container.contains(e.relatedTarget as Node)) return;
+                  collapseDesc();
+                }}
                 onDrop={handleDescDrop}
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
@@ -390,6 +453,24 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
                 </div>
               )}
             </div>
+            {/* Collapse arrow — visible only in expanded mode */}
+            {descExpanded && (
+              <div className="flex justify-center pt-4">
+                <button
+                  onClick={collapseDesc}
+                  className="transition-all duration-300"
+                  title="Done — collapse description"
+                  style={{
+                    color: descIdleSeconds >= 6 ? "var(--accent-green, #22c55e)" : "var(--text-muted)",
+                    animation: descIdleSeconds >= 10 ? "bounce 1s ease infinite" : "none",
+                  }}
+                >
+                  <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              </div>
+            )}
             {/* Image thumbnails */}
             {images.length > 0 && (
               <div className="flex gap-2 mt-2 flex-wrap">
@@ -427,7 +508,7 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
                     <button
                       onClick={() => {
                         setFileAttachments((prev) => prev.filter((a) => a.id !== f.id));
-                        setDescription((prev) => prev.replace(`[Attached: ${f.name}]`, "").replace(/\n{2,}/g, "\n").trim());
+                        setDescription((prev: string) => prev.replace(`[Attached: ${f.name}]`, "").replace(/\n{2,}/g, "\n").trim());
                       }}
                       className="w-4 h-4 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
                     >
@@ -446,7 +527,7 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
                 const removed = droppedPaths.find((p) => p.id === id);
                 setDroppedPaths((prev) => prev.filter((p) => p.id !== id));
                 if (removed) {
-                  setDescription((prev) => prev.replace(pathToMarkdown(removed), "").replace(/\n{3,}/g, "\n\n").trim());
+                  setDescription((prev: string) => prev.replace(pathToMarkdown(removed), "").replace(/\n{3,}/g, "\n\n").trim());
                 }
               }}
             />

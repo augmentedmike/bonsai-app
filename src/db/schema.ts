@@ -243,6 +243,7 @@ export const agentRuns = sqliteTable("agent_runs", {
   sessionDir: text("session_dir"),
   dispatchSource: text("dispatch_source"), // "api" | "heartbeat"
   startedAt: text("started_at").default(sql`CURRENT_TIMESTAMP`),
+  endedAt: text("ended_at"),
   lastReportAt: text("last_report_at"),
   completedAt: text("completed_at"),
   durationMs: integer("duration_ms"),

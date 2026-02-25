@@ -20,7 +20,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Determine which database to use based on environment
 const env = process.env.BONSAI_ENV || "prod";
 const dbFile = env === "dev" ? "bonsai-dev.db" : "bonsai.db";
-const dbPath = path.join(__dirname, `../../${dbFile}`);
+const dbPath = path.join(__dirname, `../../.data/${dbFile}`);
 
 console.log(`\n🔄 Running migrations for ${env.toUpperCase()} database...`);
 console.log(`📁 Database: ${dbPath}\n`);

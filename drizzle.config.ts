@@ -1,6 +1,6 @@
 import { defineConfig } from "drizzle-kit";
 
-const dbFile = process.env.BONSAI_ENV === "dev" ? "./bonsai-dev.db" : "./bonsai.db";
+const dbFile = process.env.BONSAI_ENV === "dev" ? "./.data/bonsai-dev.db" : "./.data/bonsai.db";
 
 export default defineConfig({
   schema: "./src/db/schema.ts",

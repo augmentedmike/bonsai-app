@@ -8,19 +8,10 @@ import {
   getPersonasByRole,
   softDeletePersona,
 } from "@/db/data/personas";
-import { getProjectBySlug } from "@/db/data/projects";
 
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  let projectId = searchParams.get("projectId");
-  const projectSlug = searchParams.get("projectSlug");
-
-  if (!projectId && projectSlug) {
-    const project = await getProjectBySlug(projectSlug);
-    if (project) projectId = project.id;
-  }
-
-  const all = await getPersonas(projectId ? Number(projectId) : undefined);
+export async function GET() {
+  // Always return global team (project_id IS NULL)
+  const all = await getPersonas();
   return NextResponse.json(all);
 }
 

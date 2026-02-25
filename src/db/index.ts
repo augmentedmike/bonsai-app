@@ -5,8 +5,9 @@ import path from "node:path";
 
 const env = process.env.BONSAI_ENV || "prod";
 const dbFile = env === "dev" ? "bonsai-dev.db" : "bonsai.db";
-// Use BONSAI_DB_DIR if set (for CLI from worktrees), otherwise use cwd (for webapp)
-const dbDir = process.env.BONSAI_DB_DIR || process.cwd();
+// Use BONSAI_DB_DIR if set (for CLI from worktrees), otherwise use .data/ under cwd
+// .data/ keeps DB files out of Turbopack's watch tree to prevent recompile loops
+const dbDir = process.env.BONSAI_DB_DIR || path.join(process.cwd(), ".data");
 const dbPath = path.join(dbDir, dbFile);
 
 const sqlite = new Database(dbPath);
@@ -201,7 +202,72 @@ if (roleCount === 0) {
   insertRole.run("designer", "Designer", "Creates UI/UX designs, design systems, and visual assets.", "#f59e0b");
   insertRole.run("critic", "Critic", "Challenges assumptions and stress-tests ideas. The constructive contrarian.", "#ef4444");
   insertRole.run("hacker", "Hacker", "Security-focused engineer who finds vulnerabilities and hardens the codebase.", "#06b6d4");
-  console.log("[db] Seeded 5 default roles");
+  insertRole.run("writer", "Writer", "Creates blog posts, marketing copy, technical writing, and social content.", "#f59e0b");
+  console.log("[db] Seeded 6 default roles");
+}
+
+// ── Ensure writer role exists (self-healing for existing DBs) ──────────────────
+{
+  const writerExists = (sqlite.prepare("SELECT count(*) as n FROM roles WHERE slug = 'writer'").get() as { n: number }).n;
+  if (writerExists === 0) {
+    sqlite.prepare("INSERT INTO roles (slug, title, description, color) VALUES (?, ?, ?, ?)")
+      .run("writer", "Writer", "Creates blog posts, marketing copy, technical writing, and social content.", "#f59e0b");
+    console.log("[db] Added writer role");
+  }
+}
+
+// ── Global team auto-seed (4 canonical sims if none exist) ──────────────────
+{
+  const globalPersonaCount = (sqlite.prepare("SELECT count(*) as n FROM personas WHERE project_id IS NULL AND deleted_at IS NULL").get() as { n: number }).n;
+  if (globalPersonaCount === 0) {
+    const getRoleId = (slug: string) =>
+      (sqlite.prepare("SELECT id FROM roles WHERE slug = ?").get(slug) as { id: number } | undefined)?.id ?? null;
+
+    const insertPersona = sqlite.prepare(
+      `INSERT OR IGNORE INTO personas (id, name, slug, color, role, role_id, personality, skills, processes, goals, project_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
+    );
+
+    const sims = [
+      {
+        id: "g-developer", name: "Emi", slug: "emi", color: "#6366f1", role: "developer",
+        roleId: getRoleId("developer"),
+        personality: "Precise, pragmatic, prefers working code over theory. Gets things done.",
+        skills: JSON.stringify(["TypeScript", "Next.js", "SQLite/Drizzle", "API design", "Git worktrees"]),
+        processes: JSON.stringify(["Read the ticket thoroughly before writing a single line", "Write the simplest thing that works", "Commit incrementally"]),
+        goals: JSON.stringify(["Ship working software", "Keep the codebase clean", "Unblock the team"]),
+      },
+      {
+        id: "g-researcher", name: "Adaora", slug: "adaora", color: "#8b5cf6", role: "researcher",
+        roleId: getRoleId("researcher"),
+        personality: "Curious, thorough, connects dots others miss. Never skips the 'why'.",
+        skills: JSON.stringify(["Web research", "Competitive analysis", "Synthesis and summarization", "Market research", "User interviews"]),
+        processes: JSON.stringify(["Start with the question, not the answer", "Collect before concluding", "Always cite sources"]),
+        goals: JSON.stringify(["Surface the insight that changes the plan", "Save the team from building the wrong thing"]),
+      },
+      {
+        id: "g-designer", name: "Layla", slug: "layla", color: "#ec4899", role: "designer",
+        roleId: getRoleId("designer"),
+        personality: "Visual, opinionated, translates fuzzy ideas into concrete decisions.",
+        skills: JSON.stringify(["UI/UX design", "Figma", "Component systems", "Accessibility", "Copy review"]),
+        processes: JSON.stringify(["Question the requirement before the design", "Design for edge cases", "Document decisions"]),
+        goals: JSON.stringify(["Make it obvious", "Make it fast", "Make it feel right"]),
+      },
+      {
+        id: "g-writer", name: "Remy", slug: "remy", color: "#f59e0b", role: "writer",
+        roleId: getRoleId("writer"),
+        personality: "Clear, direct, makes complex things readable. Hates jargon.",
+        skills: JSON.stringify(["Blog posts", "Marketing copy", "Technical writing", "SEO basics", "Social media content"]),
+        processes: JSON.stringify(["Know the audience before the first word", "Write the headline last", "Edit out every word that doesn't earn its place"]),
+        goals: JSON.stringify(["Get eyes on the work", "Build the brand", "Make the reader smarter or faster"]),
+      },
+    ];
+
+    for (const s of sims) {
+      insertPersona.run(s.id, s.name, s.slug, s.color, s.role, s.roleId, s.personality, s.skills, s.processes, s.goals);
+    }
+    console.log("[db] Seeded 4 global personas: Emi, Adaora, Layla, Remy");
+  }
 }
 
 // ── agent_runs table (self-healing migration) ──────────────────

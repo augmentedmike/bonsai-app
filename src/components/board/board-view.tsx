@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { Ticket, TicketState, Persona, Project } from "@/types";
 import { Column } from "./column";
@@ -101,7 +101,9 @@ export function BoardView({
   const [draggingId, setDraggingId] = useState<number | null>(null);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [initialDocType, setInitialDocType] = useState<"research" | "implementation_plan" | undefined>();
-  const [hideOnHold, setHideOnHold] = useState(false);
+  const [hideOnHold, setHideOnHold] = useState(() => {
+    try { return localStorage.getItem("bonsai-hide-on-hold") === "true"; } catch { return false; }
+  });
 
   // Chat panel state
   const [chatOpen, setChatOpen] = useState(false);
@@ -179,20 +181,23 @@ export function BoardView({
   // Auto-open ticket from URL query param (e.g. after creating a new ticket or sharing a link)
   const openTicketParam = searchParams.get("openTicket") || searchParams.get("ticket");
   const openDocParam = searchParams.get("doc");
+  const handledOpenTicketRef = useRef<string | null>(null);
   useEffect(() => {
     if (!openTicketParam) return;
+    // Only auto-open once per param value — don't re-open after user closes
+    if (handledOpenTicketRef.current === openTicketParam) return;
     const match = tickets.find((t) => t.id === Number(openTicketParam));
     if (match) {
-      // Set doc type if specified in URL
+      handledOpenTicketRef.current = openTicketParam;
       if (openDocParam === "research") setInitialDocType("research");
       else if (openDocParam === "plan") setInitialDocType("implementation_plan");
       setSelectedTicket(match);
-      // Clean the openTicket param from the URL (but keep ticket= for sharing)
-      if (searchParams.get("openTicket")) {
-        const url = new URL(window.location.href);
-        url.searchParams.delete("openTicket");
-        router.replace(url.pathname + url.search, { scroll: false });
-      }
+      // Clean query params from the URL
+      const url = new URL(window.location.href);
+      url.searchParams.delete("openTicket");
+      url.searchParams.delete("ticket");
+      url.searchParams.delete("doc");
+      router.replace(url.pathname + url.search, { scroll: false });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openTicketParam, openDocParam, tickets]);
@@ -287,7 +292,7 @@ export function BoardView({
           onPersonaClick={handlePersonaClick}
           onChatOpen={() => { setChatMentionPersonaId(null); setChatOpen(true); }}
           hideOnHold={hideOnHold}
-          onHideOnHoldChange={setHideOnHold}
+          onHideOnHoldChange={(v: boolean) => { setHideOnHold(v); try { localStorage.setItem("bonsai-hide-on-hold", String(v)); } catch {} }}
           holdCount={tickets.filter((t) => t.onHold && !t.isEpic).length}
         />
       )}

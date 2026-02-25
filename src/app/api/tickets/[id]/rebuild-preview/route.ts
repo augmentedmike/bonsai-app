@@ -59,7 +59,7 @@ export async function POST(
   if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
   const logFile = path.join(logDir, `preview-ticket-${ticketId}.log`);
 
-  const envVars = { ...process.env, PORT: String(port), NODE_ENV: "production" };
+  const envVars = { ...process.env, PORT: String(port), NODE_ENV: "production" as const };
 
   // Run build command if specified (synchronously)
   if (project.buildCommand) {

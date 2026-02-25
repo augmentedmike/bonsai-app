@@ -277,7 +277,7 @@ export function AddTicketModal({ open, onClose, projectSlug }: AddTicketModalPro
     if (paths.length > 0) {
       setDroppedPaths((prev) => [...prev, ...paths]);
       const markdown = paths.map(pathToMarkdown).join("\n");
-      setDescription((prev) => prev ? `${prev}\n\n${markdown}` : markdown);
+      setDescription((prev: string) => prev ? `${prev}\n\n${markdown}` : markdown);
     }
   }
 
@@ -498,7 +498,7 @@ export function AddTicketModal({ open, onClose, projectSlug }: AddTicketModalPro
                   const removed = droppedPaths.find((p) => p.id === id);
                   setDroppedPaths((prev) => prev.filter((p) => p.id !== id));
                   if (removed) {
-                    setDescription((prev) => prev.replace(pathToMarkdown(removed), "").replace(/\n{3,}/g, "\n\n").trim());
+                    setDescription((prev: string) => prev.replace(pathToMarkdown(removed), "").replace(/\n{3,}/g, "\n\n").trim());
                   }
                 }}
               />

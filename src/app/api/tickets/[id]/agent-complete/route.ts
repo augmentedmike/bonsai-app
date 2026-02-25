@@ -4,7 +4,7 @@ import { createCommentAndBumpCount } from "@/db/data/comments";
 import { createAgentProjectMessage } from "@/db/data/project-messages";
 import { getPersonaRaw, getProjectPersonasRaw } from "@/db/data/personas";
 import { logAuditEvent } from "@/db/data/audit";
-import { completeAgentRun } from "@/db/data/agent-runs";
+import { completeAgentRun, isChainedRun } from "@/db/data/agent-runs";
 import { getSetting } from "@/db/data/settings";
 import { fireDispatch } from "@/lib/dispatch-agent";
 
@@ -40,25 +40,27 @@ export async function POST(
   if (isInbox && ticket.projectId) {
     await createAgentProjectMessage(ticket.projectId, personaId, trimmed);
 
-    // DISABLED: @mention chaining causes infinite loops and wastes API credits
-    // Support @mention chaining in agent response
-    // const projectPersonas = await getProjectPersonasRaw(ticket.projectId);
-    // const sorted = [...projectPersonas].sort((a, b) => b.name.length - a.name.length);
-    // for (const p of sorted) {
-    //   if (p.id === personaId) continue;
-    //   const escapedName = p.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    //   const escapedRole = p.role ? p.role.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : null;
-    //   const namePattern = new RegExp(`@${escapedName}\\b`, 'i');
-    //   const rolePattern = escapedRole ? new RegExp(`@${escapedRole}\\b`, 'i') : null;
-    //   if (namePattern.test(trimmed) || (rolePattern && rolePattern.test(trimmed))) {
-    //     console.log(`[agent-complete/inbox] Agent ${personaId} mentioned @${p.name} — dispatching`);
-    //     fireDispatch("http://localhost:3080", ticketId, {
-    //       commentContent: trimmed,
-    //       targetPersonaId: p.id,
-    //       conversational: true,
-    //     }, `agent-complete/inbox/@${p.name}`);
-    //   }
-    // }
+    // Agent→agent @mention chaining (max 1 hop to prevent infinite loops)
+    const wasChained = personaId ? isChainedRun(ticketId, personaId) : false;
+    if (!wasChained) {
+      const projectPersonas = await getProjectPersonasRaw(ticket.projectId);
+      const sorted = [...projectPersonas].sort((a, b) => b.name.length - a.name.length);
+      for (const p of sorted) {
+        if (p.id === personaId) continue; // don't self-dispatch
+        const escapedName = p.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const namePattern = new RegExp(`@${escapedName}\\b`, 'i');
+        if (namePattern.test(trimmed)) {
+          console.log(`[agent-complete/inbox] Agent ${personaId} mentioned @${p.name} — dispatching (1-hop chain)`);
+          fireDispatch("http://localhost:3080", ticketId, {
+            commentContent: trimmed,
+            targetPersonaId: p.id,
+            conversational: true,
+            silent: true,
+            noChain: true, // prevent further chaining
+          }, `agent-complete/inbox/@${p.name}`);
+        }
+      }
+    }
 
     if (personaId) {
       await completeAgentRun(ticketId, personaId, "completed");

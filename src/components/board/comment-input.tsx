@@ -5,6 +5,8 @@ import type { Persona, CommentAttachment } from "@/types";
 import { useVoiceInput } from "@/hooks/use-voice-input";
 import { VoiceButton } from "@/components/voice-button";
 import { capturePreviewScreenshot } from "@/lib/screenshot";
+import { createPortal } from "react-dom";
+import { PreviewClipOverlay } from "./preview-clip-overlay";
 
 type MentionItem =
   | { kind: "persona"; persona: Persona }
@@ -32,6 +34,7 @@ export function CommentInput({ personasList, placeholder, onPost, enableVoice = 
   const [attachments, setAttachments] = useState<CommentAttachment[]>([]);
   const [posting, setPosting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [clipping, setClipping] = useState(false);
 
   // @mention autocomplete state
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
@@ -384,12 +387,34 @@ export function CommentInput({ personasList, placeholder, onPost, enableVoice = 
             </svg>
             Screenshot
           </button>
+          <button
+            onClick={() => setClipping(true)}
+            className="flex items-center gap-1.5 text-xs transition-colors hover:text-white"
+            style={{ color: "var(--text-muted)" }}
+            title="Clip a region of the live preview"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M7.848 8.25l1.536.887M7.848 8.25a3 3 0 11-5.196-3 3 3 0 015.196 3zm1.536.887a2.165 2.165 0 011.083-.128m-1.083.128l-.058.045M9.384 9.137l.058-.045m0 0a2.177 2.177 0 011.024-.083M15.848 8.25l-1.536.887m1.536-.887a3 3 0 105.196-3 3 3 0 00-5.196 3zm-1.536.887a2.165 2.165 0 00-1.083-.128m1.083.128l.058.045M14.616 9.137l-.058-.045m0 0a2.177 2.177 0 00-1.024-.083M12 14.25v-3m0 3l-1.591-.318a2.226 2.226 0 00-1.024.083M12 14.25l1.591-.318a2.226 2.226 0 011.024.083m-3.223-.801l.058-.045m2.107 0l-.058-.045" />
+            </svg>
+            Clip
+          </button>
           {enableVoice && <VoiceButton voice={voice} compact />}
           <span className="text-xs" style={{ color: "var(--text-muted)" }}>
             {posting ? "Posting..." : "Enter to send \u00b7 Shift+Enter for newline"}
           </span>
         </div>
       </div>
+      {clipping && typeof document !== "undefined" && createPortal(
+        <PreviewClipOverlay
+          onCapture={(attachment) => {
+            setAttachments((prev) => [...prev, attachment]);
+            setClipping(false);
+            inputRef.current?.focus();
+          }}
+          onCancel={() => setClipping(false)}
+        />,
+        document.body
+      )}
     </div>
   );
 }
