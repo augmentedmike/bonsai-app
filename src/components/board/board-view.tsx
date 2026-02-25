@@ -117,7 +117,7 @@ export function BoardView({
   // Compute persona activity states for PixelOffice
   const personaStates: PersonaActivityState[] = useMemo(() => {
     const activePersonaIds = new Set(
-      tickets.flatMap((t) => (t as Record<string, unknown>).activeRunPersonaIds as string[] ?? [])
+      tickets.flatMap((t) => (t as unknown as Record<string, unknown>).activeRunPersonaIds as string[] ?? [])
     );
     return personas.map((p) => ({
       personaId: p.id,

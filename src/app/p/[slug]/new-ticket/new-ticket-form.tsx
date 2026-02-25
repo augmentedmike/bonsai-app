@@ -153,7 +153,7 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
     });
   }
 
-  function handleDescDrop(e: React.DragEvent<HTMLTextAreaElement>) {
+  function handleDescDrop(e: React.DragEvent<HTMLElement>) {
     e.preventDefault();
     setDragOver(false);
 

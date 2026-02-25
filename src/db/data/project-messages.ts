@@ -69,8 +69,6 @@ export function getProjectMessages(projectId: number, limit: number = 100) {
       author,
       content: row.content,
       attachments,
-      editedAt: row.editedAt ?? undefined,
-      isStale: row.isStale ?? false,
       createdAt: row.createdAt,
     };
   });

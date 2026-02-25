@@ -390,7 +390,7 @@ export function FileBrowser({ ticketId }: FileBrowserProps) {
                         hr: () => <hr className="my-4 border-0 h-px" style={{ backgroundColor: "var(--border-subtle)" }} />,
                         strong: ({ children }) => <strong style={{ color: "var(--text-primary)" }}>{children}</strong>,
                         img: ({ src, alt, ...props }) => {
-                          let resolvedSrc = src || "";
+                          let resolvedSrc = typeof src === "string" ? src : "";
                           if (resolvedSrc && !resolvedSrc.startsWith("http") && !resolvedSrc.startsWith("data:")) {
                             resolvedSrc = `/api/tickets/${ticketId}/files?path=${encodeURIComponent(resolvedSrc)}&raw=1`;
                           }

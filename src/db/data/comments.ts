@@ -95,8 +95,6 @@ export function enrichComments(
       content: row.content,
       attachments,
       documentId: row.documentId ?? undefined,
-      editedAt: row.editedAt ?? undefined,
-      isStale: row.isStale ?? false,
       createdAt: row.createdAt,
     };
   });

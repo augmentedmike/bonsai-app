@@ -33,15 +33,6 @@ db.delete(schema.roles).run();
 db.delete(schema.skills).run();
 db.delete(schema.projects).run();
 db.delete(schema.settings).run();
-db.delete(schema.users).run();
-
-// Seed user
-const user = db
-  .insert(schema.users)
-  .values({ name: "Test User" })
-  .returning()
-  .get();
-console.log(`Created user: ${user.name}`);
 
 // Seed project
 const project = db
