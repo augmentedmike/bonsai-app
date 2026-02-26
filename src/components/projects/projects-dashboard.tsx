@@ -10,7 +10,7 @@ import {
   IconHand, IconGitHub, IconSettings, IconTrash, IconSend,
 } from "@/components/icons";
 
-type SortKey = "name" | "tickets";
+type SortKey = "name" | "tickets" | "activity";
 type SortDir = "asc" | "desc";
 type Filter = "all" | "github" | "no-github" | "active" | "empty";
 
@@ -227,7 +227,7 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
   const [projects, setProjects] = useState<Project[]>(initialProjects);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
-  const [sortKey, setSortKey] = useState<SortKey>("tickets");
+  const [sortKey, setSortKey] = useState<SortKey>("activity");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [showAdd, setShowAdd] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
@@ -269,7 +269,10 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
     if (filter === "active") list = list.filter((p) => (p.ticketCount ?? 0) > 5);
     if (filter === "empty") list = list.filter((p) => (p.ticketCount ?? 0) === 0);
     return [...list].sort((a, b) => {
-      const cmp = sortKey === "name" ? a.name.localeCompare(b.name) : (a.ticketCount ?? 0) - (b.ticketCount ?? 0);
+      let cmp = 0;
+      if (sortKey === "name") cmp = a.name.localeCompare(b.name);
+      else if (sortKey === "tickets") cmp = (a.ticketCount ?? 0) - (b.ticketCount ?? 0);
+      else if (sortKey === "activity") cmp = (a.lastActivity ?? "").localeCompare(b.lastActivity ?? "");
       return sortDir === "asc" ? cmp : -cmp;
     });
   }, [projects, search, filter, sortKey, sortDir]);
@@ -426,12 +429,13 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                   {[
-                    { key: "name" as SortKey, label: "Project", w: "20%" },
-                    { key: null, label: "Description", w: "20%" },
-                    { key: "tickets" as SortKey, label: "Planning · Building · Shipped", w: "20%" },
+                    { key: "name" as SortKey, label: "Project", w: "18%" },
+                    { key: null, label: "Description", w: "18%" },
+                    { key: "tickets" as SortKey, label: "Planning · Building · Shipped", w: "16%" },
                     { key: null, label: "", w: "4%" },  // visibility icon col
-                    { key: null, label: "Stack", w: "10%" },
-                    { key: null, label: "Team", w: "10%" },
+                    { key: null, label: "Stack", w: "8%" },
+                    { key: null, label: "Team", w: "8%" },
+                    { key: "activity" as SortKey, label: "Last Active", w: "12%" },
                     { key: null, label: "Actions", w: "16%" },
                   ].map(({ key, label, w }) => (
                     <th key={label} onClick={key ? () => toggleSort(key) : undefined} className={key ? "cursor-pointer select-none" : ""} style={{ width: w, padding: "9px 14px", textAlign: "left", color: "var(--text-muted)", fontWeight: 500, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
@@ -555,6 +559,27 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
                         ) : (
                           <span style={{ color: "var(--text-muted)", fontSize: 11 }}>—</span>
                         )}
+                      </td>
+
+                      {/* Last Active */}
+                      <td style={{ padding: "10px 14px" }}>
+                        {p.lastActivity ? (
+                          <span title={p.lastActivity} style={{ color: "var(--text-secondary)", fontSize: 11, whiteSpace: "nowrap" }}>
+                            {(() => {
+                              const d = new Date(p.lastActivity);
+                              const now = Date.now();
+                              const diff = now - d.getTime();
+                              const mins = Math.floor(diff / 60000);
+                              const hrs = Math.floor(diff / 3600000);
+                              const days = Math.floor(diff / 86400000);
+                              if (mins < 1) return "just now";
+                              if (mins < 60) return `${mins}m ago`;
+                              if (hrs < 24) return `${hrs}h ago`;
+                              if (days < 7) return `${days}d ago`;
+                              return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+                            })()}
+                          </span>
+                        ) : <span style={{ color: "var(--text-muted)", fontSize: 11 }}>—</span>}
                       </td>
 
                       {/* Actions */}

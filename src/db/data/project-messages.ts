@@ -1,6 +1,6 @@
 import { db, asAsync } from "./_driver";
-import { projectMessages, personas, settings } from "../schema";
-import { eq, desc, and, ne, asc, sql, inArray } from "drizzle-orm";
+import { projectMessages, personas, settings, humans } from "../schema";
+import { eq, desc, inArray } from "drizzle-orm";
 
 /** Fetch project messages with author enrichment */
 export function getProjectMessages(projectId: number, limit: number = 100) {
@@ -13,20 +13,23 @@ export function getProjectMessages(projectId: number, limit: number = 100) {
     .all()
     .reverse(); // oldest first for chat display
 
-  // Get user name and avatar from settings once for all human messages
-  const userName =
-    db
-      .select({ value: settings.value })
-      .from(settings)
-      .where(eq(settings.key, "user_name"))
-      .get()?.value ?? "User";
+  // Batch-fetch all humans referenced by human messages
+  const humanIds = [...new Set(rows.filter((r) => r.authorType === "human" && r.authorId).map((r) => r.authorId!))];
+  const humanMap = new Map<number, typeof humans.$inferSelect>();
+  if (humanIds.length > 0) {
+    const humanRows = db.select().from(humans).where(inArray(humans.id, humanIds)).all();
+    for (const h of humanRows) humanMap.set(h.id, h);
+  }
 
-  const userAvatar =
-    db
-      .select({ value: settings.value })
-      .from(settings)
-      .where(eq(settings.key, "user_avatar_url"))
-      .get()?.value ?? undefined;
+  // Fallback: get user name and avatar from settings (for old messages without a human record)
+  let fallbackName: string | undefined;
+  let fallbackAvatar: string | undefined;
+  if (humanIds.some((id) => !humanMap.has(id))) {
+    fallbackName =
+      db.select({ value: settings.value }).from(settings).where(eq(settings.key, "user_name")).get()?.value ?? "User";
+    fallbackAvatar =
+      db.select({ value: settings.value }).from(settings).where(eq(settings.key, "user_avatar_url")).get()?.value ?? undefined;
+  }
 
   // Batch-fetch all personas referenced by agent messages
   const personaIds = [...new Set(rows.filter((r) => r.authorType === "agent" && r.personaId).map((r) => r.personaId!))];
@@ -42,7 +45,13 @@ export function getProjectMessages(projectId: number, limit: number = 100) {
       | undefined;
 
     if (row.authorType === "human") {
-      author = { name: userName, avatarUrl: userAvatar };
+      if (row.authorId && humanMap.has(row.authorId)) {
+        const h = humanMap.get(row.authorId)!;
+        author = { name: h.name, avatarUrl: h.avatarData ?? undefined };
+      } else {
+        // Legacy fallback for messages stored before human auth existed
+        author = { name: fallbackName ?? "User", avatarUrl: fallbackAvatar };
+      }
     } else if (row.authorType === "agent" && row.personaId) {
       const persona = personaMap.get(row.personaId);
       if (persona) {
@@ -133,13 +142,25 @@ export function getRecentProjectMessagesFormatted(projectId: number, limit = 20)
     for (const p of personaRows) personaMap.set(p.id, p);
   }
 
+  // Batch-fetch humans for human messages
+  const humanIds = [...new Set(rows.filter((c) => c.authorType === "human" && c.authorId).map((c) => c.authorId!))];
+  const humanMap = new Map<number, typeof humans.$inferSelect>();
+  if (humanIds.length > 0) {
+    const humanRows = db.select().from(humans).where(inArray(humans.id, humanIds)).all();
+    for (const h of humanRows) humanMap.set(h.id, h);
+  }
+
   const formatted = rows.map((c) => {
     let authorName = "Unknown";
     if (c.authorType === "agent" && c.personaId) {
       const p = personaMap.get(c.personaId);
       if (p) authorName = `${p.name} (${p.role})`;
     } else if (c.authorType === "human") {
-      authorName = "Human";
+      if (c.authorId && humanMap.has(c.authorId)) {
+        authorName = humanMap.get(c.authorId)!.name;
+      } else {
+        authorName = "Human";
+      }
     } else {
       authorName = "System";
     }

@@ -1,19 +1,17 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useUser } from "@/contexts/user-context";
 import { createPortal } from "react-dom";
-import { GeminiSetupModal } from "@/components/gemini-setup-modal";
 import { VoiceTextarea } from "@/components/voice-textarea";
 import { useLanguage } from "@/i18n/language-context";
 import type { Locale } from "@/i18n/translations";
 
-type Section = "preferences" | "api-keys" | "prompts" | "roles";
+type Section = "preferences" | "api-keys" | "prompts" | "roles" | "humans";
 
 interface SettingsData {
   name: string;
-  githubLogin: string;
-  githubAvatarUrl: string;
-  userAvatarUrl: string;
+  avatarData: string | null;
   tokenConnected: boolean;
 }
 
@@ -37,6 +35,7 @@ export function SettingsPanel({
     { id: "api-keys", label: t.settings.apiKeys },
     { id: "prompts", label: t.settings.prompts },
     { id: "roles", label: t.settings.roles },
+    { id: "humans", label: "Humans" },
   ];
 
   useEffect(() => {
@@ -47,14 +46,12 @@ export function SettingsPanel({
     if (!open) return;
     queueMicrotask(() => setEditingName(false));
     Promise.all([
-      fetch("/api/onboard/user").then((r) => r.json()),
-      fetch("/api/github/user").then((r) => r.json()),
-    ]).then(([userData, githubData]) => {
+      fetch("/api/auth/me").then((r) => r.ok ? r.json() : null),
+      fetch("/api/github/user").then((r) => r.json()).catch(() => ({})),
+    ]).then(([meData, githubData]) => {
       const d: SettingsData = {
-        name: userData.user?.name ?? "",
-        githubLogin: githubData.login ?? "",
-        githubAvatarUrl: githubData.avatarUrl ?? "",
-        userAvatarUrl: userData.user?.avatarUrl ?? "",
+        name: meData?.name ?? "",
+        avatarData: meData?.avatarData ?? null,
         tokenConnected: !!githubData.login,
       };
       setData(d);
@@ -171,12 +168,14 @@ export function SettingsPanel({
               onNameChange={setNameValue}
               onSaveName={handleSaveName}
               onCancelEdit={() => setEditingName(false)}
-              onAvatarChange={(url) => setData((d) => d ? { ...d, userAvatarUrl: url } : d)}
+              onAvatarChange={(url) => setData((d) => d ? { ...d, avatarData: url || null } : d)}
             />
           ) : activeSection === "api-keys" ? (
             <ApiKeysSection />
           ) : activeSection === "roles" ? (
             <RolesSection />
+          ) : activeSection === "humans" ? (
+            <HumansSection />
           ) : (
             <PromptsSection />
           )}
@@ -214,37 +213,33 @@ function PreferencesSection({
   onAvatarChange: (url: string) => void;
 }) {
   const { t } = useLanguage();
-  const [generatingAvatar, setGeneratingAvatar] = useState(false);
-  const [showGeminiSetup, setShowGeminiSetup] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
 
-  const displayAvatar = data.userAvatarUrl || data.githubAvatarUrl;
-
-  async function handleGenerateAvatar() {
-    if (!data.name) return;
-    setGeneratingAvatar(true);
+  async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarError(null);
+    setUploadingAvatar(true);
     try {
-      const res = await fetch("/api/avatar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: data.name, role: "user", personality: null, useUserStyle: true }),
-      });
+      const form = new FormData();
+      form.append("avatar", file);
+      const res = await fetch("/api/humans/me/avatar", { method: "POST", body: form });
       const result = await res.json();
-      if (result.code === "gemini_key_missing") {
-        setGeneratingAvatar(false);
-        setShowGeminiSetup(true);
+      if (!res.ok) {
+        setAvatarError(result.error ?? "Upload failed");
         return;
       }
-      if (result.avatar) {
-        await fetch("/api/settings/avatar", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ avatarUrl: result.avatar }),
-        });
-        onAvatarChange(result.avatar);
-      }
+      onAvatarChange(result.avatarData);
     } finally {
-      setGeneratingAvatar(false);
+      setUploadingAvatar(false);
+      e.target.value = "";
     }
+  }
+
+  async function handleRemoveAvatar() {
+    await fetch("/api/humans/me/avatar", { method: "DELETE" });
+    onAvatarChange("");
   }
 
   return (
@@ -267,9 +262,9 @@ function PreferencesSection({
           {t.settings.avatar}
         </label>
         <div className="flex items-center gap-3">
-          {displayAvatar ? (
+          {data.avatarData ? (
             <img
-              src={displayAvatar}
+              src={data.avatarData}
               alt={data.name}
               className="w-14 h-14 rounded-full object-cover"
             />
@@ -282,17 +277,31 @@ function PreferencesSection({
             </div>
           )}
           <div className="flex flex-col gap-1.5">
-            <button
-              onClick={handleGenerateAvatar}
-              disabled={generatingAvatar || !data.name}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium text-white disabled:opacity-40 transition-opacity"
-              style={{ backgroundColor: "var(--accent-blue)" }}
+            <label
+              className="px-3 py-1.5 rounded-lg text-xs font-medium text-white cursor-pointer transition-opacity"
+              style={{ backgroundColor: uploadingAvatar ? "var(--accent-blue)" : "var(--accent-blue)", opacity: uploadingAvatar ? 0.6 : 1 }}
             >
-              {generatingAvatar ? t.settings.generating : t.settings.generateAvatar}
-            </button>
-            <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-              {data.userAvatarUrl ? t.settings.aiGenerated : data.githubAvatarUrl ? t.settings.syncedFromGithub : t.settings.noAvatar}
-            </span>
+              {uploadingAvatar ? "Uploading…" : "Upload photo"}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleAvatarUpload}
+                disabled={uploadingAvatar}
+              />
+            </label>
+            {data.avatarData && (
+              <button
+                onClick={handleRemoveAvatar}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors hover:bg-white/5"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Remove
+              </button>
+            )}
+            {avatarError && (
+              <span className="text-[10px]" style={{ color: "#f87171" }}>{avatarError}</span>
+            )}
           </div>
         </div>
       </div>
@@ -346,56 +355,6 @@ function PreferencesSection({
         )}
       </div>
 
-      {/* GitHub account */}
-      <div>
-        <label
-          className="text-xs font-medium mb-1.5 block"
-          style={{ color: "var(--text-muted)" }}
-        >
-          GitHub account
-        </label>
-        <div
-          className="flex items-center gap-2.5 px-3 py-2 rounded-lg max-w-sm"
-          style={{ backgroundColor: "var(--bg-input)" }}
-        >
-          {data.tokenConnected ? (
-            <>
-              <svg
-                className="w-4 h-4 shrink-0"
-                style={{ color: "#22c55e" }}
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2.5}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M4.5 12.75l6 6 9-13.5"
-                />
-              </svg>
-              <span
-                className="text-sm"
-                style={{ color: "var(--text-primary)" }}
-              >
-                {data.githubLogin}
-              </span>
-            </>
-          ) : (
-            <span className="text-sm" style={{ color: "var(--text-muted)" }}>
-              Not connected
-            </span>
-          )}
-        </div>
-      </div>
-      <GeminiSetupModal
-        open={showGeminiSetup}
-        onClose={() => setShowGeminiSetup(false)}
-        onSuccess={() => {
-          setShowGeminiSetup(false);
-          handleGenerateAvatar();
-        }}
-      />
     </div>
   );
 }
@@ -1403,6 +1362,304 @@ function RolesSection() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ============================================================================
+// Humans Section — manage workspace members (email + password)
+// ============================================================================
+
+interface HumanRecord {
+  id: number;
+  name: string;
+  email: string;
+  isOwner: boolean;
+  avatarData?: string | null;
+}
+
+function HumansSection() {
+  const { user, setUser } = useUser();
+  const [humans, setHumans] = useState<HumanRecord[]>([]);
+  const [humansLoading, setHumansLoading] = useState(true);
+  const [uploadingAvatarId, setUploadingAvatarId] = useState<number | null>(null);
+
+  // Add form
+  const [addName, setAddName] = useState("");
+  const [addEmail, setAddEmail] = useState("");
+  const [addPassword, setAddPassword] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [addSuccess, setAddSuccess] = useState(false);
+
+  // Password reset
+  const [resetId, setResetId] = useState<number | null>(null);
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+
+  function loadHumans() {
+    setHumansLoading(true);
+    fetch("/api/humans")
+      .then((r) => r.json())
+      .then((data) => { setHumans(data.humans ?? []); setHumansLoading(false); })
+      .catch(() => setHumansLoading(false));
+  }
+
+  useEffect(() => { loadHumans(); }, []);
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    setAdding(true);
+    setAddError(null);
+    setAddSuccess(false);
+    const res = await fetch("/api/humans", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: addName.trim(), email: addEmail.trim(), password: addPassword }),
+    });
+    if (res.ok) {
+      setAddName(""); setAddEmail(""); setAddPassword("");
+      setAddSuccess(true);
+      setTimeout(() => setAddSuccess(false), 2000);
+      loadHumans();
+    } else {
+      const data = await res.json();
+      setAddError(data.error ?? "Failed to add human");
+    }
+    setAdding(false);
+  }
+
+  async function handleRemove(id: number) {
+    await fetch(`/api/humans/${id}`, { method: "DELETE" });
+    loadHumans();
+  }
+
+  async function handleAvatarUpload(humanId: number, e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingAvatarId(humanId);
+    const form = new FormData();
+    form.append("avatar", file);
+    const res = await fetch("/api/humans/me/avatar", { method: "POST", body: form });
+    if (res.ok) {
+      const result = await res.json();
+      setHumans((hs) => hs.map((h) => h.id === humanId ? { ...h, avatarData: result.avatarData } : h));
+      // Update global user context so sidebar updates immediately
+      if (user && user.id === humanId) {
+        setUser({ ...user, avatarData: result.avatarData });
+      }
+    }
+    setUploadingAvatarId(null);
+    e.target.value = "";
+  }
+
+  async function handleResetPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!resetId) return;
+    setResetting(true);
+    setResetError(null);
+    const res = await fetch(`/api/humans/${resetId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: resetPassword }),
+    });
+    if (res.ok) {
+      setResetId(null);
+      setResetPassword("");
+    } else {
+      const data = await res.json();
+      setResetError(data.error ?? "Failed to reset password");
+    }
+    setResetting(false);
+  }
+
+  const inputCls = "w-full px-3 py-2 rounded-lg text-sm outline-none focus:ring-1 focus:ring-[var(--accent-blue)]";
+  const inputStyle = { backgroundColor: "var(--bg-input)", border: "1px solid var(--border-medium)", color: "var(--text-primary)" };
+
+  return (
+    <div className="space-y-8">
+      <div>
+        <h3 className="text-base font-semibold mb-1" style={{ color: "var(--text-primary)" }}>
+          Humans
+        </h3>
+        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+          Manage who can access this Bonsai workspace. Passwords are bcrypt-hashed in the database.
+        </p>
+      </div>
+
+      {/* Registered humans */}
+      <div className="space-y-3">
+        <h4 className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
+          Registered Humans ({humans.length})
+        </h4>
+        {humansLoading ? (
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>Loading...</p>
+        ) : humans.length === 0 ? (
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>No humans yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {humans.map((h) => (
+              <div key={h.id}>
+                <div
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg"
+                  style={{ backgroundColor: "var(--bg-input)", border: "1px solid var(--border-subtle)" }}
+                >
+                  {user?.id === h.id ? (
+                    <label
+                      className="w-8 h-8 rounded-full overflow-hidden shrink-0 cursor-pointer relative group"
+                      title="Click to upload photo"
+                    >
+                      {h.avatarData ? (
+                        <img src={h.avatarData} alt={h.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <div
+                          className="w-full h-full flex items-center justify-center text-sm font-medium text-white"
+                          style={{ backgroundColor: "var(--accent-indigo)" }}
+                        >
+                          {uploadingAvatarId === h.id ? "…" : h.name[0]?.toUpperCase()}
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-full">
+                        <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                        </svg>
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => handleAvatarUpload(h.id, e)}
+                        disabled={uploadingAvatarId !== null}
+                      />
+                    </label>
+                  ) : (
+                    <div
+                      className="w-8 h-8 rounded-full overflow-hidden shrink-0 flex items-center justify-center text-sm font-medium text-white"
+                      style={{ backgroundColor: h.avatarData ? "transparent" : "var(--accent-indigo)" }}
+                    >
+                      {h.avatarData ? (
+                        <img src={h.avatarData} alt={h.name} className="w-full h-full object-cover" />
+                      ) : (
+                        h.name[0]?.toUpperCase()
+                      )}
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>
+                        {h.name}
+                      </span>
+                      {h.isOwner && (
+                        <span
+                          className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                          style={{ backgroundColor: "rgba(91, 141, 249, 0.15)", color: "var(--accent-blue)" }}
+                        >
+                          Owner
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs" style={{ color: "var(--text-muted)" }}>{h.email}</span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => { setResetId(resetId === h.id ? null : h.id); setResetPassword(""); setResetError(null); }}
+                      className="px-2 py-1 rounded text-xs transition-colors hover:bg-white/10"
+                      style={{ color: "var(--text-muted)" }}
+                      title="Reset password"
+                    >
+                      pw
+                    </button>
+                    {!h.isOwner && (
+                      <button
+                        onClick={() => handleRemove(h.id)}
+                        className="p-1 rounded transition-colors hover:bg-white/10"
+                        style={{ color: "var(--text-muted)" }}
+                        title="Remove"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {resetId === h.id && (
+                  <form onSubmit={handleResetPassword} className="flex gap-2 mt-1 pl-11">
+                    <input
+                      type="password"
+                      value={resetPassword}
+                      onChange={(e) => setResetPassword(e.target.value)}
+                      placeholder="New password (min 8 chars)"
+                      className={inputCls + " flex-1"}
+                      style={inputStyle}
+                      required
+                      minLength={8}
+                    />
+                    <button
+                      type="submit"
+                      disabled={resetting}
+                      className="px-3 py-2 rounded-lg text-xs font-medium text-white disabled:opacity-40"
+                      style={{ backgroundColor: "var(--accent-blue)" }}
+                    >
+                      {resetting ? "..." : "Set"}
+                    </button>
+                  </form>
+                )}
+                {resetId === h.id && resetError && (
+                  <p className="text-xs pl-11 mt-1" style={{ color: "#f87171" }}>{resetError}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Add Human */}
+      <div className="space-y-3">
+        <h4 className="text-sm font-medium" style={{ color: "var(--text-secondary)" }}>
+          Add Human
+        </h4>
+        <form onSubmit={handleAdd} className="space-y-2 max-w-sm">
+          <input
+            type="text"
+            value={addName}
+            onChange={(e) => setAddName(e.target.value)}
+            placeholder="Full name"
+            className={inputCls}
+            style={inputStyle}
+            required
+          />
+          <input
+            type="email"
+            value={addEmail}
+            onChange={(e) => setAddEmail(e.target.value)}
+            placeholder="Email address"
+            className={inputCls}
+            style={inputStyle}
+            required
+          />
+          <input
+            type="password"
+            value={addPassword}
+            onChange={(e) => setAddPassword(e.target.value)}
+            placeholder="Initial password (min 8 chars)"
+            className={inputCls}
+            style={inputStyle}
+            required
+            minLength={8}
+          />
+          {addError && <p className="text-xs" style={{ color: "#f87171" }}>{addError}</p>}
+          <button
+            type="submit"
+            disabled={adding}
+            className="w-full px-4 py-2 rounded-lg text-xs font-medium text-white disabled:opacity-40"
+            style={{ backgroundColor: "var(--accent-blue)" }}
+          >
+            {adding ? "Adding..." : addSuccess ? "Added!" : "Add Human"}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }

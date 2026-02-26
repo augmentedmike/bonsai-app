@@ -150,6 +150,8 @@ export interface Project {
   shippedCount?: number;
   /** Personas actively assigned to building-state tickets in this project */
   activeWorkers?: { id: string; name: string; color: string; avatar?: string }[];
+  /** ISO timestamp of most recent activity (human comment or agent run) */
+  lastActivity?: string;
   githubOwner?: string;
   githubRepo?: string;
   localPath?: string;

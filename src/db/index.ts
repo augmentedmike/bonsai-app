@@ -349,6 +349,58 @@ if (!existingTables.has("project_messages")) {
   }
 }
 
+// ── humans + sessions tables (self-healing migration) ──────────────────
+// If humans table exists but still has old github_id column (pre-email-auth era),
+// drop and recreate — data was not production-critical at that point.
+if (existingTables.has("humans")) {
+  const humanCols = new Set(
+    (sqlite.prepare("PRAGMA table_info(humans)").all() as { name: string }[]).map((c) => c.name)
+  );
+  if (humanCols.has("github_id")) {
+    sqlite.exec(`
+      DROP TABLE IF EXISTS sessions;
+      DROP TABLE IF EXISTS humans;
+    `);
+    existingTables.delete("humans");
+    existingTables.delete("sessions");
+    console.log("[db] Dropped old github-based humans/sessions tables — recreating with email+password schema");
+  }
+}
+
+if (!existingTables.has("humans")) {
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS "humans" (
+      id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+      email TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      password_hash TEXT,
+      avatar_data TEXT,
+      is_owner INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS "sessions" (
+      id TEXT PRIMARY KEY NOT NULL,
+      human_id INTEGER NOT NULL REFERENCES humans(id) ON DELETE CASCADE,
+      expires_at TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_sessions_human_id ON sessions (human_id);
+    CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions (expires_at);
+  `);
+  console.log("[db] Auto-created humans + sessions tables (email+password auth)");
+}
+
+// ── Add avatar_data column if missing (self-healing) ──────────────────
+if (existingTables.has("humans")) {
+  const humanCols = new Set(
+    (sqlite.prepare("PRAGMA table_info(humans)").all() as { name: string }[]).map((c) => c.name)
+  );
+  if (!humanCols.has("avatar_data")) {
+    sqlite.exec(`ALTER TABLE humans ADD COLUMN avatar_data TEXT;`);
+    console.log("[db] Added avatar_data column to humans table");
+  }
+}
+
 // ── Performance indexes (self-healing, idempotent) ──────────────────
 sqlite.exec(`
   CREATE INDEX IF NOT EXISTS idx_tickets_project_id ON tickets (project_id);

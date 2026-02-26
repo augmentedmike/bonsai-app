@@ -1,36 +1,46 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 
-interface User {
+export interface Human {
   id: number;
   name: string;
-  avatarUrl: string | null;
+  email: string;
+  isOwner: boolean;
+  avatarData: string | null;
 }
 
 interface UserContextValue {
-  user: User | null;
-  setAvatarUrl: (url: string) => void;
+  user: Human | null;
+  loading: boolean;
+  setUser: (u: Human | null) => void;
 }
 
-const UserContext = createContext<UserContextValue>({ user: null, setAvatarUrl: () => {} });
+const UserContext = createContext<UserContextValue>({
+  user: null,
+  loading: true,
+  setUser: () => {},
+});
 
 export function UserProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<Human | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/onboard/user")
-      .then((r) => r.json())
-      .then((data) => { if (data.user) setUser(data.user); })
-      .catch(() => {});
-  }, []);
-
-  const setAvatarUrl = useCallback((url: string) => {
-    setUser((u) => u ? { ...u, avatarUrl: url } : u);
+    fetch("/api/auth/me")
+      .then((r) => {
+        if (r.status === 401) return null;
+        return r.json();
+      })
+      .then((data) => {
+        setUser(data ?? null);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
   }, []);
 
   return (
-    <UserContext.Provider value={{ user, setAvatarUrl }}>
+    <UserContext.Provider value={{ user, loading, setUser }}>
       {children}
     </UserContext.Provider>
   );

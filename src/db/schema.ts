@@ -280,6 +280,32 @@ export type ProjectMessageRow = typeof projectMessages.$inferSelect;
 
 // ── Type exports for prompt builder ──────────────
 
+// ============================================================================
+// HUMANS - Real people who authenticate with email + password
+// ============================================================================
+export const humans = sqliteTable("humans", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  email: text("email").notNull().unique(),
+  name: text("name").notNull(),
+  passwordHash: text("password_hash"), // bcryptjs hash; null until password is set
+  avatarData: text("avatar_data"), // base64 data URL (e.g. "data:image/png;base64,...")
+  isOwner: integer("is_owner", { mode: "boolean" }).notNull().default(false),
+  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
+// ============================================================================
+// SESSIONS - Auth sessions for humans
+// ============================================================================
+export const sessions = sqliteTable("sessions", {
+  id: text("id").primaryKey(), // UUID
+  humanId: integer("human_id").notNull().references(() => humans.id, { onDelete: "cascade" }),
+  expiresAt: text("expires_at").notNull(),
+  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
+export type HumanRow = typeof humans.$inferSelect;
+export type SessionRow = typeof sessions.$inferSelect;
+
 export type PersonaRow = typeof personas.$inferSelect;
 export type ProjectRow = typeof projects.$inferSelect;
 export type TicketRow = typeof tickets.$inferSelect;

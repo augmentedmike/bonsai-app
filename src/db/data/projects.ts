@@ -1,5 +1,5 @@
 import { db, asAsync, runAsync } from "./_driver";
-import { projects, tickets, comments, ticketAttachments, ticketAuditLog, personas, projectMessages } from "../schema";
+import { projects, tickets, comments, ticketAttachments, ticketAuditLog, personas, projectMessages, agentRuns } from "../schema";
 import { eq, and, or, isNull, sql } from "drizzle-orm";
 import type { Project } from "@/types";
 import { getSetting } from "./settings";
@@ -11,7 +11,8 @@ function projectFromRow(
   row: typeof projects.$inferSelect,
   ticketCount?: number,
   statusCounts?: StatusCounts,
-  activeWorkers?: WorkerInfo[]
+  activeWorkers?: WorkerInfo[],
+  lastActivity?: string | null
 ): Project {
   return {
     id: String(row.id),
@@ -36,7 +37,43 @@ function projectFromRow(
     localPath: row.localPath ?? undefined,
     buildCommand: row.buildCommand ?? undefined,
     runCommand: row.runCommand ?? undefined,
+    lastActivity: lastActivity ?? row.createdAt ?? undefined,
   };
+}
+
+/** Most recent activity timestamp per project — max of last agent run start or last comment */
+function getLastActivity(projectIds: number[]): Map<number, string> {
+  if (projectIds.length === 0) return new Map();
+  const idList = sql.join(projectIds.map((id) => sql`${id}`), sql`, `);
+
+  // Last agent run started_at (sim activity)
+  const runRows = db
+    .select({ projectId: tickets.projectId, ts: sql<string>`max(${agentRuns.startedAt})` })
+    .from(agentRuns)
+    .innerJoin(tickets, eq(agentRuns.ticketId, tickets.id))
+    .where(sql`${tickets.projectId} IN (${idList})`)
+    .groupBy(tickets.projectId)
+    .all();
+
+  // Last comment created_at (human + sim activity)
+  const commentRows = db
+    .select({ projectId: tickets.projectId, ts: sql<string>`max(${comments.createdAt})` })
+    .from(comments)
+    .innerJoin(tickets, eq(comments.ticketId, tickets.id))
+    .where(sql`${tickets.projectId} IN (${idList})`)
+    .groupBy(tickets.projectId)
+    .all();
+
+  const map = new Map<number, string>();
+  for (const r of runRows) {
+    if (r.projectId != null && r.ts) map.set(r.projectId, r.ts);
+  }
+  for (const r of commentRows) {
+    if (r.projectId == null || !r.ts) continue;
+    const existing = map.get(r.projectId);
+    if (!existing || r.ts > existing) map.set(r.projectId, r.ts);
+  }
+  return map;
 }
 
 /** Ticket totals per project */
@@ -152,7 +189,8 @@ export function getProjects(): Promise<Project[]> {
   const counts = getTicketCounts(ids);
   const statuses = getStatusCounts(ids);
   const workers = getActiveWorkers(ids);
-  return asAsync(rows.map((r) => projectFromRow(r, counts.get(r.id) ?? 0, statuses.get(r.id), workers.get(r.id))));
+  const activity = getLastActivity(ids);
+  return asAsync(rows.map((r) => projectFromRow(r, counts.get(r.id) ?? 0, statuses.get(r.id), workers.get(r.id), activity.get(r.id))));
 }
 
 export function createProject(data: {

@@ -316,7 +316,7 @@ function MessageBubble({ message }: { message: ProjectMessage }) {
   const { user } = useUser();
 
   // Resolve author data once — no conditionals below
-  const avatarUrl = message.authorType === "human" ? user?.avatarUrl : message.author?.avatarUrl;
+  const avatarUrl = message.authorType === "human" ? user?.avatarData : message.author?.avatarUrl;
   const authorName = message.author?.name ?? "?";
   const badgeBg = message.authorType === "human" ? "rgba(59, 130, 246, 0.15)" : "rgba(139, 92, 246, 0.15)";
   const badgeColor = message.authorType === "human" ? "#60a5fa" : "#a78bfa";

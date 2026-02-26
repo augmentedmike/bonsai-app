@@ -4,6 +4,7 @@ import { getGlobalPersonas } from "@/db/data/personas";
 import { createTicket, getTicketsByProject, updateTicket } from "@/db/data/tickets";
 import { createProject } from "@/db/data/projects";
 import { fireDispatch } from "@/lib/dispatch-agent";
+import { getCurrentHuman } from "@/lib/auth";
 import { db } from "@/db";
 import { agentRuns, personas, projects } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
@@ -96,7 +97,7 @@ export async function GET(req: Request) {
 
 /** POST — save message and dispatch to @mentioned persona, or @operator by default */
 export async function POST(req: Request) {
-  const { content, authorId } = await req.json();
+  const { content } = await req.json();
 
   if (!content?.trim()) {
     return NextResponse.json({ error: "empty message" }, { status: 400 });
@@ -104,10 +105,14 @@ export async function POST(req: Request) {
 
   const projectId = await ensureGlobalProject();
 
+  // Use authenticated human's id for authorId
+  const human = await getCurrentHuman(req);
+  const authorId = human?.id ?? 1;
+
   const msg = await createProjectMessage({
     projectId,
     authorType: "human",
-    authorId: authorId || 1,
+    authorId,
     content: content.trim(),
   });
 

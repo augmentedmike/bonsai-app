@@ -4,6 +4,7 @@ import { getGlobalPersonas } from "@/db/data/personas";
 import { getProjectById } from "@/db/data/projects";
 import { createTicket, getTicketsByProject, updateTicket } from "@/db/data/tickets";
 import { fireDispatch } from "@/lib/dispatch-agent";
+import { getCurrentHuman } from "@/lib/auth";
 import { db } from "@/db";
 import { agentRuns, personas } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
@@ -59,7 +60,7 @@ export async function POST(
 ) {
   const { id } = await params;
   const projectId = Number(id);
-  const { content, authorId, attachments } = await req.json();
+  const { content, attachments } = await req.json();
 
   if (!content?.trim() && (!attachments || attachments.length === 0)) {
     return NextResponse.json({ error: "empty message" }, { status: 400 });
@@ -70,11 +71,15 @@ export async function POST(
     return NextResponse.json({ error: "project not found" }, { status: 404 });
   }
 
+  // Use authenticated human's id for authorId
+  const human = await getCurrentHuman(req);
+  const authorId = human?.id ?? 1;
+
   // Save human message with attachments
   const msg = await createProjectMessage({
     projectId,
     authorType: "human",
-    authorId: authorId || 1,
+    authorId,
     content: content?.trim() || "",
     attachments: attachments && attachments.length > 0 ? JSON.stringify(attachments) : null,
   });
