@@ -513,14 +513,20 @@ export async function POST(
   if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
 
   // ── Per-project dispatch pause gate ───────────────────────────
+  // Explicit @name or @role mentions always bypass the pause — the human is
+  // intentionally waking a specific Sim regardless of focus/pause state.
+  const isExplicitMention = !!(targetPersonaName || targetPersonaId || requestedRole);
   const pausedUntil = await getSetting(projectPauseKey(project.slug));
-  if (isPaused(pausedUntil)) {
+  if (isPaused(pausedUntil) && !isExplicitMention) {
     const remainingMs = pauseRemainingMs(pausedUntil);
     console.log(`[dispatch] Rejecting — project "${project.slug}" paused until ${pausedUntil}`);
     return NextResponse.json(
       { error: "dispatch_paused", resumesAt: pausedUntil, remainingMs },
       { status: 503 }
     );
+  }
+  if (isPaused(pausedUntil) && isExplicitMention) {
+    console.log(`[dispatch] Paused but explicit @mention — allowing dispatch for "${project.slug}"`);
   }
 
   // ── Hold gate — no dispatches while ticket is on hold ───────
