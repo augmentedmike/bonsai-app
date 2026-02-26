@@ -9,6 +9,31 @@ import {
   projectPauseKey,
   projectPauseReasonKey,
 } from "@/lib/credit-pause";
+import { getProjectBySlug, getProjects } from "@/db/data/projects";
+import { getTicketsByProject } from "@/db/data/tickets";
+import { fireDispatch } from "@/lib/dispatch-agent";
+
+const API_BASE = process.env.API_BASE || "http://localhost:3080";
+
+/** Fire dispatch for the inbox ticket of a project if there's a pending human message. */
+async function dispatchPendingInbox(projectSlug: string) {
+  try {
+    const project = await getProjectBySlug(projectSlug);
+    if (!project) return;
+    const inbox = await getTicketsByProject(Number(project.id), "[Inbox]");
+    if (!inbox) return;
+    // Only dispatch if human commented more recently than the last agent activity
+    const hasNewHumanContext =
+      inbox.lastHumanCommentAt &&
+      (!inbox.lastAgentActivity ||
+        new Date(inbox.lastHumanCommentAt) > new Date(inbox.lastAgentActivity));
+    if (!hasNewHumanContext) return;
+    console.log(`[credit-pause/resume] Dispatching pending inbox for project "${projectSlug}" (ticket ${inbox.id})`);
+    fireDispatch(API_BASE, inbox.id, { conversational: true }, "resume-dispatch");
+  } catch (err) {
+    console.error(`[credit-pause/resume] dispatchPendingInbox error for "${projectSlug}":`, err);
+  }
+}
 
 /** GET — returns dispatch pause status for a project, or all paused projects */
 export async function GET(req: NextRequest) {
@@ -99,10 +124,22 @@ export async function DELETE(req: NextRequest) {
   const all = req.nextUrl.searchParams.get("all");
 
   if (all === "true") {
+    // Collect which slugs were actually paused before clearing
+    const rows = await getSettingsByPrefix(`${CREDITS_PAUSED_UNTIL}:`);
+    const pausedSlugs = rows
+      .filter((r) => isPaused(r.value))
+      .map((r) => r.key.replace(`${CREDITS_PAUSED_UNTIL}:`, ""));
+
     await deleteSettingsByPrefix(`${CREDITS_PAUSED_UNTIL}:`);
     await deleteSettingsByPrefix(`${CREDITS_PAUSE_REASON}:`);
     await deleteSetting("focused_project");
     console.log("[dispatch-pause] All project pauses cleared, focus cleared");
+
+    // Fire dispatch for any projects that had pending inbox messages
+    for (const slug of pausedSlugs) {
+      dispatchPendingInbox(slug);
+    }
+
     return NextResponse.json({ paused: false });
   }
 
@@ -117,6 +154,9 @@ export async function DELETE(req: NextRequest) {
   await deleteSetting(reasonKey);
 
   console.log(`[dispatch-pause] Project "${projectSlug}" manually resumed — pause cleared`);
+
+  // Fire dispatch if there's a pending inbox message
+  dispatchPendingInbox(projectSlug);
 
   return NextResponse.json({ paused: false });
 }

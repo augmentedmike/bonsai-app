@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { WorkerRole } from "@/types";
 import { workerRoles } from "@/lib/worker-types";
 import { GeminiSetupModal } from "@/components/gemini-setup-modal";
+import { VoiceTextarea } from "@/components/voice-textarea";
 
 interface AddWorkerModalProps {
   open: boolean;
@@ -393,7 +394,7 @@ export function AddWorkerModal({ open, onClose, projectSlug: _projectSlug }: Add
                 <label className="block text-xs font-medium mb-1.5 text-[var(--text-muted)]">
                   Personality & Background
                 </label>
-                <textarea
+                <VoiceTextarea
                   value={personality}
                   onChange={(e) => setPersonality(e.target.value)}
                   placeholder={selectedRole ? workerRoles[selectedRole].placeholder : "Describe their personality..."}

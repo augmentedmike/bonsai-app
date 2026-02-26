@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import type { Role, Persona, ClaudeSkillDefinition } from "@/types";
 import { ConfirmDelete } from "@/components/ui/confirm-delete";
+import { VoiceTextarea } from "@/components/voice-textarea";
 
 // Human-readable labels for prompt keys
 const PROMPT_LABELS: Record<string, string> = {
@@ -868,7 +869,7 @@ Your skill instructions here...
 
                       <div>
                         <label className="block text-xs font-medium mb-1.5 text-[var(--text-muted)]">Description</label>
-                        <textarea
+                        <VoiceTextarea
                           value={roleForm.description}
                           onChange={(e) => setRoleForm({ ...roleForm, description: e.target.value })}
                           placeholder="What this role does..."
@@ -957,7 +958,7 @@ Your skill instructions here...
                                   {/* Skill content editor */}
                                   {isExpanded && (
                                     <div className="px-3 pb-3 border-t border-[var(--border-subtle)]">
-                                      <textarea
+                                      <VoiceTextarea
                                         value={skill.content}
                                         onChange={(e) => updateSkillContent(idx, e.target.value)}
                                         placeholder={`---
@@ -1066,7 +1067,7 @@ Instructions for Claude...`}
                                             </p>
                                           </div>
                                         )}
-                                        <textarea
+                                        <VoiceTextarea
                                           value={editValue !== undefined ? editValue : currentValue}
                                           onChange={(e) => setPromptEdits({ ...promptEdits, [key]: e.target.value })}
                                           rows={8}
@@ -1268,7 +1269,7 @@ Instructions for Claude...`}
                                 <svg className={`w-3.5 h-3.5 ${rerolling === "appearance" ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" /></svg>
                               </button>
                             </div>
-                            <textarea
+                            <VoiceTextarea
                               value={appearance}
                               onChange={(e) => setAppearance(e.target.value)}
                               placeholder="What do they look like? Physical features, hair, clothing..."
@@ -1284,7 +1285,7 @@ Instructions for Claude...`}
                                 <svg className={`w-3.5 h-3.5 ${rerolling === "style" ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" /></svg>
                               </button>
                             </div>
-                            <textarea
+                            <VoiceTextarea
                               value={commStyle}
                               onChange={(e) => setCommStyle(e.target.value)}
                               placeholder="How do they communicate? Tone, energy, quirks..."

@@ -283,7 +283,7 @@ export function ProjectChatPanel({
           personasList={personas}
           placeholder="Message your team... @ to mention"
           onPost={handlePost}
-          enableVoice={false}
+          enableVoice={true}
         />
 
       <style>{`

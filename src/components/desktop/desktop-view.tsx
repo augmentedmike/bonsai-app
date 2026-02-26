@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useVoiceInput } from "@/hooks/use-voice-input";
 import { VoiceButton } from "@/components/voice-button";
+import { VoiceTextarea } from "@/components/voice-textarea";
 import type { ProjectNote, ExtractedItem, TicketType } from "@/types";
 
 // ── Type badge colors ────────────────────────────
@@ -290,7 +291,7 @@ export function DesktopView({ projectId }: DesktopViewProps) {
         {/* Text input area */}
         {showTextInput && (
           <div className="mb-3">
-            <textarea
+            <VoiceTextarea
               ref={textareaRef}
               value={textDraft}
               onChange={(e) => setTextDraft(e.target.value)}

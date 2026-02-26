@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import type { TicketType } from "@/types";
+import { VoiceTextarea } from "@/components/voice-textarea";
 
 interface AddTicketModalProps {
   open: boolean;
@@ -520,7 +521,7 @@ export function AddTicketModal({ open, onClose, projectSlug }: AddTicketModalPro
                   </span>
                 )}
               </div>
-              <textarea
+              <VoiceTextarea
                 value={acceptanceCriteria}
                 onChange={(e) => setAcceptanceCriteria(e.target.value)}
                 placeholder={ticketTypes[type].criteriaPlaceholder}

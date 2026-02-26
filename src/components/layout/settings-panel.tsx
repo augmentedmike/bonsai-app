@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { GeminiSetupModal } from "@/components/gemini-setup-modal";
+import { VoiceTextarea } from "@/components/voice-textarea";
 import { useLanguage } from "@/i18n/language-context";
 import type { Locale } from "@/i18n/translations";
 
@@ -845,7 +846,7 @@ function PromptsSection() {
             >
               Content
             </label>
-            <textarea
+            <VoiceTextarea
               value={editValue}
               onChange={(e) => {
                 setEditValue(e.target.value);
@@ -1166,7 +1167,7 @@ function RolesSection() {
             <label className="text-xs font-medium mb-1.5 block shrink-0" style={{ color: "var(--text-muted)" }}>
               System Prompt
             </label>
-            <textarea
+            <VoiceTextarea
               value={editPrompt}
               onChange={(e) => { setEditPrompt(e.target.value); setDirty(true); }}
               rows={12}
@@ -1379,7 +1380,7 @@ function RolesSection() {
                       <label className="text-xs font-medium mb-1.5 block shrink-0" style={{ color: "var(--text-muted)" }}>
                         Skill instructions (markdown)
                       </label>
-                      <textarea
+                      <VoiceTextarea
                         value={skillContent}
                         onChange={(e) => setSkillContent(e.target.value)}
                         placeholder="# Skill Title&#10;&#10;Instructions for the agent..."
