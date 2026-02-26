@@ -252,7 +252,7 @@ function ActiveAgentCard({ run, projectSlug }: { run: AgentRun; projectSlug?: st
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-              {run.personaName || "Agent"}
+              {run.personaName || "Sim"}
             </span>
             {run.personaRole && (
               <span className="px-1.5 py-0.5 rounded text-[10px] font-medium"
@@ -328,7 +328,7 @@ function HistoryRow({ run, projectSlug }: { run: AgentRun; projectSlug?: string 
       <div className="flex items-center gap-2 min-w-0">
         <PersonaAvatar name={run.personaName} color={run.personaColor} size={24} />
         <span className="truncate text-xs" style={{ color: "var(--text-secondary)" }}>
-          {run.personaName || "Agent"}
+          {run.personaName || "Sim"}
         </span>
       </div>
       {/* Ticket */}
@@ -445,7 +445,7 @@ export function AgentActivityView({ projectSlug }: { projectSlug?: string }) {
       <div className="flex-shrink-0 border-b px-8 py-5" style={{ borderColor: "var(--border-subtle)" }}>
         <div className="flex items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-3">
-            <h1 className="text-xl font-semibold" style={{ color: "var(--text-primary)" }}>Agent Activity</h1>
+            <h1 className="text-xl font-semibold" style={{ color: "var(--text-primary)" }}>Sim Activity</h1>
             {activeRuns.length > 0 && (
               <div className="flex items-center gap-1.5">
                 <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "#22c55e", animation: "pulse 2s cubic-bezier(0.4,0,0.6,1) infinite" }} />
@@ -499,7 +499,7 @@ export function AgentActivityView({ projectSlug }: { projectSlug?: string }) {
           {activeRuns.length === 0 ? (
             <div className="rounded-lg px-6 py-8 text-center"
               style={{ backgroundColor: "var(--bg-card, var(--bg-secondary))", border: "1px solid var(--border-subtle)" }}>
-              <span className="text-sm" style={{ color: "var(--text-muted)" }}>No agents running</span>
+              <span className="text-sm" style={{ color: "var(--text-muted)" }}>No sims running</span>
             </div>
           ) : (
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
@@ -551,7 +551,7 @@ export function AgentActivityView({ projectSlug }: { projectSlug?: string }) {
               {/* Header */}
               <div className="grid gap-3 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider"
                 style={{ gridTemplateColumns: "2fr 3fr 1fr 1fr 1fr 1fr 1fr", backgroundColor: "var(--bg-card, var(--bg-secondary))", color: "var(--text-muted)", borderBottom: "1px solid var(--border-subtle)" }}>
-                <span>Agent</span>
+                <span>Sim</span>
                 <span>Ticket</span>
                 <span>Phase</span>
                 <span>Status</span>
