@@ -1315,10 +1315,10 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
                   }
                   if (participants.length === 0) return null;
                   return (
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {participants.map((p) => (
-                        <div key={p.id} className="flex items-center gap-1.5" title={`${p.name}${p.role ? ` — ${p.role}` : ""}`}>
-                          <div className="relative w-7 h-7 rounded-full overflow-hidden flex-shrink-0" style={{ border: `2px solid ${p.color || "rgba(255,255,255,0.2)"}` }}>
+                    <div className="flex items-center flex-shrink-0" style={{ gap: 0 }}>
+                      {participants.map((p, i) => (
+                        <div key={p.id} className="relative flex-shrink-0" style={{ marginLeft: i === 0 ? 0 : -8, zIndex: i }} title={`${p.name}${p.role ? ` — ${p.role}` : ""}`}>
+                          <div className="w-7 h-7 rounded-full overflow-hidden" style={{ border: `2px solid ${p.color || "rgba(255,255,255,0.2)"}` }}>
                             {p.avatarUrl ? (
                               <img src={p.avatarUrl} alt={p.name} className="w-full h-full object-cover" />
                             ) : (
@@ -1326,11 +1326,10 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
                                 {p.name[0]}
                               </div>
                             )}
-                            {p.isActive && (
-                              <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-green-400 border border-black" />
-                            )}
                           </div>
-                          <span className="text-xs" style={{ color: "var(--text-muted)" }}>{p.name}</span>
+                          {p.isActive && (
+                            <span className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-green-400 border border-black" />
+                          )}
                         </div>
                       ))}
                     </div>

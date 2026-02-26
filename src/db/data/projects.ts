@@ -1,5 +1,5 @@
 import { db, asAsync, runAsync } from "./_driver";
-import { projects, tickets, comments, ticketAttachments, ticketAuditLog, personas, projectMessages, agentRuns } from "../schema";
+import { projects, tickets, comments, ticketAttachments, ticketAuditLog, personas, projectMessages, agentRuns, projectNotes, extractedItems } from "../schema";
 import { eq, and, or, isNull, sql } from "drizzle-orm";
 import type { Project } from "@/types";
 import { getSetting } from "./settings";
@@ -7,12 +7,15 @@ import { getSetting } from "./settings";
 type StatusCounts = { planning: number; building: number; shipped: number };
 type WorkerInfo = { id: string; name: string; color: string; avatar: string | null };
 
+type TypeCounts = { bug: number; feature: number; chore: number };
+
 function projectFromRow(
   row: typeof projects.$inferSelect,
   ticketCount?: number,
   statusCounts?: StatusCounts,
   activeWorkers?: WorkerInfo[],
-  lastActivity?: string | null
+  lastActivity?: string | null,
+  typeCounts?: TypeCounts
 ): Project {
   return {
     id: String(row.id),
@@ -26,6 +29,7 @@ function projectFromRow(
     planningCount: statusCounts?.planning ?? 0,
     buildingCount: statusCounts?.building ?? 0,
     shippedCount: statusCounts?.shipped ?? 0,
+    bugCount: typeCounts?.bug ?? 0,
     activeWorkers: activeWorkers?.map((w) => ({
       id: w.id,
       name: w.name,
@@ -87,6 +91,26 @@ function getTicketCounts(projectIds: number[]): Map<number, number> {
     .all();
   const map = new Map<number, number>();
   for (const r of rows) map.set(r.projectId!, r.count);
+  return map;
+}
+
+/** Ticket counts broken down by type (bug/regression/feature/epic) per project */
+function getTypeCounts(projectIds: number[]): Map<number, { bug: number; feature: number; chore: number }> {
+  if (projectIds.length === 0) return new Map();
+  const rows = db
+    .select({ projectId: tickets.projectId, type: tickets.type, count: sql<number>`count(*)` })
+    .from(tickets)
+    .where(sql`${tickets.projectId} IN (${sql.join(projectIds.map(id => sql`${id}`), sql`, `)}) AND ${tickets.deletedAt} IS NULL`)
+    .groupBy(tickets.projectId, tickets.type)
+    .all();
+  const map = new Map<number, { bug: number; feature: number; chore: number }>();
+  for (const r of rows) {
+    if (!map.has(r.projectId!)) map.set(r.projectId!, { bug: 0, feature: 0, chore: 0 });
+    const e = map.get(r.projectId!)!;
+    if (r.type === "bug") e.bug = r.count;
+    else if (r.type === "feature") e.feature = r.count;
+    else if (r.type === "chore") e.chore = r.count;
+  }
   return map;
 }
 
@@ -190,7 +214,8 @@ export function getProjects(): Promise<Project[]> {
   const statuses = getStatusCounts(ids);
   const workers = getActiveWorkers(ids);
   const activity = getLastActivity(ids);
-  return asAsync(rows.map((r) => projectFromRow(r, counts.get(r.id) ?? 0, statuses.get(r.id), workers.get(r.id), activity.get(r.id))));
+  const types = getTypeCounts(ids);
+  return asAsync(rows.map((r) => projectFromRow(r, counts.get(r.id) ?? 0, statuses.get(r.id), workers.get(r.id), activity.get(r.id), types.get(r.id))));
 }
 
 export function createProject(data: {
@@ -247,6 +272,13 @@ export function softDeleteProject(id: number): Promise<void> {
 
     // Hard-delete project messages
     db.delete(projectMessages).where(eq(projectMessages.projectId, id)).run();
+
+    // Hard-delete project notes and extracted items (FK refs to project)
+    db.delete(projectNotes).where(eq(projectNotes.projectId, id)).run();
+    db.delete(extractedItems).where(eq(extractedItems.projectId, id)).run();
+
+    // Hard-delete project-scoped personas
+    db.delete(personas).where(eq(personas.projectId, id)).run();
 
     // Hard-delete the project so the slug is freed for reuse
     db.delete(projects).where(eq(projects.id, id)).run();

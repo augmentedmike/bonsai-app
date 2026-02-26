@@ -13,7 +13,7 @@ import {
 
 type SortKey = "name" | "tickets" | "activity";
 type SortDir = "asc" | "desc";
-type Filter = "all" | "github" | "no-github" | "active" | "empty";
+type Filter = "all" | "building" | "planning" | "bugs" | "empty";
 
 interface PauseState {
   pausedSlugs: Set<string>;
@@ -82,17 +82,19 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
   }, []);
 
   const totalTickets = projects.reduce((s, p) => s + (p.ticketCount ?? 0), 0);
-  const withGithub = projects.filter((p) => p.githubRepo).length;
+  const totalPlanning = projects.reduce((s, p) => s + (p.planningCount ?? 0), 0);
   const totalBuilding = projects.reduce((s, p) => s + (p.buildingCount ?? 0), 0);
+  const totalShipped = projects.reduce((s, p) => s + (p.shippedCount ?? 0), 0);
+  const totalBugs = projects.reduce((s, p) => s + (p.bugCount ?? 0), 0);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     let list = projects.filter(
       (p) => p.name.toLowerCase().includes(q) || (p.description ?? "").toLowerCase().includes(q) || (p.techStack ?? "").toLowerCase().includes(q)
     );
-    if (filter === "github") list = list.filter((p) => p.githubRepo);
-    if (filter === "no-github") list = list.filter((p) => !p.githubRepo);
-    if (filter === "active") list = list.filter((p) => (p.ticketCount ?? 0) > 5);
+    if (filter === "building") list = list.filter((p) => (p.buildingCount ?? 0) > 0);
+    if (filter === "planning") list = list.filter((p) => (p.planningCount ?? 0) > 0);
+    if (filter === "bugs") list = list.filter((p) => ((p.bugCount ?? 0)) > 0);
     if (filter === "empty") list = list.filter((p) => (p.ticketCount ?? 0) === 0);
     return [...list].sort((a, b) => {
       let cmp = 0;
@@ -131,7 +133,8 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
 
   async function handleDelete(e: React.MouseEvent, id: string) {
     e.stopPropagation();
-    await fetch("/api/projects", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    const res = await fetch("/api/projects", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    if (!res.ok) { setDeletingId(null); return; }
     setProjects((prev) => prev.filter((p) => p.id !== id));
     setDeletingId(null); router.refresh();
   }
@@ -176,9 +179,9 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
 
   const filterChips: { key: Filter; label: string; count: number }[] = [
     { key: "all", label: "All", count: projects.length },
-    { key: "active", label: "Active", count: projects.filter((p) => (p.ticketCount ?? 0) > 5).length },
-    { key: "github", label: "GitHub", count: withGithub },
-    { key: "no-github", label: "No GitHub", count: projects.length - withGithub },
+    { key: "building", label: "Building", count: projects.filter((p) => (p.buildingCount ?? 0) > 0).length },
+    { key: "planning", label: "Planning", count: projects.filter((p) => (p.planningCount ?? 0) > 0).length },
+    { key: "bugs", label: "Bugs", count: projects.filter((p) => ((p.bugCount ?? 0)) > 0).length },
     { key: "empty", label: "Empty", count: projects.filter((p) => (p.ticketCount ?? 0) === 0).length },
   ];
 
@@ -224,9 +227,11 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
         <div className="flex gap-2 px-7 pb-4 flex-shrink-0">
           {[
             { label: "Projects", value: projects.length, color: "var(--accent-blue)" },
-            { label: "Tickets", value: totalTickets, color: "var(--accent-green)" },
-            { label: "In progress", value: totalBuilding, color: "var(--column-building)" },
-            { label: "GitHub", value: `${withGithub}/${projects.length}`, color: "var(--accent-purple)" },
+            { label: "Tickets", value: totalTickets, color: "var(--text-primary)" },
+            { label: "Planning", value: totalPlanning, color: "var(--column-planning)" },
+            { label: "Building", value: totalBuilding, color: "var(--column-building)" },
+            { label: "Shipped", value: totalShipped, color: "var(--column-shipped)" },
+            { label: "Bugs", value: totalBugs, color: "var(--accent-red)" },
           ].map(({ label, value, color }) => (
             <div key={label} className="flex items-center gap-2.5 px-4 py-2.5 rounded-lg flex-1" style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-subtle)" }}>
               <span className="text-xl font-semibold tabular-nums" style={{ color }}>{value}</span>
