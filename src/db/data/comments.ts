@@ -73,7 +73,8 @@ export function enrichComments(
       if (persona) {
         author = {
           name: persona.name,
-          avatarUrl: persona.avatar || undefined,
+          // Return a URL reference, not the raw base64 blob, to keep responses lean
+          avatarUrl: persona.avatar ? `/api/personas/${persona.id}/avatar` : undefined,
           color: persona.color,
           role: persona.role || undefined,
         };
