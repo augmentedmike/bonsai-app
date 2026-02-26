@@ -131,17 +131,31 @@ export function Sidebar({ userName }: { userName?: string }) {
     >
       <div className="flex flex-col items-center gap-1">
         {/* Logo */}
-        <div className="flex flex-col items-center mb-4">
-          <div className="w-9 h-9 rounded-xl overflow-hidden">
-            <Image src="/bonsai-os-logo-l.png" alt="Bonsai" width={36} height={36} className="w-full h-full object-cover" />
+        {activeSlug ? (
+          <Link href={`/p/${activeSlug}/board`} className="flex flex-col items-center mb-4 cursor-pointer">
+            <div className="w-9 h-9 rounded-xl overflow-hidden">
+              <Image src="/bonsai-os-logo-l.png" alt="Bonsai" width={36} height={36} className="w-full h-full object-cover" />
+            </div>
+            <span
+              className="text-[9px] font-semibold mt-1 tracking-wide uppercase"
+            >
+              <span style={{ color: "var(--text-primary)" }}>BONS</span>
+              <span style={{ color: "var(--accent-pink)" }}>AI</span>
+            </span>
+          </Link>
+        ) : (
+          <div className="flex flex-col items-center mb-4">
+            <div className="w-9 h-9 rounded-xl overflow-hidden">
+              <Image src="/bonsai-os-logo-l.png" alt="Bonsai" width={36} height={36} className="w-full h-full object-cover" />
+            </div>
+            <span
+              className="text-[9px] font-semibold mt-1 tracking-wide uppercase"
+            >
+              <span style={{ color: "var(--text-primary)" }}>BONS</span>
+              <span style={{ color: "var(--accent-pink)" }}>AI</span>
+            </span>
           </div>
-          <span
-            className="text-[9px] font-semibold mt-1 tracking-wide uppercase"
-          >
-            <span style={{ color: "var(--text-primary)" }}>BONS</span>
-            <span style={{ color: "var(--accent-pink)" }}>AI</span>
-          </span>
-        </div>
+        )}
 
         {/* Global activity — always visible */}
         <Link
