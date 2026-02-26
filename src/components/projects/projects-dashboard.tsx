@@ -227,8 +227,12 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
   const [projects, setProjects] = useState<Project[]>(initialProjects);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
-  const [sortKey, setSortKey] = useState<SortKey>("activity");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [sortKey, setSortKey] = useState<SortKey>(() => {
+    try { return (localStorage.getItem("bonsai-projects-sort-key") as SortKey) || "activity"; } catch { return "activity"; }
+  });
+  const [sortDir, setSortDir] = useState<SortDir>(() => {
+    try { return (localStorage.getItem("bonsai-projects-sort-dir") as SortDir) || "desc"; } catch { return "desc"; }
+  });
   const [showAdd, setShowAdd] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
 
@@ -278,8 +282,15 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
   }, [projects, search, filter, sortKey, sortDir]);
 
   function toggleSort(key: SortKey) {
-    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else { setSortKey(key); setSortDir("desc"); }
+    if (sortKey === key) {
+      const next: SortDir = sortDir === "asc" ? "desc" : "asc";
+      setSortDir(next);
+      try { localStorage.setItem("bonsai-projects-sort-dir", next); } catch {}
+    } else {
+      setSortKey(key);
+      setSortDir("desc");
+      try { localStorage.setItem("bonsai-projects-sort-key", key); localStorage.setItem("bonsai-projects-sort-dir", "desc"); } catch {}
+    }
   }
 
   function startEdit(e: React.MouseEvent, id: string, field: "name" | "description", current: string) {

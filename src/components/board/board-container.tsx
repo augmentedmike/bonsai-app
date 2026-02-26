@@ -38,6 +38,19 @@ export function BoardContainer({
     } catch {}
   }, []);
 
+  // Esc → projects index (only when no modal/input is capturing the key)
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (document.querySelector('[role="dialog"]')) return;
+      router.push("/projects");
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [router]);
+
   function setChat(open: boolean) {
     setChatOpen(open);
     try { localStorage.setItem("bonsai-chat-open", String(open)); } catch {}
