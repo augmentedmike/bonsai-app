@@ -19,7 +19,8 @@ function personaFromRow(row: typeof personas.$inferSelect): Persona {
     name: row.name,
     slug: row.slug,
     color: row.color,
-    avatar: row.avatar ?? undefined,
+    // Return a URL reference, not the raw base64 blob, to keep API payloads lean
+    avatar: row.avatar ? `/api/personas/${row.id}/avatar` : undefined,
     roleId: row.roleId ?? undefined,
     role: row.role ?? "developer",
     personality: row.personality ?? undefined,
