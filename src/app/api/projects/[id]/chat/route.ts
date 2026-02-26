@@ -44,7 +44,7 @@ export async function GET(
         id: r.personaId || "agent",
         name: r.personaName || "Agent",
         color: r.personaColor || "#6366f1",
-        avatarUrl: r.personaAvatar ?? undefined,
+        avatarUrl: r.personaAvatar && r.personaId ? `/api/personas/${r.personaId}/avatar` : undefined,
       });
     }
   }
@@ -117,13 +117,13 @@ export async function POST(
       }, `project-chat/@mention`);
     }
   } else {
-    // No @mention — route to @researcher
+    // No @mention — route to @operator
     fireDispatch(API_BASE, inboxTicketId, {
       commentContent: trimmed,
-      targetRole: "researcher",
+      targetRole: "operator",
       conversational: true,
       silent: true,
-    }, "project-chat/researcher");
+    }, "project-chat/operator");
   }
 
   return NextResponse.json({ ok: true, message: msg });

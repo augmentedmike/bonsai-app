@@ -219,7 +219,7 @@ function HeartbeatBar({ hb, onReauthDone }: { hb: HeartbeatStatus | null; onReau
 
 // --- Active Agent Card ---
 
-function ActiveAgentCard({ run, projectSlug }: { run: AgentRun; projectSlug: string }) {
+function ActiveAgentCard({ run, projectSlug }: { run: AgentRun; projectSlug?: string }) {
   const [elapsed, setElapsed] = useState(run.startedAt ? formatElapsed(run.startedAt) : "0s");
   const [, setTick] = useState(0);
 
@@ -317,7 +317,7 @@ function ActiveAgentCard({ run, projectSlug }: { run: AgentRun; projectSlug: str
 
 type FilterTab = "all" | "completed" | "failed" | "timeout" | "abandoned";
 
-function HistoryRow({ run, projectSlug }: { run: AgentRun; projectSlug: string }) {
+function HistoryRow({ run, projectSlug }: { run: AgentRun; projectSlug?: string }) {
   const slug = run.projectSlug || projectSlug;
   const ticketHref = slug ? `/p/${slug}/board` : undefined;
 
@@ -377,7 +377,7 @@ function HistoryRow({ run, projectSlug }: { run: AgentRun; projectSlug: string }
 
 // --- Main Component ---
 
-export function AgentActivityView({ projectSlug }: { projectSlug: string }) {
+export function AgentActivityView({ projectSlug }: { projectSlug?: string }) {
   const [runs, setRuns] = useState<AgentRun[]>([]);
   const [creditPause, setCreditPause] = useState<CreditPauseStatus | null>(null);
   const [filter, setFilter] = useState<FilterTab>("all");
@@ -387,14 +387,19 @@ export function AgentActivityView({ projectSlug }: { projectSlug: string }) {
     let cancelled = false;
     async function fetchData() {
       try {
-        const [runsRes, pauseRes, hbRes] = await Promise.all([
-          fetch(`/api/agent-runs?limit=100&projectSlug=${projectSlug}`),
-          fetch(`/api/credit-pause?projectSlug=${projectSlug}`),
+        const runsUrl = projectSlug
+          ? `/api/agent-runs?limit=100&projectSlug=${projectSlug}`
+          : `/api/agent-runs?limit=200`;
+        const pausePromise = projectSlug
+          ? fetch(`/api/credit-pause?projectSlug=${projectSlug}`).then(r => r.json())
+          : Promise.resolve(null);
+        const [runsRes, pauseData, hbRes] = await Promise.all([
+          fetch(runsUrl),
+          pausePromise,
           fetch("/api/heartbeat-status"),
         ]);
         if (cancelled) return;
         const runsData = await runsRes.json();
-        const pauseData = await pauseRes.json();
         const hbData = await hbRes.json();
         setRuns(Array.isArray(runsData) ? runsData : []);
         setCreditPause(pauseData);
@@ -407,6 +412,7 @@ export function AgentActivityView({ projectSlug }: { projectSlug: string }) {
   }, [projectSlug]);
 
   async function handleResume() {
+    if (!projectSlug) return;
     try {
       await fetch(`/api/credit-pause?projectSlug=${projectSlug}`, { method: "DELETE" });
       setCreditPause({ paused: false, resumesAt: null, remainingMs: 0, reason: null });
@@ -525,7 +531,7 @@ export function AgentActivityView({ projectSlug }: { projectSlug: string }) {
             {finishedRuns.length > 0 && (
               <button
                 onClick={async () => {
-                  await fetch(`/api/agent-runs?projectSlug=${projectSlug}`, { method: "DELETE" });
+                  await fetch(projectSlug ? `/api/agent-runs?projectSlug=${projectSlug}` : `/api/agent-runs`, { method: "DELETE" });
                   setRuns(prev => prev.filter(r => r.status === "running"));
                 }}
                 className="text-xs transition-colors hover:opacity-80"

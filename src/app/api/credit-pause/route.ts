@@ -12,6 +12,9 @@ import {
 import { getProjectBySlug, getProjects } from "@/db/data/projects";
 import { getTicketsByProject } from "@/db/data/tickets";
 import { fireDispatch } from "@/lib/dispatch-agent";
+import { db } from "@/db";
+import { agentRuns, tickets } from "@/db/schema";
+import { isNull, eq } from "drizzle-orm";
 
 const API_BASE = process.env.API_BASE || "http://localhost:3080";
 
@@ -40,7 +43,7 @@ export async function GET(req: NextRequest) {
   const projectSlug = req.nextUrl.searchParams.get("projectSlug");
   const all = req.nextUrl.searchParams.get("all");
 
-  // Return all paused projects + focus state
+  // Return all paused projects + focus state + active project slugs
   if (all === "true") {
     const rows = await getSettingsByPrefix(`${CREDITS_PAUSED_UNTIL}:`);
     const paused: Array<{ projectSlug: string; resumesAt: string; remainingMs: number }> = [];
@@ -51,7 +54,21 @@ export async function GET(req: NextRequest) {
       }
     }
     const focusedProject = await getSetting("focused_project");
-    return NextResponse.json({ paused: paused.length > 0, projects: paused, focusedProject });
+
+    // Project slugs that have at least one active (not ended) agent run
+    const activeRuns = db
+      .selectDistinct({ projectId: tickets.projectId })
+      .from(agentRuns)
+      .innerJoin(tickets, eq(agentRuns.ticketId, tickets.id))
+      .where(isNull(agentRuns.endedAt))
+      .all();
+    const activeProjectIds = new Set(activeRuns.map((r) => r.projectId));
+    const allProjects = await getProjects();
+    const activeProjectSlugs = allProjects
+      .filter((p) => activeProjectIds.has(Number(p.id)))
+      .map((p) => p.slug);
+
+    return NextResponse.json({ paused: paused.length > 0, projects: paused, focusedProject, activeProjectSlugs });
   }
 
   if (!projectSlug) {

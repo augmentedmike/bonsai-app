@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import Link from "next/link";
 import Image from "next/image";
 import { SettingsPanel } from "./settings-panel";
 import type { AgentRun } from "@/types";
@@ -142,6 +143,24 @@ export function Sidebar({ userName }: { userName?: string }) {
           </span>
         </div>
 
+        {/* Global activity — always visible */}
+        <Link
+          href="/activity"
+          title="All Activity"
+          className="group relative w-10 h-10 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5"
+          style={pathname === "/activity" ? { backgroundColor: "rgba(91, 141, 249, 0.1)" } : undefined}
+        >
+          <NavIcon icon="activity" active={pathname === "/activity"} />
+          {activeRunCount > 0 && (
+            <span
+              className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 rounded-full flex items-center justify-center text-[10px] font-bold text-white px-1"
+              style={{ backgroundColor: "#22c55e" }}
+            >
+              {activeRunCount}
+            </span>
+          )}
+        </Link>
+
         {/* Project-scoped nav items */}
         {activeSlug && projectNavItems.map((item) => {
           const isActive = item.match(subPage);
@@ -154,15 +173,6 @@ export function Sidebar({ userName }: { userName?: string }) {
               title={item.label}
             >
               <NavIcon icon={item.icon} active={isActive} />
-              {/* Active agent count badge on activity icon */}
-              {item.icon === "activity" && activeRunCount > 0 && (
-                <span
-                  className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 rounded-full flex items-center justify-center text-[10px] font-bold text-white px-1"
-                  style={{ backgroundColor: "#22c55e" }}
-                >
-                  {activeRunCount}
-                </span>
-              )}
             </button>
           );
         })}

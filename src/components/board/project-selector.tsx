@@ -9,6 +9,7 @@ import { ProjectSettingsModal } from "./project-settings-modal";
 interface PauseState {
   pausedSlugs: Set<string>;
   focusedProject: string | null;
+  activeSlugs: Set<string>;
 }
 
 interface ProjectSelectorProps {
@@ -38,6 +39,7 @@ export function ProjectSelector({ project, allProjects, onSwitch }: ProjectSelec
             (data.projects as { projectSlug: string }[]).map((p) => p.projectSlug)
           ),
           focusedProject: data.focusedProject || null,
+          activeSlugs: new Set(data.activeProjectSlugs ?? []),
         });
       })
       .catch(() => {});
@@ -113,7 +115,7 @@ export function ProjectSelector({ project, allProjects, onSwitch }: ProjectSelec
       if (isFocused) {
         // Unfocus — resume all
         await fetch("/api/credit-pause?all=true", { method: "DELETE" });
-        setPauseState({ pausedSlugs: new Set(), focusedProject: null });
+        setPauseState((prev) => ({ pausedSlugs: new Set(), focusedProject: null, activeSlugs: prev?.activeSlugs ?? new Set() }));
       } else {
         // Focus — pause all others
         await fetch("/api/credit-pause?all=true", { method: "DELETE" });
@@ -128,10 +130,11 @@ export function ProjectSelector({ project, allProjects, onSwitch }: ProjectSelec
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ key: "focused_project", value: slug }),
         });
-        setPauseState({
+        setPauseState((prev) => ({
           pausedSlugs: new Set(others.map((proj) => proj.slug)),
           focusedProject: slug,
-        });
+          activeSlugs: prev?.activeSlugs ?? new Set(),
+        }));
       }
     } finally {
       setActionLoading(null);
@@ -214,6 +217,7 @@ export function ProjectSelector({ project, allProjects, onSwitch }: ProjectSelec
               const isHovered = hoveredId === p.id;
               const isPaused = pauseState?.pausedSlugs.has(p.slug) ?? false;
               const isFocused = pauseState?.focusedProject === p.slug;
+              const isRunning = pauseState?.activeSlugs.has(p.slug) ?? false;
 
               return (
                 <div
@@ -249,9 +253,25 @@ export function ProjectSelector({ project, allProjects, onSwitch }: ProjectSelec
                     <span className="truncate">{p.name}</span>
                   </button>
 
-                  {/* Status indicators + action buttons */}
-                  <div className="flex items-center gap-1 flex-shrink-0 ml-1">
+                  {/* Status indicators + action buttons — fixed width prevents CLS */}
+                  <div className="flex items-center justify-end gap-1 flex-shrink-0 ml-1" style={{ width: 112 }}>
                     {/* Always-visible status badges */}
+                    {isRunning && !isHovered && (
+                      <span
+                        title="Agents running"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          width: 8,
+                          height: 8,
+                          borderRadius: "50%",
+                          backgroundColor: "#22c55e",
+                          boxShadow: "0 0 0 0 rgba(34,197,94,0.7)",
+                          animation: "pulse-green 1.5s ease-out infinite",
+                        }}
+                      />
+                    )}
                     {isFocused && !isHovered && (
                       <span
                         title="Focused — all other projects paused"

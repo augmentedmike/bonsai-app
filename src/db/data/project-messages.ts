@@ -48,7 +48,7 @@ export function getProjectMessages(projectId: number, limit: number = 100) {
       if (persona) {
         author = {
           name: persona.name,
-          avatarUrl: persona.avatar || undefined,
+          avatarUrl: persona.avatar ? `/api/personas/${persona.id}/avatar` : undefined,
           color: persona.color,
           role: persona.role || undefined,
         };

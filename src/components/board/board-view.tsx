@@ -222,7 +222,17 @@ export function BoardView({
 
   const grouped = columnOrder.reduce(
     (acc, state) => {
-      acc[state] = sortTickets(tickets.filter((t) => t.state === state && !t.isEpic && !(hideOnHold && t.onHold)));
+      const filtered = tickets.filter((t) => t.state === state && !t.isEpic && !(hideOnHold && t.onHold));
+      if (state === "shipped") {
+        // Most recently shipped at top, oldest at bottom
+        acc[state] = [...filtered].sort((a, b) => {
+          const aTime = a.mergedAt || a.lastAgentActivity || a.createdAt || "";
+          const bTime = b.mergedAt || b.lastAgentActivity || b.createdAt || "";
+          return bTime.localeCompare(aTime);
+        });
+      } else {
+        acc[state] = sortTickets(filtered);
+      }
       return acc;
     },
     {} as Record<TicketState, Ticket[]>
