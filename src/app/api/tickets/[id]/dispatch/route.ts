@@ -426,17 +426,21 @@ function resolvePhaseForRun(ticket: typeof tickets.$inferSelect): string {
 }
 
 // Determine which role should handle based on ticket state
-function resolveTargetRole(ticket: typeof tickets.$inferSelect): string | null {
-  // Planning column → researcher owns it
+// If an operator persona exists in the project, operator owns ALL columns by default.
+// Researcher/developer are only dispatched when explicitly @mentioned or when no operator exists.
+function resolveTargetRole(
+  ticket: typeof tickets.$inferSelect,
+  projectPersonas: Array<{ role: string | null }>
+): string | null {
+  const hasOperator = projectPersonas.some((p) => p.role === "operator");
+  if (hasOperator) return "operator";
+
+  // Fallback: standard role routing when no operator is present
   if (ticket.state === "planning") {
-    // 1. Research (researcher does initial investigation)
     if (!ticket.researchCompletedAt) return "researcher";
-    // 2. Implementation plan (developer creates the plan after research)
     return "developer";
   }
-  // Building phase → developer implements the code
   if (ticket.state === "building") return "developer";
-  // Preview, test, shipped → human owns these columns (no auto-dispatch)
   return null;
 }
 
@@ -583,8 +587,9 @@ export async function POST(
     // Non-mentioned human comments go to column owner (researcher in planning, developer in build/test)
     let dispatchTargets = projectPersonas;
     if (isUnmentionedHumanComment) {
+      const hasOperator = projectPersonas.some((p) => p.role === "operator");
       const inBuildOrTest = !!ticket.planApprovedAt;
-      const targetRole = inBuildOrTest ? "developer" : "researcher";
+      const targetRole = hasOperator ? "operator" : (inBuildOrTest ? "developer" : "researcher");
       dispatchTargets = projectPersonas.filter((p) => p.role === targetRole);
     } else if (team) {
       // @team: only dispatch roles relevant to the current phase
@@ -705,7 +710,7 @@ export async function POST(
   }
 
   if (!targetPersona) {
-    const targetRole = requestedRole || resolveTargetRole(ticket);
+    const targetRole = requestedRole || resolveTargetRole(ticket, projectPersonas);
 
     // If no role can be resolved (preview/test/shipped are human-owned), skip dispatch
     if (!targetRole) {
