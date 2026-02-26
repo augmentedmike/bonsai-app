@@ -555,7 +555,6 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           commentContent: `This is an epic ticket. Break it down into smaller, focused sub-tickets using the create-sub-ticket tool. Each sub-ticket should be a single, independently workable item.\n\nEpic:\n${epicSummary}`,
-          targetRole: "researcher",
         }),
       });
       // Poll for children after a delay (agent takes time)

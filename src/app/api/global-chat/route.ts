@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getProjectMessages, createProjectMessage } from "@/db/data/project-messages";
 import { getGlobalPersonas } from "@/db/data/personas";
+import { getHumans } from "@/db/data/humans";
 import { createTicket, getTicketsByProject, updateTicket } from "@/db/data/tickets";
 import { createProject } from "@/db/data/projects";
 import { fireDispatch } from "@/lib/dispatch-agent";
@@ -92,7 +93,10 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json({ messages, activeAgents });
+  const humanList = await getHumans();
+  const humans = humanList.map((h) => ({ id: h.id, name: h.name }));
+
+  return NextResponse.json({ messages, activeAgents, humans });
 }
 
 /** POST — save message and dispatch to @mentioned persona, or @operator by default */

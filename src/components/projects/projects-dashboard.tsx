@@ -58,14 +58,37 @@ function StatusBar({ planning, building, shipped }: { planning: number; building
 }
 
 // ── Chat slide-out ─────────────────────────────────────────────────────────
+interface HumanUser { id: number; name: string; }
+// MentionOption type unused but kept for reference
+// type MentionOption = { kind: "human"; name: string } | { kind: "sim"; name: string; role?: string; color?: string };
+
 function ChatPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [activeAgents, setActiveAgents] = useState<ActiveAgent[]>([]);
+  const [humanUsers, setHumanUsers] = useState<HumanUser[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const lastIdRef = useRef<number>(0);
+
+  // @mention autocomplete
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionStart, setMentionStart] = useState(0);
+  const [mentionIndex, setMentionIndex] = useState(0);
+
+  const filteredMentions: Array<{ kind: "human" | "sim"; name: string; color?: string; role?: string }> = mentionQuery !== null
+    ? (() => {
+        const q = mentionQuery.toLowerCase();
+        const simMatches = activeAgents
+          .filter((a) => a.name.toLowerCase().startsWith(q))
+          .map((a) => ({ kind: "sim" as const, name: a.name, color: a.color }));
+        const humanMatches = humanUsers
+          .filter((h) => h.name.toLowerCase().split(" ").some((part) => part.startsWith(q)) || h.name.toLowerCase().startsWith(q))
+          .map((h) => ({ kind: "human" as const, name: h.name }));
+        return [...humanMatches, ...simMatches].slice(0, 8);
+      })()
+    : [];
 
   // Focus input when opened
   useEffect(() => {
@@ -90,6 +113,7 @@ function ChatPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
         const msgs: ChatMessage[] = data.messages ?? [];
         setMessages(msgs);
         setActiveAgents(data.activeAgents ?? []);
+        if (data.humans) setHumanUsers(data.humans);
         if (msgs.length > 0) lastIdRef.current = msgs[msgs.length - 1].id;
       } catch { /* ignore */ }
     }
@@ -116,6 +140,7 @@ function ChatPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
         const data = await res.json();
         setMessages(data.messages ?? []);
         setActiveAgents(data.activeAgents ?? []);
+        if (data.humans) setHumanUsers(data.humans);
       }
     } catch { /* ignore */ }
     setSending(false);

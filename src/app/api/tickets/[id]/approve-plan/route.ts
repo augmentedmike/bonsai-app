@@ -47,11 +47,10 @@ export async function POST(req: Request, context: RouteContext) {
     `Moved from **planning** to **building** — plan approved`
   );
 
-  // Auto-dispatch developer to start implementation
+  // Auto-dispatch — operator owns all columns; falls back to developer when no operator
   const origin = new URL(req.url).origin;
   fireDispatch(origin, ticketId, {
     commentContent: "The implementation plan has been approved. Begin coding the implementation now. Follow the plan step by step.",
-    targetRole: "developer",
     urgent: true, // Bypass cooldown — plan approval is a critical state transition
   }, "approve-plan");
 

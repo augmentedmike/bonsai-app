@@ -47,10 +47,9 @@ export async function POST(req: Request, context: RouteContext) {
 
   const origin = new URL(req.url).origin;
 
-  // Auto-dispatch developer to start implementation planning
+  // Auto-dispatch — operator owns planning; falls back to developer when no operator
   fireDispatch(origin, ticketId, {
     commentContent: "Research has been approved. Create the implementation plan now.",
-    targetRole: "developer",
   }, "approve-research");
 
   // Auto-dispatch designer if the project has one — generate mockups in parallel with planning

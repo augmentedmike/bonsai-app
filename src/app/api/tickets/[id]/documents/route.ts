@@ -105,7 +105,6 @@ export async function POST(req: Request, context: RouteContext) {
     const origin = process.env.API_BASE || `http://localhost:${process.env.PORT || 3090}`;
     fireDispatch(origin, ticketId, {
       commentContent: "Research complete. Creating implementation plan based on findings.",
-      targetRole: "developer",
       silent: false,
       urgent: true,
     }, "research-complete");

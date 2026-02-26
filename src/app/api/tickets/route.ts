@@ -73,19 +73,17 @@ export async function PATCH(req: Request) {
 
   const origin = new URL(req.url).origin;
 
-  // When moved to "planning", dispatch researcher to begin research
+  // When moved to "planning" or "building" — let dispatch routing decide who handles it
+  // (operator owns all columns when present; falls back to researcher/developer otherwise)
   if (state === "planning") {
     fireDispatch(origin, numTicketId, {
-      commentContent: "Begin research on this ticket. Investigate the codebase and document your findings.",
-      targetRole: "researcher",
+      commentContent: "Ticket moved to planning. Begin investigation — research the codebase and document your findings.",
     }, "state-change/planning");
   }
 
-  // When moved to "building", auto-dispatch developer to start implementation
   if (state === "building") {
     fireDispatch(origin, numTicketId, {
-      commentContent: "The implementation plan has been approved and the ticket is in build. Begin coding the implementation now. Follow the plan step by step.",
-      targetRole: "developer",
+      commentContent: "Ticket moved to building. The implementation plan is approved — begin executing it.",
     }, "state-change/building");
   }
 
@@ -200,18 +198,12 @@ export async function POST(req: Request) {
 
   if (isEpic) {
     // Epic breakdown is handled interactively by the wizard UI — no auto-dispatch
-  } else if (epicId) {
-    // Sub-ticket of an epic: dispatch researcher directly.
-    fireDispatch(origin, id, {
-      commentContent: [ticketSummary, "New ticket created. Begin research on this ticket. Investigate the codebase, understand the requirements, and document your findings."].filter(Boolean).join("\n\n"),
-      targetRole: "researcher",
-    }, "ticket-create/researcher-research");
   } else {
-    // Standalone ticket: dispatch researcher to begin investigation.
+    // New ticket — let dispatch routing decide who handles it
+    // (operator owns all columns when present; falls back to researcher otherwise)
     fireDispatch(origin, id, {
-      commentContent: [ticketSummary, "New ticket created. Begin research on this ticket. Investigate the codebase, understand the requirements, and document your findings."].filter(Boolean).join("\n\n"),
-      targetRole: "researcher",
-    }, "ticket-create/researcher-research");
+      commentContent: [ticketSummary, "New ticket created. Begin investigation — research the codebase, understand the requirements, and document your findings."].filter(Boolean).join("\n\n"),
+    }, "ticket-create/auto");
   }
 
   return NextResponse.json({ success: true, ticket });
