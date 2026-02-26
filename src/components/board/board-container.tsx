@@ -45,7 +45,7 @@ export function BoardContainer({
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
       if (document.querySelector('[role="dialog"]')) return;
-      router.push("/projects");
+      router.push("/");
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
