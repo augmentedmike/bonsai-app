@@ -20,7 +20,7 @@ const BOARD_STATES = [
   { name: "shipped", label: "Shipped", color: "var(--column-shipped)", icon: "🚀" },
 ] as const;
 
-const ROLE_SLUGS = ["designer", "developer", "critic", "researcher", "hacker"];
+// Role slugs are derived dynamically from personasList — no hardcoded list needed
 
 interface CommentInputProps {
   personasList: Persona[];
@@ -59,7 +59,8 @@ export function CommentInput({ personasList, placeholder, onPost, enableVoice = 
         const q = mentionQuery.toLowerCase();
         const teamMatch: MentionItem[] = "team".startsWith(q) ? [{ kind: "team" }] : [];
         const byName = personasList.filter((p) => p.name.toLowerCase().startsWith(q));
-        const byRole = ROLE_SLUGS
+        const uniqueRoles = [...new Set(personasList.map((p) => p.role).filter(Boolean))] as string[];
+        const byRole = uniqueRoles
           .filter((r) => r.startsWith(q) && q.length > 0)
           .flatMap((r) => personasList.filter((p) => p.role === r))
           .filter((p) => !byName.some((n) => n.id === p.id));
