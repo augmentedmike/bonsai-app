@@ -36,17 +36,32 @@ export function ProjectChatPanel({
     try {
       const res = await fetch(`/api/projects/${projectId}/chat?limit=100`);
       if (res.ok) {
-        const fresh: ProjectMessage[] = await res.json();
+        const data = await res.json();
+        // Support both legacy array response and new { messages, activeAgents } shape
+        const fresh: ProjectMessage[] = Array.isArray(data) ? data : data.messages;
+        const activeAgents: Array<{ id: string; name: string; color: string; avatarUrl?: string }> =
+          Array.isArray(data) ? [] : (data.activeAgents ?? []);
+
         setMessages(fresh);
 
-        // Clear typing indicator if new messages arrived
-        if (fresh.length > prevMessageCountRef.current && prevMessageCountRef.current > 0) {
+        // Restore or clear typing indicator based on live DB state
+        if (activeAgents.length > 0) {
+          // Agent is actively running — show/keep indicator (survives refresh)
+          const agent = activeAgents[0];
+          setTypingPersona({ name: agent.name, color: agent.color, avatarUrl: agent.avatarUrl });
+          // Reset the safety-timeout whenever we confirm the agent is still running
+          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+          typingTimeoutRef.current = setTimeout(() => setTypingPersona(null), 120_000);
+        } else if (fresh.length > prevMessageCountRef.current && prevMessageCountRef.current > 0) {
+          // New message arrived and no active agents — agent finished responding
           setTypingPersona(null);
+          if (typingTimeoutRef.current) { clearTimeout(typingTimeoutRef.current); typingTimeoutRef.current = null; }
           setTimeout(
             () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }),
             100
           );
         }
+
         prevMessageCountRef.current = fresh.length;
       }
     } catch {

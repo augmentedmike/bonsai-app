@@ -4,6 +4,9 @@ import { getGlobalPersonas } from "@/db/data/personas";
 import { getProjectById } from "@/db/data/projects";
 import { createTicket, getTicketsByProject, updateTicket } from "@/db/data/tickets";
 import { fireDispatch } from "@/lib/dispatch-agent";
+import { db } from "@/db";
+import { agentRuns, personas } from "@/db/schema";
+import { eq, and, isNull } from "drizzle-orm";
 
 const API_BASE = process.env.API_BASE || "http://localhost:3080";
 
@@ -19,7 +22,34 @@ export async function GET(
   const limit = Number(url.searchParams.get("limit")) || 100;
 
   const messages = await getProjectMessages(projectId, limit);
-  return NextResponse.json(messages);
+
+  // Include active agent runs on the inbox ticket so the client can restore
+  // the typing indicator after a page refresh without a separate request.
+  const inbox = await getTicketsByProject(projectId, "[Inbox]");
+  const activeAgents: Array<{ id: string; name: string; color: string; avatarUrl?: string }> = [];
+  if (inbox) {
+    const runs = db
+      .select({
+        personaId: agentRuns.personaId,
+        personaName: personas.name,
+        personaColor: personas.color,
+        personaAvatar: personas.avatar,
+      })
+      .from(agentRuns)
+      .leftJoin(personas, eq(agentRuns.personaId, personas.id))
+      .where(and(eq(agentRuns.ticketId, inbox.id), isNull(agentRuns.endedAt)))
+      .all();
+    for (const r of runs) {
+      activeAgents.push({
+        id: r.personaId || "agent",
+        name: r.personaName || "Agent",
+        color: r.personaColor || "#6366f1",
+        avatarUrl: r.personaAvatar ?? undefined,
+      });
+    }
+  }
+
+  return NextResponse.json({ messages, activeAgents });
 }
 
 /** POST — create a human message, extract @mentions, dispatch agent */
