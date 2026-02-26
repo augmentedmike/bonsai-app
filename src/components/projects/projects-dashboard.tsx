@@ -21,9 +21,18 @@ interface PauseState {
 }
 
 interface ChatMessage {
-  role: "user" | "assistant";
+  id: number;
+  authorType: "human" | "agent" | "system";
+  author?: { name: string; avatarUrl?: string; color?: string; role?: string };
   content: string;
-  ts: number;
+  createdAt: string;
+}
+
+interface ActiveAgent {
+  id: string;
+  name: string;
+  color: string;
+  avatarUrl?: string;
 }
 
 // ── Status mini-bar ────────────────────────────────────────────────────────
@@ -49,45 +58,68 @@ function StatusBar({ planning, building, shipped }: { planning: number; building
 }
 
 // ── Chat slide-out ─────────────────────────────────────────────────────────
-function ChatPanel({ open, onClose, projects }: { open: boolean; onClose: () => void; projects: Project[] }) {
+function ChatPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [activeAgents, setActiveAgents] = useState<ActiveAgent[]>([]);
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const lastIdRef = useRef<number>(0);
 
+  // Focus input when opened
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 50);
   }, [open]);
 
+  // Scroll to bottom on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, activeAgents]);
+
+  // Poll for messages while open
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+
+    async function poll() {
+      try {
+        const res = await fetch("/api/global-chat?limit=100");
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        const msgs: ChatMessage[] = data.messages ?? [];
+        setMessages(msgs);
+        setActiveAgents(data.activeAgents ?? []);
+        if (msgs.length > 0) lastIdRef.current = msgs[msgs.length - 1].id;
+      } catch { /* ignore */ }
+    }
+
+    poll();
+    const interval = setInterval(poll, 5000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [open]);
 
   async function send() {
     const text = input.trim();
-    if (!text || loading) return;
+    if (!text || sending) return;
     setInput("");
-    const userMsg: ChatMessage = { role: "user", content: text, ts: Date.now() };
-    setMessages((prev) => [...prev, userMsg]);
-    setLoading(true);
+    setSending(true);
     try {
-      const context = `You are the operator assistant for Bonsai, an AI developer workspace. The user has ${projects.length} projects with a total of ${projects.reduce((s, p) => s + (p.ticketCount ?? 0), 0)} tickets. Projects: ${projects.map((p) => `${p.name} (${p.ticketCount} tickets)`).join(", ")}.`;
-      const res = await fetch("/api/agent-runs", {
+      await fetch("/api/global-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [{ role: "user", content: `${context}\n\nUser: ${text}` }] }),
+        body: JSON.stringify({ content: text }),
       });
+      // Immediately re-poll to get the saved message back
+      const res = await fetch("/api/global-chat?limit=100");
       if (res.ok) {
         const data = await res.json();
-        setMessages((prev) => [...prev, { role: "assistant", content: data.content ?? data.message ?? "Done.", ts: Date.now() }]);
-      } else {
-        setMessages((prev) => [...prev, { role: "assistant", content: "Sorry, something went wrong.", ts: Date.now() }]);
+        setMessages(data.messages ?? []);
+        setActiveAgents(data.activeAgents ?? []);
       }
-    } catch {
-      setMessages((prev) => [...prev, { role: "assistant", content: "Could not reach the agent.", ts: Date.now() }]);
-    }
-    setLoading(false);
+    } catch { /* ignore */ }
+    setSending(false);
+    setTimeout(() => inputRef.current?.focus(), 50);
   }
 
   if (!open) return null;
@@ -104,8 +136,11 @@ function ChatPanel({ open, onClose, projects }: { open: boolean; onClose: () => 
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 flex-shrink-0" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "var(--accent-green)" }} />
+          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: activeAgents.length > 0 ? "var(--accent-green)" : "var(--text-muted)" }} />
           <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Operator Chat</span>
+          {activeAgents.length > 0 && (
+            <span className="text-xs" style={{ color: "var(--accent-green)" }}>{activeAgents.length} active</span>
+          )}
         </div>
         <button onClick={onClose} className="w-6 h-6 rounded flex items-center justify-center hover:bg-white/10" style={{ color: "var(--text-muted)" }}>
           <IconClose className="w-3.5 h-3.5" />
@@ -116,29 +151,45 @@ function ChatPanel({ open, onClose, projects }: { open: boolean; onClose: () => 
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {messages.length === 0 && (
           <div className="text-xs text-center pt-8" style={{ color: "var(--text-muted)" }}>
-            Ask anything about your projects, tickets, team, or Bonsai.
+            Talk to @operator about anything — projects, tickets, direction, or just thinking out loud.
           </div>
         )}
-        {messages.map((m, i) => (
-          <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div
-              className="max-w-[85%] px-3 py-2 rounded-xl text-xs leading-relaxed"
-              style={m.role === "user"
-                ? { backgroundColor: "var(--accent-blue)", color: "#fff" }
-                : { backgroundColor: "var(--bg-card)", color: "var(--text-secondary)", border: "1px solid var(--border-subtle)" }
-              }
-            >
-              {m.content}
+        {messages.map((m) => {
+          const isHuman = m.authorType === "human";
+          const name = m.author?.name ?? (isHuman ? "You" : "Sim");
+          const color = m.author?.color || "var(--accent-indigo)";
+          return (
+            <div key={m.id} className={`flex flex-col ${isHuman ? "items-end" : "items-start"}`}>
+              <span className="text-[10px] mb-0.5 px-1" style={{ color: "var(--text-muted)" }}>{name}</span>
+              <div
+                className="max-w-[85%] px-3 py-2 rounded-xl text-xs leading-relaxed"
+                style={isHuman
+                  ? { backgroundColor: "var(--accent-blue)", color: "#fff" }
+                  : { backgroundColor: "var(--bg-card)", color: "var(--text-secondary)", border: `1px solid ${color}30`, borderLeft: `3px solid ${color}` }
+                }
+              >
+                {m.content}
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Typing indicators */}
+        {activeAgents.map((agent) => (
+          <div key={agent.id} className="flex items-center gap-2">
+            <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0"
+              style={{ backgroundColor: agent.color }}>
+              {agent.name[0]}
+            </div>
+            <div className="px-3 py-2 rounded-xl text-xs flex items-center gap-1"
+              style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-subtle)" }}>
+              <span className="animate-bounce inline-block" style={{ animationDelay: "0ms", color: agent.color }}>·</span>
+              <span className="animate-bounce inline-block" style={{ animationDelay: "150ms", color: agent.color }}>·</span>
+              <span className="animate-bounce inline-block" style={{ animationDelay: "300ms", color: agent.color }}>·</span>
             </div>
           </div>
         ))}
-        {loading && (
-          <div className="flex justify-start">
-            <div className="px-3 py-2 rounded-xl text-xs" style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-subtle)", color: "var(--text-muted)" }}>
-              <span className="animate-pulse">thinking…</span>
-            </div>
-          </div>
-        )}
+
         <div ref={bottomRef} />
       </div>
 
@@ -150,14 +201,14 @@ function ChatPanel({ open, onClose, projects }: { open: boolean; onClose: () => 
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-            placeholder="Ask about your projects…"
+            placeholder="Message @operator or @mention a sim…"
             rows={1}
             className="flex-1 bg-transparent outline-none resize-none text-xs"
             style={{ color: "var(--text-primary)", lineHeight: "1.5" }}
           />
           <button
             onClick={send}
-            disabled={!input.trim() || loading}
+            disabled={!input.trim() || sending}
             className="flex-shrink-0 w-6 h-6 rounded-lg flex items-center justify-center transition-all disabled:opacity-30"
             style={{ backgroundColor: "var(--accent-blue)" }}
           >
@@ -562,7 +613,7 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
       </div>
 
       {/* ── Chat slide-out (right panel, not overlay) ── */}
-      <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} projects={projects} />
+      <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} />
 
       <AddProjectModal open={showAdd} onClose={() => { setShowAdd(false); router.refresh(); }} />
     </div>
