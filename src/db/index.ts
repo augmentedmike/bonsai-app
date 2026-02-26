@@ -331,6 +331,22 @@ if (!existingTables.has("project_messages")) {
     sqlite.exec(`ALTER TABLE tickets ADD COLUMN hold_at TEXT`);
     console.log("[db] Added hold columns to tickets");
   }
+  if (!cols.has("is_epic")) {
+    sqlite.exec(`ALTER TABLE tickets ADD COLUMN is_epic INTEGER DEFAULT 0`);
+    sqlite.exec(`ALTER TABLE tickets ADD COLUMN epic_id INTEGER`);
+    console.log("[db] Added epic columns to tickets");
+  }
+}
+
+// ── tag column on ticket_attachments (self-healing migration) ──────────────────
+{
+  const cols = new Set(
+    (sqlite.prepare("PRAGMA table_info(ticket_attachments)").all() as { name: string }[]).map((c) => c.name)
+  );
+  if (!cols.has("tag")) {
+    sqlite.exec(`ALTER TABLE ticket_attachments ADD COLUMN tag TEXT`);
+    console.log("[db] Added tag column to ticket_attachments");
+  }
 }
 
 // ── Performance indexes (self-healing, idempotent) ──────────────────

@@ -138,6 +138,8 @@ function deleteSettingSync(key: string) {
 // ── Queries ─────────────────────────────────────
 
 // Work Scheduler: Get actionable tickets for a project, priority-ordered
+// Only dispatches tickets that have new context (human comment, verification return,
+// first-time dispatch, or a new phase with no completed agent run yet).
 const getActionableTicketsStmt = db.prepare(`
   SELECT t.id, t.title, t.description, t.type, t.state, t.project_id, t.assignee_id,
          t.last_agent_activity, t.research_completed_at, t.acceptance_criteria,
@@ -151,6 +153,25 @@ const getActionableTicketsStmt = db.prepare(`
     AND NOT EXISTS (
       SELECT 1 FROM agent_runs ar
       WHERE ar.ticket_id = t.id AND ar.status = 'running'
+    )
+    AND (
+      -- New context: human posted a comment since last pickup
+      t.last_human_comment_at IS NOT NULL
+      -- New context: ticket returned from verification
+      OR t.returned_from_verification = 1
+      -- First-time: ticket has never been dispatched
+      OR t.last_agent_activity IS NULL
+      -- Phase transition: no completed run exists for the ticket's current phase
+      OR NOT EXISTS (
+        SELECT 1 FROM agent_runs ar2
+        WHERE ar2.ticket_id = t.id
+          AND ar2.status = 'completed'
+          AND ar2.phase = CASE
+            WHEN t.research_completed_at IS NULL THEN 'research'
+            WHEN t.plan_completed_at IS NULL THEN 'plan'
+            ELSE 'implement'
+          END
+      )
     )
   ORDER BY
     CASE WHEN t.last_human_comment_at IS NOT NULL THEN 1 ELSE 2 END,
