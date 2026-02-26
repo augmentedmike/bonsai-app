@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import type { Project } from "@/types";
 import { AddProjectModal } from "./add-project-modal";
@@ -21,6 +21,22 @@ interface ProjectSelectorProps {
 export function ProjectSelector({ project, allProjects, onSwitch }: ProjectSelectorProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+
+  // Mirror the projects-dashboard sort order from localStorage
+  const sortedProjects = useMemo(() => {
+    let key = "activity", dir = "desc";
+    try {
+      key = localStorage.getItem("bonsai-projects-sort-key") || "activity";
+      dir = localStorage.getItem("bonsai-projects-sort-dir") || "desc";
+    } catch {}
+    return [...allProjects].sort((a, b) => {
+      let cmp = 0;
+      if (key === "name") cmp = a.name.localeCompare(b.name);
+      else if (key === "tickets") cmp = (a.ticketCount ?? 0) - (b.ticketCount ?? 0);
+      else cmp = (a.lastActivity ?? "").localeCompare(b.lastActivity ?? "");
+      return dir === "asc" ? cmp : -cmp;
+    });
+  }, [allProjects]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [settingsProject, setSettingsProject] = useState<Project | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -230,7 +246,7 @@ export function ProjectSelector({ project, allProjects, onSwitch }: ProjectSelec
             <div style={{ height: 1, backgroundColor: "var(--border-medium)" }} />
 
             {/* Project list */}
-            {allProjects.map((p) => {
+            {sortedProjects.map((p) => {
               const isActive = p.slug === project.slug;
               const isHovered = hoveredId === p.id;
               const isPaused = pauseState?.pausedSlugs.has(p.slug) ?? false;
