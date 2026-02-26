@@ -4,6 +4,7 @@ import "./globals.css";
 import { Sidebar } from "@/components/layout/sidebar";
 import { getSetting } from "@/db/data/settings";
 import { LanguageProvider } from "@/i18n/language-context";
+import { UserProvider } from "@/contexts/user-context";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -40,10 +41,12 @@ export default async function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <LanguageProvider>
-          <div className="flex h-screen overflow-hidden">
-            <Sidebar userName={userName ?? undefined} />
-            <main className="flex-1 overflow-hidden">{children}</main>
-          </div>
+          <UserProvider>
+            <div className="flex h-screen overflow-hidden">
+              <Sidebar userName={userName ?? undefined} />
+              <main className="flex-1 overflow-hidden">{children}</main>
+            </div>
+          </UserProvider>
         </LanguageProvider>
       </body>
     </html>

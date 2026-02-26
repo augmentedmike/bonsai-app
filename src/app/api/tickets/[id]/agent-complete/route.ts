@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getTicketById } from "@/db/data/tickets";
 import { createCommentAndBumpCount } from "@/db/data/comments";
 import { createAgentProjectMessage } from "@/db/data/project-messages";
-import { getPersonaRaw, getGlobalPersonas } from "@/db/data/personas";
+import { getPersonaRaw, getGlobalPersonas, getAllPersonasRaw } from "@/db/data/personas";
 import { logAuditEvent } from "@/db/data/audit";
 import { completeAgentRun, isChainedRun } from "@/db/data/agent-runs";
 import { getSetting } from "@/db/data/settings";
@@ -43,19 +43,32 @@ export async function POST(
     await createAgentProjectMessage(ticket.projectId, personaId, trimmed);
 
     // Agent→agent @mention chaining (max 1 hop to prevent infinite loops)
+    // Search ALL personas so @name mentions resolve even for project-specific personas.
+    // If the matched persona is project-specific (not g-* global), dispatch by role instead.
     const wasChained = personaId ? isChainedRun(ticketId, personaId) : false;
     if (!wasChained) {
-      const projectPersonas = await getGlobalPersonas();
-      const sorted = [...projectPersonas].sort((a, b) => b.name.length - a.name.length);
+      const allPersonas = await getAllPersonasRaw();
+      const sorted = [...allPersonas].sort((a, b) => b.name.length - a.name.length);
+      const dispatched = new Set<string>(); // dedupe by role/id
       for (const p of sorted) {
         if (p.id === personaId) continue; // don't self-dispatch
         const escapedName = p.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const escapedRole = p.role ? p.role.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : null;
         const namePattern = new RegExp(`@${escapedName}\\b`, 'i');
-        if (namePattern.test(trimmed)) {
-          console.log(`[agent-complete/inbox] Agent ${personaId} mentioned @${p.name} — dispatching (1-hop chain)`);
+        const rolePattern = escapedRole ? new RegExp(`@${escapedRole}\\b`, 'i') : null;
+        if (namePattern.test(trimmed) || (rolePattern && rolePattern.test(trimmed))) {
+          // Resolve: global persona → dispatch by ID; project persona → dispatch by role
+          const isGlobal = p.id.startsWith('g-');
+          const dispatchKey = isGlobal ? p.id : (p.role ?? p.id);
+          if (dispatched.has(dispatchKey)) continue;
+          dispatched.add(dispatchKey);
+          const dispatchTarget = isGlobal
+            ? { targetPersonaId: p.id }
+            : { targetRole: p.role ?? undefined };
+          console.log(`[agent-complete/inbox] Agent ${personaId} mentioned @${p.name} — dispatching (1-hop chain, ${isGlobal ? 'by id' : 'by role: ' + p.role})`);
           fireDispatch(API_BASE, ticketId, {
             commentContent: trimmed,
-            targetPersonaId: p.id,
+            ...dispatchTarget,
             conversational: true,
             silent: true,
             noChain: true, // prevent further chaining
@@ -95,9 +108,9 @@ export async function POST(
   const wasChained = personaId ? isChainedRun(ticketId, personaId) : false;
 
   if (!wasChained && freshTicket) {
-    const projectPersonas = await getGlobalPersonas();
-    const sorted = [...projectPersonas].sort((a, b) => b.name.length - a.name.length);
-    const mentioned = new Set<string>();
+    const allPersonas = await getAllPersonasRaw();
+    const sorted = [...allPersonas].sort((a, b) => b.name.length - a.name.length);
+    const dispatched = new Set<string>();
 
     for (const p of sorted) {
       if (p.id === personaId) continue; // no self-dispatch
@@ -106,15 +119,21 @@ export async function POST(
       const escapedRole = p.role ? p.role.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : null;
       const namePattern = new RegExp(`@${escapedName}\\b`, 'i');
       const rolePattern = escapedRole ? new RegExp(`@${escapedRole}\\b`, 'i') : null;
-      if ((namePattern.test(trimmed) || (rolePattern && rolePattern.test(trimmed))) && !mentioned.has(p.id)) {
-        mentioned.add(p.id);
+      if (namePattern.test(trimmed) || (rolePattern && rolePattern.test(trimmed))) {
+        const isGlobal = p.id.startsWith('g-');
+        const dispatchKey = isGlobal ? p.id : (p.role ?? p.id);
+        if (dispatched.has(dispatchKey)) continue;
+        dispatched.add(dispatchKey);
+        const dispatchTarget = isGlobal
+          ? { targetPersonaId: p.id }
+          : { targetRole: p.role ?? undefined };
         console.log(`[agent-complete] ${personaId} mentioned @${p.name} — dispatching (1-hop chain)`);
         fireDispatch(API_BASE, ticketId, {
           commentContent: trimmed,
-          targetPersonaId: p.id,
+          ...dispatchTarget,
           conversational: true,
           silent: true,
-          noChain: true, // prevent the chained agent from chaining further
+          noChain: true,
         }, `agent-complete/@${p.name}`);
       }
     }

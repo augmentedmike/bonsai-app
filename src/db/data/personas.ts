@@ -43,6 +43,7 @@ export function getPersonas(): Promise<Persona[]> {
   return asAsync(rows.map(personaFromRow));
 }
 
+
 export function getPersona(personaId: string): Promise<Persona | null> {
   const row = db
     .select()

@@ -4,6 +4,7 @@ import { useState, useRef, useCallback } from "react";
 import type { Persona, ProjectMessage, CommentAttachment } from "@/types";
 import { CommentInput } from "./comment-input";
 import { usePolling } from "@/hooks/use-polling";
+import { useUser } from "@/contexts/user-context";
 
 interface ProjectChatPanelProps {
   projectId: string;
@@ -89,14 +90,14 @@ export function ProjectChatPanel({
     if (res.ok) {
       // Show typing indicator if we mentioned someone
       // Show typing indicator — find mentioned persona or default to lead
-      const mentioned = personas.find((p) => {
+      // Only show typing indicator for explicit @mentions — no fallback guessing
+      const responder = personas.find((p) => {
         const pat = new RegExp(
           `@${p.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
           "i"
         );
         return pat.test(text);
       });
-      const responder = mentioned || personas.find((p) => p.role === "researcher");
       if (responder) {
         setTypingPersona({
           name: responder.name,
@@ -290,23 +291,25 @@ export function ProjectChatPanel({
 }
 
 function MessageBubble({ message }: { message: ProjectMessage }) {
-  const isHuman = message.authorType === "human";
+  const { user } = useUser();
+
+  // Resolve author data once — no conditionals below
+  const avatarUrl = message.authorType === "human" ? user?.avatarUrl : message.author?.avatarUrl;
+  const authorName = message.author?.name ?? "?";
+  const badgeBg = message.authorType === "human" ? "rgba(59, 130, 246, 0.15)" : "rgba(139, 92, 246, 0.15)";
+  const badgeColor = message.authorType === "human" ? "#60a5fa" : "#a78bfa";
+  const badgeLabel = message.authorType === "human" ? "human" : (message.author?.role ?? message.authorType);
+  const avatarBg = message.author?.color ?? (message.authorType === "human" ? "var(--accent-blue)" : "var(--accent-indigo)");
+
   const time = message.createdAt
-    ? new Date(message.createdAt).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      })
+    ? new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : "";
 
   function renderContent(text: string) {
     const parts = text.split(/(@[\w\p{L}-]+)/gu);
     return parts.map((part, i) =>
       part.startsWith("@") ? (
-        <span
-          key={i}
-          className="font-medium"
-          style={{ color: "var(--accent-blue)" }}
-        >
+        <span key={i} className="font-medium" style={{ color: "var(--accent-blue)" }}>
           {part}
         </span>
       ) : (
@@ -320,18 +323,12 @@ function MessageBubble({ message }: { message: ProjectMessage }) {
       {/* Avatar */}
       <div
         className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold text-white flex-shrink-0 overflow-hidden"
-        style={{
-          backgroundColor: message.author?.color || (isHuman ? "var(--accent-blue)" : "var(--accent-indigo)"),
-        }}
+        style={{ backgroundColor: avatarBg }}
       >
-        {message.author?.avatarUrl ? (
-          <img
-            src={message.author.avatarUrl}
-            alt={message.author?.name || (isHuman ? "You" : "Agent")}
-            className="w-full h-full object-cover"
-          />
+        {avatarUrl ? (
+          <img src={avatarUrl} alt={authorName} className="w-full h-full object-cover" />
         ) : (
-          (message.author?.name?.[0] || (isHuman ? "Y" : "A")).toUpperCase()
+          authorName[0].toUpperCase()
         )}
       </div>
       {/* Content */}
@@ -339,16 +336,13 @@ function MessageBubble({ message }: { message: ProjectMessage }) {
         {/* Header: name, badge, timestamp */}
         <div className="flex items-center gap-2 mb-1">
           <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-            {message.author?.name || (isHuman ? "You" : "Agent")}
+            {authorName}
           </span>
           <span
             className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-            style={{
-              backgroundColor: isHuman ? "rgba(59, 130, 246, 0.15)" : "rgba(139, 92, 246, 0.15)",
-              color: isHuman ? "#60a5fa" : "#a78bfa",
-            }}
+            style={{ backgroundColor: badgeBg, color: badgeColor }}
           >
-            {!isHuman && message.author?.role ? message.author.role : message.authorType}
+            {badgeLabel}
           </span>
           <span className="text-xs" style={{ color: "var(--text-muted)" }}>
             {time}
