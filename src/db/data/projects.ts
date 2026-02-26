@@ -4,7 +4,13 @@ import { eq, and, or, isNull, sql } from "drizzle-orm";
 import type { Project } from "@/types";
 import { getSetting } from "./settings";
 
-function projectFromRow(row: typeof projects.$inferSelect, ticketCount?: number): Project {
+type StatusCounts = { planning: number; building: number; shipped: number };
+
+function projectFromRow(
+  row: typeof projects.$inferSelect,
+  ticketCount?: number,
+  statusCounts?: StatusCounts
+): Project {
   return {
     id: String(row.id),
     name: row.name,
@@ -14,6 +20,9 @@ function projectFromRow(row: typeof projects.$inferSelect, ticketCount?: number)
     techStack: row.techStack ?? undefined,
     visibility: row.visibility ?? undefined,
     ticketCount: ticketCount ?? 0,
+    planningCount: statusCounts?.planning ?? 0,
+    buildingCount: statusCounts?.building ?? 0,
+    shippedCount: statusCounts?.shipped ?? 0,
     githubOwner: row.githubOwner ?? undefined,
     githubRepo: row.githubRepo ?? undefined,
     localPath: row.localPath ?? undefined,
@@ -22,7 +31,7 @@ function projectFromRow(row: typeof projects.$inferSelect, ticketCount?: number)
   };
 }
 
-/** Single query to get ticket counts for one or more projects */
+/** Ticket totals per project */
 function getTicketCounts(projectIds: number[]): Map<number, number> {
   if (projectIds.length === 0) return new Map();
   const rows = db
@@ -33,6 +42,26 @@ function getTicketCounts(projectIds: number[]): Map<number, number> {
     .all();
   const map = new Map<number, number>();
   for (const r of rows) map.set(r.projectId!, r.count);
+  return map;
+}
+
+/** Ticket counts broken down by status (planning/building/shipped) per project */
+function getStatusCounts(projectIds: number[]): Map<number, StatusCounts> {
+  if (projectIds.length === 0) return new Map();
+  const rows = db
+    .select({ projectId: tickets.projectId, state: tickets.state, count: sql<number>`count(*)` })
+    .from(tickets)
+    .where(sql`${tickets.projectId} IN (${sql.join(projectIds.map(id => sql`${id}`), sql`, `)})`)
+    .groupBy(tickets.projectId, tickets.state)
+    .all();
+  const map = new Map<number, StatusCounts>();
+  for (const r of rows) {
+    if (!map.has(r.projectId!)) map.set(r.projectId!, { planning: 0, building: 0, shipped: 0 });
+    const e = map.get(r.projectId!)!;
+    if (r.state === "planning") e.planning = r.count;
+    else if (r.state === "building") e.building = r.count;
+    else if (r.state === "shipped") e.shipped = r.count;
+  }
   return map;
 }
 
@@ -79,8 +108,10 @@ export function getProjects(): Promise<Project[]> {
     .from(projects)
     .where(isNull(projects.deletedAt))
     .all();
-  const counts = getTicketCounts(rows.map((r) => r.id));
-  return asAsync(rows.map((r) => projectFromRow(r, counts.get(r.id) ?? 0)));
+  const ids = rows.map((r) => r.id);
+  const counts = getTicketCounts(ids);
+  const statuses = getStatusCounts(ids);
+  return asAsync(rows.map((r) => projectFromRow(r, counts.get(r.id) ?? 0, statuses.get(r.id))));
 }
 
 export function createProject(data: {

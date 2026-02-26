@@ -145,6 +145,11 @@ export interface Project {
   techStack?: string;
   visibility?: string;
   ticketCount: number;
+  planningCount?: number;
+  buildingCount?: number;
+  shippedCount?: number;
+  /** Personas actively assigned to building-state tickets in this project */
+  activeWorkers?: { id: string; name: string; color: string; avatar?: string }[];
   githubOwner?: string;
   githubRepo?: string;
   localPath?: string;

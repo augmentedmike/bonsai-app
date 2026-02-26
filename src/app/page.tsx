@@ -1,5 +1,7 @@
-import { redirect } from "next/navigation";
+import { getProjects } from "@/db/data/projects";
+import { ProjectsDashboard } from "@/components/projects/projects-dashboard";
 
-export default function Home() {
-  redirect("/board");
+export default async function Home() {
+  const projects = await getProjects();
+  return <ProjectsDashboard initialProjects={projects} />;
 }
