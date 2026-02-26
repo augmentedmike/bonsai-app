@@ -18,7 +18,7 @@ const columnOrder: TicketState[] = [
 
 const AGENT_ACTIVE_MS = 30 * 60 * 1000;
 
-// Sort tickets within a column: "needs your attention" first, "agent working" last
+// Sort tickets within a column: actively worked tickets first, then "needs your attention"
 function sortTickets(tickets: Ticket[]): Ticket[] {
   return [...tickets].sort((a, b) => scoreTicket(b) - scoreTicket(a));
 }
@@ -27,8 +27,8 @@ function scoreTicket(t: Ticket): number {
   const now = Date.now();
   const agentActive = t.lastAgentActivity && (now - new Date(t.lastAgentActivity).getTime()) < AGENT_ACTIVE_MS;
 
-  // Agent actively working = sink to bottom (nothing for human to do)
-  if (agentActive) return -1000;
+  // Agent actively working = float to top
+  if (agentActive) return 1000;
 
   let score = 0;
 
