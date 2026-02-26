@@ -84,7 +84,7 @@ export async function POST(
     await logAuditEvent({
       ticketId,
       event: "agent_completed",
-      actorType: "agent",
+      actorType: "sim",
       actorId: personaId,
       actorName: agentName,
       detail: `${agentName} completed project chat response`,
@@ -97,7 +97,7 @@ export async function POST(
   // ── Post chat comment (normal ticket flow) ─────────────
   await createCommentAndBumpCount({
     ticketId,
-    authorType: "agent",
+    authorType: "sim",
     personaId: personaId || null,
     content: trimmed,
     documentId: documentId || null,
@@ -149,7 +149,7 @@ export async function POST(
   await logAuditEvent({
     ticketId,
     event: "agent_completed",
-    actorType: "agent",
+    actorType: "sim",
     actorId: personaId,
     actorName: agentName,
     detail: `${agentName} completed work`,

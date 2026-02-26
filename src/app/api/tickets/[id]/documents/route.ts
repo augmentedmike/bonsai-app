@@ -95,7 +95,7 @@ export async function POST(req: Request, context: RouteContext) {
     mimeType: "text/markdown",
     data: encodeContent(trimmed),
     tag,
-    createdByType: personaId ? "agent" : "human",
+    createdByType: personaId ? "sim" : "human",
     createdById: personaId || null,
   });
 
@@ -116,7 +116,7 @@ export async function POST(req: Request, context: RouteContext) {
   const label = TAG_LABELS[tag] ?? tag;
   await createCommentAndBumpCount({
     ticketId,
-    authorType: personaId ? "agent" : "human",
+    authorType: personaId ? "sim" : "human",
     personaId: personaId || null,
     content: `${label} saved.`,
   });
@@ -124,7 +124,7 @@ export async function POST(req: Request, context: RouteContext) {
   await logAuditEvent({
     ticketId,
     event: "document_created",
-    actorType: personaId ? "agent" : "human",
+    actorType: personaId ? "sim" : "human",
     actorId: personaId,
     actorName: agentName,
     detail: `Saved ${label.toLowerCase()} as attachment (tag: ${tag})`,

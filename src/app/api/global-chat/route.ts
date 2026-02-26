@@ -84,7 +84,7 @@ export async function GET(req: Request) {
       .all();
     for (const r of runs) {
       activeAgents.push({
-        id: r.personaId || "agent",
+        id: r.personaId || "sim",
         name: r.personaName || "Sim",
         color: r.personaColor || "#6366f1",
         avatarUrl: r.personaAvatar && r.personaId ? `/api/personas/${r.personaId}/avatar` : undefined,

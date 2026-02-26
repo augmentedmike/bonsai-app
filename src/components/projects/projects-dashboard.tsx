@@ -22,7 +22,7 @@ interface PauseState {
 
 interface ChatMessage {
   id: number;
-  authorType: "human" | "agent" | "system";
+  authorType: "human" | "sim" | "system";
   author?: { name: string; avatarUrl?: string; color?: string; role?: string };
   content: string;
   createdAt: string;

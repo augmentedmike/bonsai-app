@@ -32,7 +32,7 @@ export function getProjectMessages(projectId: number, limit: number = 100) {
   }
 
   // Batch-fetch all personas referenced by agent messages
-  const personaIds = [...new Set(rows.filter((r) => r.authorType === "agent" && r.personaId).map((r) => r.personaId!))];
+  const personaIds = [...new Set(rows.filter((r) => r.authorType === "sim" && r.personaId).map((r) => r.personaId!))];
   const personaMap = new Map<string, typeof personas.$inferSelect>();
   if (personaIds.length > 0) {
     const personaRows = db.select().from(personas).where(inArray(personas.id, personaIds)).all();
@@ -52,7 +52,7 @@ export function getProjectMessages(projectId: number, limit: number = 100) {
         // Legacy fallback for messages stored before human auth existed
         author = { name: fallbackName ?? "User", avatarUrl: fallbackAvatar };
       }
-    } else if (row.authorType === "agent" && row.personaId) {
+    } else if (row.authorType === "sim" && row.personaId) {
       const persona = personaMap.get(row.personaId);
       if (persona) {
         author = {
@@ -88,7 +88,7 @@ export function getProjectMessages(projectId: number, limit: number = 100) {
 /** Create a project message */
 export function createProjectMessage(data: {
   projectId: number;
-  authorType: "human" | "agent" | "system";
+  authorType: "human" | "sim" | "system";
   authorId?: number | null;
   personaId?: string | null;
   content: string;
@@ -117,7 +117,7 @@ export function createAgentProjectMessage(
 ) {
   return createProjectMessage({
     projectId,
-    authorType: "agent",
+    authorType: "sim",
     personaId,
     content,
   });
@@ -135,7 +135,7 @@ export function getRecentProjectMessagesFormatted(projectId: number, limit = 20)
     .reverse();
 
   // Batch-fetch personas for agent messages
-  const personaIds = [...new Set(rows.filter((c) => c.authorType === "agent" && c.personaId).map((c) => c.personaId!))];
+  const personaIds = [...new Set(rows.filter((c) => c.authorType === "sim" && c.personaId).map((c) => c.personaId!))];
   const personaMap = new Map<string, typeof personas.$inferSelect>();
   if (personaIds.length > 0) {
     const personaRows = db.select().from(personas).where(inArray(personas.id, personaIds)).all();
@@ -152,7 +152,7 @@ export function getRecentProjectMessagesFormatted(projectId: number, limit = 20)
 
   const formatted = rows.map((c) => {
     let authorName = "Unknown";
-    if (c.authorType === "agent" && c.personaId) {
+    if (c.authorType === "sim" && c.personaId) {
       const p = personaMap.get(c.personaId);
       if (p) authorName = `${p.name} (${p.role})`;
     } else if (c.authorType === "human") {

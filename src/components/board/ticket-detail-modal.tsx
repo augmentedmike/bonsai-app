@@ -1296,7 +1296,7 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
                   }
                   // All Sim comment authors
                   for (const c of comments) {
-                    if (c.authorType === "agent" && c.author?.name) {
+                    if (c.authorType === "sim" && c.author?.name) {
                       const p = personasList.find(p => p.name === c.author!.name);
                       const key = p?.id ?? c.author.name;
                       if (seen.has(key)) continue;
@@ -2078,7 +2078,7 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
                       />
 
                       {auditLog.map((entry) => {
-                        const isAgent = entry.actorType === "agent";
+                        const isAgent = entry.actorType === "sim";
                         const isSystem = entry.actorType === "system";
                         const dotColor = isAgent ? "#8b5cf6" : isSystem ? "var(--text-muted)" : "var(--accent-blue)";
 
@@ -2297,30 +2297,30 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
                       {comment.author?.avatarUrl ? (
                         <img src={comment.author.avatarUrl} alt={comment.author.name} className="w-full h-full object-cover" />
                       ) : (
-                        comment.author?.name?.[0]?.toUpperCase() || (comment.authorType === "agent" ? "S" : "H")
+                        comment.author?.name?.[0]?.toUpperCase() || (comment.authorType === "sim" ? "S" : "H")
                       )}
                     </div>
                     {/* Content */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                          {comment.author?.name || (comment.authorType === "agent" ? "Sim" : "Human")}
+                          {comment.author?.name || (comment.authorType === "sim" ? "Sim" : "Human")}
                         </span>
                         <span
                           className="text-[10px] px-1.5 py-0.5 rounded font-medium"
                           style={{
-                            backgroundColor: comment.authorType === "agent" ? "rgba(139, 92, 246, 0.15)" : "rgba(59, 130, 246, 0.15)",
-                            color: comment.authorType === "agent" ? "#a78bfa" : "#60a5fa",
+                            backgroundColor: comment.authorType === "sim" ? "rgba(139, 92, 246, 0.15)" : "rgba(59, 130, 246, 0.15)",
+                            color: comment.authorType === "sim" ? "#a78bfa" : "#60a5fa",
                           }}
                         >
-                          {comment.authorType === "agent" && comment.author?.role ? comment.author.role : (comment.authorType === "agent" ? "Sim" : comment.authorType)}
+                          {comment.authorType === "sim" && comment.author?.role ? comment.author.role : (comment.authorType === "sim" ? "Sim" : comment.authorType)}
                         </span>
                         <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                           {formatTime(comment.createdAt)}
                         </span>
                       </div>
                       {comment.content && (
-                        comment.authorType === "agent" ? (
+                        comment.authorType === "sim" ? (
                           <div className="text-sm leading-relaxed comment-markdown" style={{ color: "rgba(255,255,255,0.8)" }}>
                             <ReactMarkdown
                               components={{

@@ -38,7 +38,7 @@ export async function POST(
   await logAuditEvent({
     ticketId,
     event: "agent_progress",
-    actorType: "agent",
+    actorType: "sim",
     actorId: personaId,
     actorName: persona?.name ?? "Sim",
     detail: content.trim().slice(0, 200),

@@ -802,7 +802,7 @@ export async function POST(
     pmComment: {
       id: Date.now(),
       ticketId,
-      authorType: "agent" as const,
+      authorType: "sim" as const,
       author: {
         name: targetPersona.name,
         avatarUrl: stripAvatarBlob(targetPersona.avatar),

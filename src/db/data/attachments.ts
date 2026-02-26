@@ -26,7 +26,7 @@ export function createAttachment(data: {
   mimeType: string;
   data: string;
   tag?: string | null;
-  createdByType: "human" | "agent";
+  createdByType: "human" | "sim";
   createdById?: string | null;
 }) {
   const row = db

@@ -15,7 +15,7 @@ interface ActivityItem {
   id: string;
   ticketId: string;
   ticketTitle: string;
-  authorType: "human" | "agent";
+  authorType: "human" | "sim";
   authorName: string;
   authorRole: string | null;
   authorColor: string | null;

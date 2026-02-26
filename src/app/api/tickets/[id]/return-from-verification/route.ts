@@ -31,7 +31,7 @@ export async function POST(
       ticketId,
       authorType,
       authorId: authorType === "human" ? 1 : null, // TODO: Get actual user ID
-      personaId: authorType === "agent" ? ticket.assigneeId : null,
+      personaId: authorType === "sim" ? ticket.assigneeId : null,
       content: `**Returned from verification:** ${reason}`,
       createdAt: new Date().toISOString(),
     };
@@ -49,8 +49,8 @@ export async function POST(
   await logAuditEvent({
     ticketId,
     event: "returned_from_verification",
-    actorType: authorType === "agent" ? "agent" : "human",
-    actorName: authorType === "agent" ? "Sim" : "Human",
+    actorType: authorType === "sim" ? "sim" : "human",
+    actorName: authorType === "sim" ? "Sim" : "Human",
     detail: reason ? `Returned from verification: ${reason.slice(0, 200)}` : "Returned from verification",
     metadata: { from: "review", to: "building" },
   });

@@ -392,7 +392,7 @@ export function hasTickets(): boolean {
 export function logAuditEvent(params: {
   ticketId: number;
   event: string;
-  actorType: "human" | "agent" | "system";
+  actorType: "human" | "sim" | "system";
   actorId?: string | number | null;
   actorName: string;
   detail: string;

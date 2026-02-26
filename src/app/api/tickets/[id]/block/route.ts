@@ -38,7 +38,7 @@ export async function POST(req: Request, context: RouteContext) {
   await logAuditEvent({
     ticketId,
     event: "ticket_blocked",
-    actorType: body.actorType || "agent",
+    actorType: body.actorType || "sim",
     actorId: body.actorId || null,
     actorName: body.actorName || userName || "System",
     detail: reason,

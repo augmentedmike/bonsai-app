@@ -51,7 +51,7 @@ export function getWorkerActivity() {
           id: `c-${c.id}`,
           ticketId: c.ticketId,
           ticketTitle: ticketTitleMap.get(c.ticketId) || c.ticketId,
-          authorType: c.authorType as "human" | "agent",
+          authorType: c.authorType as "human" | "sim",
           authorName:
             author?.name ||
             (c.authorType === "human" ? "You" : "Sim"),

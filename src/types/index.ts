@@ -174,7 +174,7 @@ export interface TicketAttachment {
   mimeType: string;
   data: string; // base64 data URL
   tag?: AttachmentTag | null;
-  createdByType: "human" | "agent";
+  createdByType: "human" | "sim";
   createdById?: string;
   createdAt: string;
 }
@@ -182,7 +182,7 @@ export interface TicketAttachment {
 export interface Comment {
   id: number;
   ticketId: number;
-  authorType: "human" | "agent" | "system";
+  authorType: "human" | "sim" | "system";
   author?: {
     name: string;
     avatarUrl?: string;
@@ -228,7 +228,7 @@ export interface ExtractedItem {
 export interface ProjectMessage {
   id: number;
   projectId: number;
-  authorType: "human" | "agent" | "system";
+  authorType: "human" | "sim" | "system";
   author?: {
     name: string;
     avatarUrl?: string;

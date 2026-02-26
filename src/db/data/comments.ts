@@ -54,7 +54,7 @@ export function enrichComments(
       .get()?.value;
 
   // Batch-fetch all personas referenced by agent comments
-  const personaIds = [...new Set(rows.filter((r) => r.authorType === "agent" && r.personaId).map((r) => r.personaId!))];
+  const personaIds = [...new Set(rows.filter((r) => r.authorType === "sim" && r.personaId).map((r) => r.personaId!))];
   const personaMap = new Map<string, typeof personas.$inferSelect>();
   if (personaIds.length > 0) {
     const personaRows = db.select().from(personas).where(inArray(personas.id, personaIds)).all();
@@ -68,7 +68,7 @@ export function enrichComments(
 
     if (row.authorType === "human") {
       author = { name: userName, avatarUrl: userAvatar || undefined };
-    } else if (row.authorType === "agent" && row.personaId) {
+    } else if (row.authorType === "sim" && row.personaId) {
       const persona = personaMap.get(row.personaId);
       if (persona) {
         author = {
@@ -104,7 +104,7 @@ export function enrichComments(
 
 export function createComment(data: {
   ticketId: number;
-  authorType: "human" | "agent" | "system";
+  authorType: "human" | "sim" | "system";
   authorId?: number | null;
   personaId?: string | null;
   content: string;
@@ -135,7 +135,7 @@ export function createComment(data: {
  */
 export function createCommentAndBumpCount(data: {
   ticketId: number;
-  authorType: "human" | "agent" | "system";
+  authorType: "human" | "sim" | "system";
   authorId?: number | null;
   personaId?: string | null;
   content: string;
@@ -186,7 +186,7 @@ export function createAgentComment(
 ): Promise<void> {
   return runAsync(() => {
     db.insert(comments)
-      .values({ ticketId, authorType: "agent", personaId, content })
+      .values({ ticketId, authorType: "sim", personaId, content })
       .run();
     const ticket = db
       .select()
@@ -237,7 +237,7 @@ export function getRecentCommentsEnriched(ticketId: number, limit = 10) {
     .reverse();
 
   // Batch-fetch personas for agent comments
-  const personaIds = [...new Set(recentComments.filter((c) => c.authorType === "agent" && c.personaId).map((c) => c.personaId!))];
+  const personaIds = [...new Set(recentComments.filter((c) => c.authorType === "sim" && c.personaId).map((c) => c.personaId!))];
   const personaMap = new Map<string, typeof personas.$inferSelect>();
   if (personaIds.length > 0) {
     const personaRows = db.select().from(personas).where(inArray(personas.id, personaIds)).all();
@@ -246,7 +246,7 @@ export function getRecentCommentsEnriched(ticketId: number, limit = 10) {
 
   const enriched = recentComments.map((c) => {
     let authorName = "Unknown";
-    if (c.authorType === "agent" && c.personaId) {
+    if (c.authorType === "sim" && c.personaId) {
       const p = personaMap.get(c.personaId);
       if (p) authorName = `${p.name} (${p.role})`;
     } else {

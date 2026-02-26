@@ -148,7 +148,7 @@ export const tickets = sqliteTable("tickets", {
 export const comments = sqliteTable("comments", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   ticketId: integer("ticket_id").notNull().references(() => tickets.id),
-  authorType: text("author_type", { enum: ["human", "agent", "system"] }).notNull(),
+  authorType: text("author_type", { enum: ["human", "sim", "system"] }).notNull(),
   authorId: integer("author_id"), // user id if human
   personaId: text("persona_id").references(() => personas.id), // persona id if agent
   content: text("content").notNull(),
@@ -175,7 +175,7 @@ export const ticketAttachments = sqliteTable("ticket_attachments", {
   mimeType: text("mime_type").notNull(),
   data: text("data").notNull(), // base64 data URL
   tag: text("tag"), // optional: research-doc, implementation-plan, design-doc, etc.
-  createdByType: text("created_by_type", { enum: ["human", "agent"] }).notNull(),
+  createdByType: text("created_by_type", { enum: ["human", "sim"] }).notNull(),
   createdById: text("created_by_id"), // user id or persona id
   createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
@@ -219,7 +219,7 @@ export const ticketAuditLog = sqliteTable("ticket_audit_log", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   ticketId: integer("ticket_id").notNull(), // No FK — audit survives ticket deletion
   event: text("event").notNull(), // e.g. "ticket_created", "state_changed", "comment_added"
-  actorType: text("actor_type", { enum: ["human", "agent", "system"] }).notNull(),
+  actorType: text("actor_type", { enum: ["human", "sim", "system"] }).notNull(),
   actorId: text("actor_id"), // user.id or persona.id
   actorName: text("actor_name").notNull(),
   detail: text("detail").notNull(), // human-readable summary
@@ -268,7 +268,7 @@ export const projectMessages = sqliteTable("project_messages", {
   projectId: integer("project_id")
     .notNull()
     .references(() => projects.id),
-  authorType: text("author_type", { enum: ["human", "agent", "system"] }).notNull(),
+  authorType: text("author_type", { enum: ["human", "sim", "system"] }).notNull(),
   authorId: integer("author_id"), // user id if human
   personaId: text("persona_id").references(() => personas.id), // persona id if agent
   content: text("content").notNull(),
