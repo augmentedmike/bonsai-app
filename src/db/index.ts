@@ -344,6 +344,7 @@ sqlite.exec(`
   CREATE INDEX IF NOT EXISTS idx_ticket_documents_tid ON ticket_documents (ticket_id);
   CREATE INDEX IF NOT EXISTS idx_ticket_attachments_tid ON ticket_attachments (ticket_id);
   CREATE INDEX IF NOT EXISTS idx_ticket_audit_log_tid ON ticket_audit_log (ticket_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_agent_runs_status_started ON agent_runs (status, started_at DESC);
 `);
 
 export const db = drizzle(sqlite, { schema });
