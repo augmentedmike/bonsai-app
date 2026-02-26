@@ -56,3 +56,17 @@ next-env.d.ts
 *.db-shm
 *.db-wal
 .data/
+
+# ── User / instance data — never commit ──────────────────────────────
+# Agent-generated artifacts: research, postmortems, press, docs
+docs/
+# Per-agent daily learning logs (date-stamped by agents at runtime)
+skills/developer/[0-9]*.md
+skills/researcher/[0-9]*.md
+skills/designer/[0-9]*.md
+skills/writer/[0-9]*.md
+skills/_shared/[0-9]*.md
+# Instance-specific seed (persona/project names baked in)
+scripts/seed-augmentedmike.ts
+# Machine-specific PM2 config (hardcoded local paths)
+ecosystem.config.cjs
