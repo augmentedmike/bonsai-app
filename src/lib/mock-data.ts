@@ -70,7 +70,7 @@ export const tickets: Ticket[] = [
     id: 3,
     title: "Heartbeat Service Integration",
     description:
-      "Connect the webapp to the heartbeat status API. Show agent activity, queue depth, and last run time on the dashboard.",
+      "Connect the webapp to the heartbeat status API. Show Sim activity, queue depth, and last run time on the dashboard.",
     type: "feature",
     state: "planning",
     priority: 800,
@@ -84,7 +84,7 @@ export const tickets: Ticket[] = [
     id: 4,
     title: "Ticket Detail View",
     description:
-      "Full ticket detail page with description, acceptance criteria, comment thread, and agent activity log.",
+      "Full ticket detail page with description, acceptance criteria, comment thread, and Sim activity log.",
     type: "feature",
     state: "planning",
     priority: 700,
@@ -94,9 +94,9 @@ export const tickets: Ticket[] = [
   },
   {
     id: 5,
-    title: "Agent Persona Configuration",
+    title: "Simulacrum Configuration",
     description:
-      "Settings page for managing agent personas — name, color, avatar, and default tool profile.",
+      "Settings page for managing Sims — name, color, avatar, and default tool profile.",
     type: "feature",
     state: "planning",
     priority: 500,
@@ -134,7 +134,7 @@ export const tickets: Ticket[] = [
     id: 8,
     title: "Comment Thread Component",
     description:
-      "Threaded comment UI for ticket detail view. Support human and agent comments with different styling.",
+      "Threaded comment UI for ticket detail view. Support human and Sim comments with different styling.",
     type: "feature",
     state: "planning",
     priority: 650,
@@ -174,7 +174,7 @@ export const tickets: Ticket[] = [
     id: 11,
     title: "Git Operations Module",
     description:
-      "Implement clone, branch, commit, push operations for agent workspaces. Validate paths and prevent escapes.",
+      "Implement clone, branch, commit, push operations for Sim workspaces. Validate paths and prevent escapes.",
     type: "feature",
     state: "building",
     priority: 900,
@@ -186,9 +186,9 @@ export const tickets: Ticket[] = [
   },
   {
     id: 12,
-    title: "Clean Up Stale Agent Locks",
+    title: "Clean Up Stale Sim Locks",
     description:
-      "Add automated cleanup of agent locks older than 45 minutes. Prevent stuck tickets after heartbeat crashes.",
+      "Add automated cleanup of Sim locks older than 45 minutes. Prevent stuck tickets after heartbeat crashes.",
     type: "chore",
     state: "building",
     priority: 800,

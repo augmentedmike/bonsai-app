@@ -54,7 +54,7 @@ export function getWorkerActivity() {
           authorType: c.authorType as "human" | "agent",
           authorName:
             author?.name ||
-            (c.authorType === "human" ? "You" : "Agent"),
+            (c.authorType === "human" ? "You" : "Sim"),
           authorRole: author?.role || null,
           authorColor: author?.color || null,
           authorAvatar: author?.avatar || null,

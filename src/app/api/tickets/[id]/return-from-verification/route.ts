@@ -50,7 +50,7 @@ export async function POST(
     ticketId,
     event: "returned_from_verification",
     actorType: authorType === "agent" ? "agent" : "human",
-    actorName: authorType === "agent" ? "Agent" : "Human",
+    actorName: authorType === "agent" ? "Sim" : "Human",
     detail: reason ? `Returned from verification: ${reason.slice(0, 200)}` : "Returned from verification",
     metadata: { from: "review", to: "building" },
   });

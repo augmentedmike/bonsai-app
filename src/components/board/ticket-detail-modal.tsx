@@ -1294,7 +1294,7 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
                       isActive: activeRunIds.size > 0 ? activeRunIds.has(ticket.assignee.id) : legacyActive
                     });
                   }
-                  // All agent comment authors
+                  // All Sim comment authors
                   for (const c of comments) {
                     if (c.authorType === "agent" && c.author?.name) {
                       const p = personasList.find(p => p.name === c.author!.name);
@@ -2297,14 +2297,14 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
                       {comment.author?.avatarUrl ? (
                         <img src={comment.author.avatarUrl} alt={comment.author.name} className="w-full h-full object-cover" />
                       ) : (
-                        comment.author?.name?.[0]?.toUpperCase() || (comment.authorType === "agent" ? "A" : "H")
+                        comment.author?.name?.[0]?.toUpperCase() || (comment.authorType === "agent" ? "S" : "H")
                       )}
                     </div>
                     {/* Content */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                          {comment.author?.name || (comment.authorType === "agent" ? "Agent" : "Human")}
+                          {comment.author?.name || (comment.authorType === "agent" ? "Sim" : "Human")}
                         </span>
                         <span
                           className="text-[10px] px-1.5 py-0.5 rounded font-medium"
@@ -2313,7 +2313,7 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
                             color: comment.authorType === "agent" ? "#a78bfa" : "#60a5fa",
                           }}
                         >
-                          {comment.authorType === "agent" && comment.author?.role ? comment.author.role : comment.authorType}
+                          {comment.authorType === "agent" && comment.author?.role ? comment.author.role : (comment.authorType === "agent" ? "Sim" : comment.authorType)}
                         </span>
                         <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                           {formatTime(comment.createdAt)}

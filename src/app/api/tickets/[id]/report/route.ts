@@ -40,7 +40,7 @@ export async function POST(
     event: "agent_progress",
     actorType: "agent",
     actorId: personaId,
-    actorName: persona?.name ?? "Agent",
+    actorName: persona?.name ?? "Sim",
     detail: content.trim().slice(0, 200),
   });
 

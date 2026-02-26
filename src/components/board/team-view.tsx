@@ -750,8 +750,8 @@ export function TeamView({ projectSlug }: { projectSlug: string }) {
                   return (
                     <div>
                       <div className="mb-3">
-                        <label className="block text-xs font-medium text-[var(--text-muted)]">Agent Prompts</label>
-                        <p className="text-[10px] text-[var(--text-muted)] mt-0.5">System prompts used when dispatching this role</p>
+                        <label className="block text-xs font-medium text-[var(--text-muted)]">Simulacrum Prompts</label>
+                        <p className="text-[10px] text-[var(--text-muted)] mt-0.5">System prompts used when dispatching this Sim</p>
                       </div>
                       <div className="space-y-2">
                         {promptKeys.map((key) => {

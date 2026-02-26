@@ -21,7 +21,7 @@ const ALL_TOOLS = [
   { name: "Edit", group: "write", description: "Modify existing files" },
   { name: "WebSearch", group: "web", description: "Search the web" },
   { name: "WebFetch", group: "web", description: "Fetch web pages" },
-  { name: "Task", group: "agent", description: "Spawn sub-agents" },
+  { name: "Task", group: "agent", description: "Spawn sub-Sims" },
 ];
 
 function splitPersonality(p: string): [string, string] {

@@ -276,7 +276,7 @@ export function ProjectSelector({ project, allProjects, onSwitch }: ProjectSelec
                     {/* Always-visible status badges */}
                     {isRunning && !isHovered && (
                       <span
-                        title="Agents running"
+                        title="Sims running"
                         style={{
                           display: "inline-flex",
                           alignItems: "center",

@@ -35,7 +35,7 @@ export async function POST(
   const completingPersona = personaId
     ? await getPersonaRaw(personaId)
     : null;
-  const agentName = completingPersona?.name ?? "Agent";
+  const agentName = completingPersona?.name ?? "Sim";
 
   // ── Inbox ticket → write to project_messages instead ───
   const isInbox = ticket.title === "[Inbox]";

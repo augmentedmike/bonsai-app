@@ -136,7 +136,7 @@ export async function buildSystemPrompt(
 
   // 2. Role definition (if available)
   if (roleData) {
-    sections.push(`\n## Your Role: ${roleData.title || roleData.name || 'Agent'}`);
+    sections.push(`\n## Your Role: ${roleData.title || roleData.name || 'Simulacrum'}`);
     if (roleData.description) {
       sections.push(roleData.description);
     }

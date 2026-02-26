@@ -1342,7 +1342,7 @@ function RolesSection() {
                       <VoiceTextarea
                         value={skillContent}
                         onChange={(e) => setSkillContent(e.target.value)}
-                        placeholder="# Skill Title&#10;&#10;Instructions for the agent..."
+                        placeholder="# Skill Title&#10;&#10;Instructions for the Simulacrum..."
                         autoFocus={!!editingSkill}
                         className="w-full flex-1 px-4 py-3 rounded-lg text-sm outline-none focus:ring-1 focus:ring-[var(--accent-blue)] resize-none"
                         style={{

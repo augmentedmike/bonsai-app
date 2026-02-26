@@ -36,7 +36,7 @@ export async function GET(
 
   const agents = activeRuns.map((run) => ({
     id: run.personaId || `run-${run.runId}`,
-    name: run.personaName || "Agent",
+    name: run.personaName || "Sim",
     role: run.personaRole || "worker",
     color: run.personaColor || "#6366f1",
     status: run.status || `Working on ${run.phase} phase`,
