@@ -12,6 +12,10 @@ interface ProjectChatPanelProps {
   open: boolean;
   onClose: () => void;
   initialMentionPersonaId?: string | null;
+  /** Override the chat API path (default: ${apiPath}) */
+  chatPath?: string;
+  /** Override the panel title (default: "Project Chat") */
+  title?: string;
 }
 
 export function ProjectChatPanel({
@@ -20,7 +24,10 @@ export function ProjectChatPanel({
   open,
   onClose,
   initialMentionPersonaId: _initialMentionPersonaId,
+  chatPath,
+  title,
 }: ProjectChatPanelProps) {
+  const apiPath = chatPath ?? `/api/projects/${projectId}/chat`;
   const [messages, setMessages] = useState<ProjectMessage[]>([]);
   const [typingPersona, setTypingPersona] = useState<{
     name: string;
@@ -34,7 +41,7 @@ export function ProjectChatPanel({
   // Fetch messages callback
   const fetchMessages = useCallback(async () => {
     try {
-      const res = await fetch(`/api/projects/${projectId}/chat?limit=100`);
+      const res = await fetch(`${apiPath}?limit=100`);
       if (res.ok) {
         const data = await res.json();
         // Support both legacy array response and new { messages, activeAgents } shape
@@ -100,7 +107,7 @@ export function ProjectChatPanel({
     );
 
     // Post to server
-    const res = await fetch(`/api/projects/${projectId}/chat`, {
+    const res = await fetch(`${apiPath}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -183,7 +190,7 @@ export function ProjectChatPanel({
               className="text-sm font-medium"
               style={{ color: "var(--text-primary)" }}
             >
-              Project Chat
+              {title ?? "Project Chat"}
             </span>
             <span
               className="text-xs"

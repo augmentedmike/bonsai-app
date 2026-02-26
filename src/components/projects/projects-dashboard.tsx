@@ -4,10 +4,11 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import type { Project } from "@/types";
 import { AddProjectModal } from "@/components/board/add-project-modal";
+import { ProjectChatPanel } from "@/components/board/project-chat-panel";
 import {
   IconClose, IconChat, IconPlus, IconSearch, IconPencil,
   IconEye, IconEyeSlash, IconPlay, IconPause, IconCrosshair,
-  IconHand, IconGitHub, IconSettings, IconTrash, IconSend,
+  IconHand, IconGitHub, IconSettings, IconTrash,
 } from "@/components/icons";
 
 type SortKey = "name" | "tickets" | "activity";
@@ -18,21 +19,6 @@ interface PauseState {
   pausedSlugs: Set<string>;
   focusedProject: string | null;
   activeSlugs: Set<string>;
-}
-
-interface ChatMessage {
-  id: number;
-  authorType: "human" | "sim" | "system";
-  author?: { name: string; avatarUrl?: string; color?: string; role?: string };
-  content: string;
-  createdAt: string;
-}
-
-interface ActiveAgent {
-  id: string;
-  name: string;
-  color: string;
-  avatarUrl?: string;
 }
 
 // ── Status mini-bar ────────────────────────────────────────────────────────
@@ -52,195 +38,6 @@ function StatusBar({ planning, building, shipped }: { planning: number; building
         <span title="Building" style={{ color: "var(--column-building)" }}>{building}</span>
         <span style={{ opacity: 0.3 }}>·</span>
         <span title="Shipped" style={{ color: "var(--column-shipped)" }}>{shipped}</span>
-      </div>
-    </div>
-  );
-}
-
-// ── Chat slide-out ─────────────────────────────────────────────────────────
-interface HumanUser { id: number; name: string; }
-// MentionOption type unused but kept for reference
-// type MentionOption = { kind: "human"; name: string } | { kind: "sim"; name: string; role?: string; color?: string };
-
-function ChatPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [activeAgents, setActiveAgents] = useState<ActiveAgent[]>([]);
-  const [humanUsers, setHumanUsers] = useState<HumanUser[]>([]);
-  const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  const lastIdRef = useRef<number>(0);
-
-  // @mention autocomplete
-  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
-  const [mentionStart, setMentionStart] = useState(0);
-  const [mentionIndex, setMentionIndex] = useState(0);
-
-  const filteredMentions: Array<{ kind: "human" | "sim"; name: string; color?: string; role?: string }> = mentionQuery !== null
-    ? (() => {
-        const q = mentionQuery.toLowerCase();
-        const simMatches = activeAgents
-          .filter((a) => a.name.toLowerCase().startsWith(q))
-          .map((a) => ({ kind: "sim" as const, name: a.name, color: a.color }));
-        const humanMatches = humanUsers
-          .filter((h) => h.name.toLowerCase().split(" ").some((part) => part.startsWith(q)) || h.name.toLowerCase().startsWith(q))
-          .map((h) => ({ kind: "human" as const, name: h.name }));
-        return [...humanMatches, ...simMatches].slice(0, 8);
-      })()
-    : [];
-
-  // Focus input when opened
-  useEffect(() => {
-    if (open) setTimeout(() => inputRef.current?.focus(), 50);
-  }, [open]);
-
-  // Scroll to bottom on new messages
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, activeAgents]);
-
-  // Poll for messages while open
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-
-    async function poll() {
-      try {
-        const res = await fetch("/api/global-chat?limit=100");
-        if (!res.ok || cancelled) return;
-        const data = await res.json();
-        const msgs: ChatMessage[] = data.messages ?? [];
-        setMessages(msgs);
-        setActiveAgents(data.activeAgents ?? []);
-        if (data.humans) setHumanUsers(data.humans);
-        if (msgs.length > 0) lastIdRef.current = msgs[msgs.length - 1].id;
-      } catch { /* ignore */ }
-    }
-
-    poll();
-    const interval = setInterval(poll, 5000);
-    return () => { cancelled = true; clearInterval(interval); };
-  }, [open]);
-
-  async function send() {
-    const text = input.trim();
-    if (!text || sending) return;
-    setInput("");
-    setSending(true);
-    try {
-      await fetch("/api/global-chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: text }),
-      });
-      // Immediately re-poll to get the saved message back
-      const res = await fetch("/api/global-chat?limit=100");
-      if (res.ok) {
-        const data = await res.json();
-        setMessages(data.messages ?? []);
-        setActiveAgents(data.activeAgents ?? []);
-        if (data.humans) setHumanUsers(data.humans);
-      }
-    } catch { /* ignore */ }
-    setSending(false);
-    setTimeout(() => inputRef.current?.focus(), 50);
-  }
-
-  if (!open) return null;
-
-  return (
-    <div
-      className="flex flex-col flex-shrink-0"
-      style={{
-        width: 340,
-        borderLeft: "1px solid var(--border-medium)",
-        backgroundColor: "var(--bg-secondary)",
-      }}
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 flex-shrink-0" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: activeAgents.length > 0 ? "var(--accent-green)" : "var(--text-muted)" }} />
-          <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>Operator Chat</span>
-          {activeAgents.length > 0 && (
-            <span className="text-xs" style={{ color: "var(--accent-green)" }}>{activeAgents.length} active</span>
-          )}
-        </div>
-        <button onClick={onClose} className="w-6 h-6 rounded flex items-center justify-center hover:bg-white/10" style={{ color: "var(--text-muted)" }}>
-          <IconClose className="w-3.5 h-3.5" />
-        </button>
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-        {messages.length === 0 && (
-          <div className="text-xs text-center pt-8" style={{ color: "var(--text-muted)" }}>
-            Talk to @operator about anything — projects, tickets, direction, or just thinking out loud.
-          </div>
-        )}
-        {messages.map((m) => {
-          const isHuman = m.authorType === "human";
-          const name = m.author?.name ?? (isHuman ? "You" : "Sim");
-          const color = m.author?.color || "var(--accent-indigo)";
-          return (
-            <div key={m.id} className={`flex flex-col ${isHuman ? "items-end" : "items-start"}`}>
-              <span className="text-[10px] mb-0.5 px-1" style={{ color: "var(--text-muted)" }}>{name}</span>
-              <div
-                className="max-w-[85%] px-3 py-2 rounded-xl text-xs leading-relaxed"
-                style={isHuman
-                  ? { backgroundColor: "var(--accent-blue)", color: "#fff" }
-                  : { backgroundColor: "var(--bg-card)", color: "var(--text-secondary)", border: `1px solid ${color}30`, borderLeft: `3px solid ${color}` }
-                }
-              >
-                {m.content}
-              </div>
-            </div>
-          );
-        })}
-
-        {/* Typing indicators */}
-        {activeAgents.map((agent) => (
-          <div key={agent.id} className="flex items-center gap-2">
-            <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0"
-              style={{ backgroundColor: agent.color }}>
-              {agent.name[0]}
-            </div>
-            <div className="px-3 py-2 rounded-xl text-xs flex items-center gap-1"
-              style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-subtle)" }}>
-              <span className="animate-bounce inline-block" style={{ animationDelay: "0ms", color: agent.color }}>·</span>
-              <span className="animate-bounce inline-block" style={{ animationDelay: "150ms", color: agent.color }}>·</span>
-              <span className="animate-bounce inline-block" style={{ animationDelay: "300ms", color: agent.color }}>·</span>
-            </div>
-          </div>
-        ))}
-
-        <div ref={bottomRef} />
-      </div>
-
-      {/* Input */}
-      <div className="px-3 pb-3 flex-shrink-0" style={{ borderTop: "1px solid var(--border-subtle)", paddingTop: 8 }}>
-        <div className="flex items-end gap-2 rounded-xl px-3 py-2" style={{ backgroundColor: "var(--bg-input)", border: "1px solid var(--border-medium)" }}>
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-            placeholder="Message @operator or @mention a sim…"
-            rows={1}
-            className="flex-1 bg-transparent outline-none resize-none text-xs"
-            style={{ color: "var(--text-primary)", lineHeight: "1.5" }}
-          />
-          <button
-            onClick={send}
-            disabled={!input.trim() || sending}
-            className="flex-shrink-0 w-6 h-6 rounded-lg flex items-center justify-center transition-all disabled:opacity-30"
-            style={{ backgroundColor: "var(--accent-blue)" }}
-          >
-            <IconSend className="w-3 h-3 text-white" />
-          </button>
-        </div>
-        <p className="text-center mt-1.5 text-xs" style={{ color: "var(--text-muted)", fontSize: 10 }}>Enter to send · Shift+Enter for newline</p>
       </div>
     </div>
   );
@@ -674,7 +471,14 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
       </div>
 
       {/* ── Chat slide-out (right panel, not overlay) ── */}
-      <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} />
+      <ProjectChatPanel
+        projectId="global"
+        chatPath="/api/global-chat"
+        title="Operator Chat"
+        personas={[]}
+        open={chatOpen}
+        onClose={() => setChatOpen(false)}
+      />
 
       <AddProjectModal open={showAdd} onClose={() => { setShowAdd(false); router.refresh(); }} />
     </div>
