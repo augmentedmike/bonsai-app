@@ -148,6 +148,10 @@ const getActionableTicketsStmt = db.prepare(`
     AND t.project_id = ?
     AND t.deleted_at IS NULL
     AND (t.last_agent_activity IS NULL OR datetime(t.last_agent_activity) < datetime('now', '-30 minutes'))
+    AND NOT EXISTS (
+      SELECT 1 FROM agent_runs ar
+      WHERE ar.ticket_id = t.id AND ar.status = 'running'
+    )
   ORDER BY
     CASE WHEN t.last_human_comment_at IS NOT NULL THEN 1 ELSE 2 END,
     CASE WHEN t.returned_from_verification = 1 THEN 1 ELSE 2 END,
@@ -1061,8 +1065,8 @@ async function dispatch(maxTickets: number) {
           log(`  COMPLETE: ${ticket.id} — research stored from stdout (${result.length} chars)`);
           completed++;
         } else {
-          markAgentActivity.run(null, null, ticket.id);
-          log(`  FAILED: ${ticket.id} — no document saved and no stdout output`);
+          // Keep last_agent_activity set (30-min cooldown) to prevent rapid retry loops
+          log(`  FAILED: ${ticket.id} — no document saved and no stdout output (cooldown active)`);
         }
       } else if (phase === "plan") {
         const postRunCount = (getTaggedAttachmentCount.get(ticket.id, "implementation-plan") as { count: number })?.count || 0;
@@ -1083,8 +1087,8 @@ async function dispatch(maxTickets: number) {
           log(`  COMPLETE: ${ticket.id} — plan stored from stdout (${result.length} chars)`);
           completed++;
         } else {
-          markAgentActivity.run(null, null, ticket.id);
-          log(`  FAILED: ${ticket.id} — no plan saved and no stdout output`);
+          // Keep last_agent_activity set (30-min cooldown) to prevent rapid retry loops
+          log(`  FAILED: ${ticket.id} — no plan saved and no stdout output (cooldown active)`);
         }
       } else if (phase === "implement") {
         if (result) {
@@ -1094,8 +1098,8 @@ async function dispatch(maxTickets: number) {
           log(`  COMPLETE: ${ticket.id} — implementation done, moved to shipped`);
           completed++;
         } else {
-          markAgentActivity.run(null, null, ticket.id);
-          log(`  FAILED: ${ticket.id} — agent returned no result`);
+          // Keep last_agent_activity set (30-min cooldown) to prevent rapid retry loops
+          log(`  FAILED: ${ticket.id} — agent returned no result (cooldown active)`);
         }
       }
     });
@@ -1157,6 +1161,13 @@ async function scanAndDispatchMentions() {
         `SELECT id FROM agent_runs WHERE ticket_id = ? AND persona_id = ? AND status = 'running'`
       ).get(comment.ticket_id, p.id);
       if (running) continue;
+
+      // Check if a dispatch was made recently (within last 10 min) — prevents re-dispatch
+      // between heartbeat cycles when the agent finishes before replying
+      const recentRun = db.prepare(
+        `SELECT id FROM agent_runs WHERE ticket_id = ? AND persona_id = ? AND started_at > datetime('now', '-10 minutes')`
+      ).get(comment.ticket_id, p.id);
+      if (recentRun) continue;
 
       // Check if persona has responded AFTER this comment
       const replied = db.prepare(
