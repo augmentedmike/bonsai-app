@@ -30,6 +30,18 @@ export function BoardContainer({
   const [startingPreview, setStartingPreview] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
+
+  // Hydrate chatOpen from localStorage client-side
+  useEffect(() => {
+    try {
+      setChatOpen(localStorage.getItem("bonsai-chat-open") === "true");
+    } catch {}
+  }, []);
+
+  function setChat(open: boolean) {
+    setChatOpen(open);
+    try { localStorage.setItem("bonsai-chat-open", String(open)); } catch {}
+  }
   const [chatMentionPersonaId, setChatMentionPersonaId] = useState<string | null>(null);
   const [hideOnHold, setHideOnHold] = useState(false);
   const [holdCount, setHoldCount] = useState(() =>
@@ -78,7 +90,7 @@ export function BoardContainer({
   const actionsNode = (
     <>
       <button
-        onClick={() => setChatOpen((v) => !v)}
+        onClick={() => setChat(!chatOpen)}
         className="flex items-center gap-1.5 px-3 h-7 rounded-lg text-xs font-medium flex-shrink-0"
         style={{
           backgroundColor: chatOpen ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.07)",
@@ -134,7 +146,7 @@ export function BoardContainer({
           ticketStats={ticketStats}
           awakePersonaIds={new Set(awakePersonaIds)}
           onPersonaClick={(personaId) => router.push(`/p/${project.slug}/team?edit=${personaId}`)}
-          onChatOpen={() => { setChatMentionPersonaId(null); setChatOpen(true); }}
+          onChatOpen={() => { setChatMentionPersonaId(null); setChat(true); }}
           hideOnHold={hideOnHold}
           onHideOnHoldChange={handleHideOnHoldChange}
           holdCount={holdCount}
@@ -151,7 +163,7 @@ export function BoardContainer({
         awakePersonaIds={awakePersonaIds}
         chatOpen={chatOpen}
         chatMentionPersonaId={chatMentionPersonaId}
-        onChatClose={() => { setChatOpen(false); setChatMentionPersonaId(null); }}
+        onChatClose={() => { setChat(false); setChatMentionPersonaId(null); }}
         hideOnHold={hideOnHold}
         onHoldCountChange={setHoldCount}
         previewUrl={previewUrl}
