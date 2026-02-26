@@ -62,7 +62,11 @@ function modelForRole(role: string | null): string {
 const PROJECTS_DIR = path.join(HOME, "development", "bonsai", "projects");
 
 function resolveMainRepo(project: { githubRepo: string | null; slug: string; localPath: string | null }): string {
-  if (project.localPath) return path.join(project.localPath, "repo");
+  if (project.localPath) {
+    // If localPath itself is a git repo, use it directly (no /repo suffix needed)
+    if (fs.existsSync(path.join(project.localPath, ".git"))) return project.localPath;
+    return path.join(project.localPath, "repo");
+  }
   const projectRoot = path.join(PROJECTS_DIR, project.githubRepo || project.slug);
   return path.join(projectRoot, "repo");
 }
