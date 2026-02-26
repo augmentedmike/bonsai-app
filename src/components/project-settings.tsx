@@ -20,6 +20,8 @@ export function ProjectSettings({ project }: { project: Project }) {
   // Settings state
   const [buildCommand, setBuildCommand] = useState("");
   const [runCommand, setRunCommand] = useState("");
+  const [suggestedBuild, setSuggestedBuild] = useState("");
+  const [suggestedRun, setSuggestedRun] = useState("");
   const [envVars, setEnvVars] = useState<EnvVar[]>([]);
   const [worktreeDir, setWorktreeDir] = useState("");
   const [worktreeExists, setWorktreeExists] = useState(false);
@@ -36,8 +38,11 @@ export function ProjectSettings({ project }: { project: Project }) {
       const res = await fetch(`/api/projects/${project.id}/settings`);
       if (res.ok) {
         const data = await res.json();
-        setBuildCommand(data.buildCommand || "");
-        setRunCommand(data.runCommand || "");
+        setSuggestedBuild(data.suggestedBuildCommand || "");
+        setSuggestedRun(data.suggestedRunCommand || "");
+        // Pre-fill with suggestions when no command is saved yet
+        setBuildCommand(data.buildCommand || data.suggestedBuildCommand || "");
+        setRunCommand(data.runCommand || data.suggestedRunCommand || "");
         setEnvVars(data.envVars || []);
         setWorktreeDir(data.worktreeDir || "");
         setWorktreeExists(data.worktreeExists || false);
@@ -208,12 +213,26 @@ export function ProjectSettings({ project }: { project: Project }) {
 
           {/* Build & Run Commands */}
           <section>
-            <h2
-              className="text-sm font-semibold uppercase tracking-wider mb-4"
-              style={{ color: "var(--text-muted)" }}
-            >
-              Build & Run Commands
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2
+                className="text-sm font-semibold uppercase tracking-wider"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Build &amp; Run Commands
+              </h2>
+              {(suggestedBuild || suggestedRun) && (
+                <button
+                  onClick={() => {
+                    if (suggestedBuild) setBuildCommand(suggestedBuild);
+                    if (suggestedRun) setRunCommand(suggestedRun);
+                  }}
+                  className="text-xs px-2 py-1 rounded border transition-opacity hover:opacity-80"
+                  style={{ borderColor: "var(--border-medium)", color: "var(--text-secondary)" }}
+                >
+                  Use defaults
+                </button>
+              )}
+            </div>
             <div className="flex flex-col gap-4">
               <div>
                 <label className="block text-xs mb-2" style={{ color: "var(--text-secondary)" }}>

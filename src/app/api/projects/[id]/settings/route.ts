@@ -51,12 +51,40 @@ export async function GET(
   const worktreeDir = getWorktreeDir(project.localPath);
   const worktreeExists = fs.existsSync(worktreeDir);
 
+  // Detect framework and suggest default commands
+  let suggestedBuildCommand = "";
+  let suggestedRunCommand = "npm run dev -- --port {{PORT}}";
+  try {
+    const pkgPath = path.join(project.localPath, "package.json");
+    if (fs.existsSync(pkgPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+      const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+      if (deps["next"]) {
+        suggestedBuildCommand = "npm install";
+        suggestedRunCommand = "npm run dev -- --port {{PORT}}";
+      } else if (deps["vite"]) {
+        suggestedBuildCommand = "npm install";
+        suggestedRunCommand = "npx vite --port {{PORT}}";
+      } else if (deps["react-scripts"]) {
+        suggestedBuildCommand = "npm install";
+        suggestedRunCommand = "PORT={{PORT}} npm start";
+      } else {
+        suggestedBuildCommand = "npm install";
+      }
+    } else if (fs.existsSync(path.join(project.localPath, "build.py"))) {
+      suggestedBuildCommand = "python build.py";
+      suggestedRunCommand = "python -m http.server {{PORT}} --directory docs";
+    }
+  } catch { /* ignore detection errors */ }
+
   return NextResponse.json({
     buildCommand: project.buildCommand,
     runCommand: project.runCommand,
     envVars,
     worktreeDir,
     worktreeExists,
+    suggestedBuildCommand,
+    suggestedRunCommand,
   });
 }
 
