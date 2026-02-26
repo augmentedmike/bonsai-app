@@ -236,6 +236,23 @@ export function getAgentRuns(limit: number = 50, projectId?: number): Promise<Ag
   return asAsync(rows);
 }
 
+/** Returns the most recent completed agent_run for a given ticket+phase, or null if none. */
+export function getLastCompletedRunForPhase(
+  ticketId: number,
+  phase: string
+): { completedAt: string } | null {
+  const row = db.get(sql`
+    SELECT completed_at as completedAt
+    FROM agent_runs
+    WHERE ticket_id = ${ticketId}
+      AND phase = ${phase}
+      AND status = 'completed'
+    ORDER BY completed_at DESC
+    LIMIT 1
+  `) as { completedAt: string } | undefined;
+  return row ?? null;
+}
+
 /** Sum of cost_usd for all completed runs today (UTC day) */
 export function getTodaySpendUsd(): Promise<number> {
   const row = db.get(sql`

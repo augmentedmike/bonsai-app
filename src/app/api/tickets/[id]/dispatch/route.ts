@@ -12,7 +12,7 @@ import { getGlobalPersonas, getAllPersonasRaw } from "@/db/data/personas";
 import { getRoleBySlug } from "@/db/data/roles";
 import { getSetting } from "@/db/data/settings";
 import { logAuditEvent } from "@/db/data/audit";
-import { insertAgentRun } from "@/db/data/agent-runs";
+import { insertAgentRun, getLastCompletedRunForPhase } from "@/db/data/agent-runs";
 import { getRecentProjectMessagesFormatted } from "@/db/data/project-messages";
 import { isPaused, pauseRemainingMs, projectPauseKey } from "@/lib/credit-pause";
 import { getOAuthTokenForDispatch } from "@/app/api/auth/reauth/route";
@@ -527,6 +527,31 @@ export async function POST(
       reason: "on_hold",
       holdReason: ticket.holdReason,
     });
+  }
+
+  // ── Phase-completion gate — don't re-dispatch when agent already completed this phase ──
+  // Applies only to auto-dispatch (no explicit target, not urgent, not conversational).
+  // If a completed run exists for the current phase AND there's been no new human comment
+  // since then, skip — the agent did the work but didn't call agent-complete.
+  const hasExplicitDispatchTarget = !!(targetPersonaName || targetPersonaId || requestedRole || team);
+  if (!hasExplicitDispatchTarget && !urgent && !conversational) {
+    const currentPhase = ticket.planApprovedAt ? "implementation"
+      : ticket.researchApprovedAt ? "planning"
+      : "research";
+    const lastCompleted = getLastCompletedRunForPhase(ticketId, currentPhase);
+    if (lastCompleted) {
+      const hasNewHumanContext = ticket.lastHumanCommentAt
+        && new Date(ticket.lastHumanCommentAt) > new Date(lastCompleted.completedAt);
+      if (!hasNewHumanContext) {
+        console.log(`[dispatch] Skipping ${ticketId} — ${currentPhase} phase already has a completed run (${lastCompleted.completedAt}), no new human context`);
+        return NextResponse.json({
+          skipped: true,
+          reason: "phase_already_completed",
+          phase: currentPhase,
+          lastRunAt: lastCompleted.completedAt,
+        });
+      }
+    }
   }
 
   // Get all non-deleted personas for this project
