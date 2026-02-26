@@ -105,6 +105,14 @@ export function TicketCard({ ticket, onDragStart, onDragEnd, onEdit, onViewDocum
           {style.label}
         </span>
 
+        {/* Ticket number */}
+        <span
+          className="px-1 py-0.5 rounded text-[10px] font-bold flex-shrink-0"
+          style={{ color: "rgba(255,255,255,0.45)", backgroundColor: "rgba(255,255,255,0.06)", letterSpacing: "0.02em" }}
+        >
+          #{ticket.id}
+        </span>
+
         {ticket.isEpic && (
           <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold flex-shrink-0" style={{ backgroundColor: "rgba(249,115,22,0.18)", color: "#fb923c" }}>
             Epic
