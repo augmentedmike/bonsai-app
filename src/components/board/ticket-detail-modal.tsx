@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import { formatTicketSlug } from "@/types";
-import type { Ticket, TicketType, TicketState, Comment, CommentAttachment, TicketDocument, TicketAttachment, Persona } from "@/types";
+import type { Ticket, TicketType, TicketState, Comment, CommentAttachment, TicketAttachment, Persona } from "@/types";
 import { ticketTypes } from "@/lib/ticket-types";
 import { formatRelativeTime } from "@/lib/time-format";
 import { useVoiceInput } from "@/hooks/use-voice-input";
@@ -159,12 +159,6 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
   const typingTimeoutRefs = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const docTypingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Documents state
-  const [documents, setDocuments] = useState<TicketDocument[]>([]);
-  const [loadingDocuments, setLoadingDocuments] = useState(false);
-  const [approvingResearch, setApprovingResearch] = useState(false);
-  const [approvingPlan, setApprovingPlan] = useState(false);
-
   // Text attachment viewer state
   const [textViewerAttachment, setTextViewerAttachment] = useState<{ filename: string; content: string } | null>(null);
   const [loadingTextAttachment, setLoadingTextAttachment] = useState(false);
@@ -238,6 +232,13 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
   // Local lifecycle state (from ticket prop, refreshed after actions)
   const [deletingDoc, setDeletingDoc] = useState<string | null>(null);
 
+  // Document-related state removed — constants to keep conditional checks working
+  const expandedDoc: any = null;
+  const documents: any[] = [];
+  const loadingDocuments = false;
+  const approvingResearch = false;
+  const approvingPlan = false;
+
   // Audit log state
   const [auditLog, setAuditLog] = useState<Array<{
     id: number;
@@ -253,9 +254,7 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
   const [showActivity, setShowActivity] = useState(false);
   const [loadingAudit, setLoadingAudit] = useState(false);
 
-  // Full-screen document viewer
-  const [expandedDoc, setExpandedDoc] = useState<TicketDocument | null>(null);
-  // Version selector for expanded doc viewer
+  // Version selector (legacy, kept for compat)
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
 
   // Voice input hooks
@@ -290,10 +289,9 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
     state !== baselineRef.current.state
   ) : false;
 
-  // Clear document view and lightbox when modal closes
+  // Clear lightbox when modal closes
   useEffect(() => {
     if (!ticket) {
-      setExpandedDoc(null);
       setLightboxImage(null);
     }
   }, [ticket]);
@@ -331,7 +329,6 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
         state: ticket.state,
       };
       loadComments(ticket.id);
-      loadDocuments(ticket.id, initialDocType);
       loadAttachments(ticket.id);
       loadPersonas();
       loadProject();
@@ -389,8 +386,6 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
           setTextViewerAttachment(null);
         } else if (lightboxImage) {
           setLightboxImage(null);
-        } else if (expandedDoc) {
-          setExpandedDoc(null);
         } else {
           onClose();
         }
@@ -398,7 +393,7 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
     }
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
-  }, [ticket, onClose, expandedDoc, lightboxImage]);
+  }, [ticket, onClose, lightboxImage]);
 
   // Poll comments every 10s while modal is open (doesn't touch form state)
   // When new comments arrive, also refresh documents & attachments immediately
@@ -422,8 +417,6 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
               }
             }
             setTimeout(() => commentsEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-            // New comment arrived — refresh documents & attachments immediately
-            refreshDocumentsAndAttachments(ticketId);
             return fresh;
           }
           return prev;
@@ -441,34 +434,6 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
     return () => clearInterval(interval);
   }, []);
 
-  // Poll documents every 10s while modal is open
-  useEffect(() => {
-    if (!ticketId) return;
-    const poll = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/tickets/${ticketId}/documents`);
-        const data = await res.json();
-        const fresh: TicketDocument[] = data.documents || [];
-        setDocuments((prev) => {
-          // Only update if something changed (new docs or version bumps)
-          const prevKey = prev.map((d) => `${d.type}:${d.version}`).join(",");
-          const freshKey = fresh.map((d) => `${d.type}:${d.version}`).join(",");
-          if (prevKey === freshKey) return prev;
-          return fresh;
-        });
-        // If user is viewing a doc, update to latest version of that type
-        setExpandedDoc((prev) => {
-          if (!prev) return null;
-          const latest = fresh
-            .filter((d) => d.type === prev.type)
-            .sort((a, b) => (b.version || 0) - (a.version || 0))[0];
-          if (latest && latest.version !== prev.version) return latest;
-          return prev;
-        });
-      } catch { /* skip cycle */ }
-    }, 10_000);
-    return () => clearInterval(poll);
-  }, [ticketId]);
 
   // Poll attachments every 10s while modal is open (for designer-generated images)
   useEffect(() => {
@@ -501,37 +466,6 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
     return () => clearInterval(poll);
   }, [ticketId, showActivity]);
 
-  // Load doc comments when expandedDoc changes
-  const expandedDocId = expandedDoc?.id;
-  useEffect(() => {
-    if (expandedDocId) {
-      loadDocComments(expandedDocId);
-    } else {
-      setDocComments([]);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expandedDocId]);
-
-  // Poll doc comments every 10s while doc viewer is open
-  useEffect(() => {
-    if (!ticketId || !expandedDocId) return;
-    const poll = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/comments?ticketId=${ticketId}&documentId=${expandedDocId}`);
-        const data = await res.json();
-        const fresh = data.comments || [];
-        setDocComments((prev) => {
-          if (fresh.length !== prev.length) {
-            setDocTypingPersona(null); // Agent responded — clear typing indicator
-            setTimeout(() => docCommentsEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-            return fresh;
-          }
-          return prev;
-        });
-      } catch { /* skip cycle */ }
-    }, 10_000);
-    return () => clearInterval(poll);
-  }, [ticketId, expandedDocId]);
 
   async function loadComments(ticketId: number) {
     setLoadingComments(true);
@@ -545,59 +479,6 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
     }
   }
 
-  // Lightweight refresh for docs & attachments (called when new comments arrive)
-  async function refreshDocumentsAndAttachments(tid: number) {
-    try {
-      const [docRes, attRes] = await Promise.all([
-        fetch(`/api/tickets/${tid}/documents`),
-        fetch(`/api/tickets/${tid}/attachments`),
-      ]);
-      const docData = await docRes.json();
-      const attData = await attRes.json();
-      const freshDocs: TicketDocument[] = docData.documents || [];
-      const freshAtts = attData || [];
-      setDocuments((prev) => {
-        const prevKey = prev.map((d) => `${d.type}:${d.version}`).join(",");
-        const freshKey = freshDocs.map((d) => `${d.type}:${d.version}`).join(",");
-        if (prevKey === freshKey) return prev;
-        return freshDocs;
-      });
-      setExpandedDoc((prev) => {
-        if (!prev) return null;
-        const latest = freshDocs
-          .filter((d) => d.type === prev.type)
-          .sort((a, b) => (b.version || 0) - (a.version || 0))[0];
-        if (latest && latest.version !== prev.version) return latest;
-        return prev;
-      });
-      setAttachments((prev) => {
-        if (freshAtts.length !== prev.length) return freshAtts;
-        return prev;
-      });
-    } catch { /* non-critical */ }
-  }
-
-  async function loadDocuments(ticketId: number, autoExpandType?: "research" | "implementation_plan") {
-    setLoadingDocuments(true);
-    try {
-      const res = await fetch(`/api/tickets/${ticketId}/documents`);
-      const data = await res.json();
-      const docs = data.documents || [];
-      setDocuments(docs);
-      if (autoExpandType) {
-        // Pick the latest version of the requested type
-        const matchingDocs = docs
-          .filter((d: TicketDocument) => d.type === autoExpandType)
-          .sort((a: TicketDocument, b: TicketDocument) => (b.version || 0) - (a.version || 0));
-        if (matchingDocs.length > 0) {
-          setExpandedDoc(matchingDocs[0]);
-          setSelectedVersion(null);
-        }
-      }
-    } finally {
-      setLoadingDocuments(false);
-    }
-  }
 
   async function loadAttachments(ticketId: number) {
     try {
@@ -716,18 +597,6 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
     }
   }
 
-  // ── Version helpers ─────────────────────────────
-  const researchDocs = documents
-    .filter(d => d.type === "research")
-    .sort((a, b) => (b.version || 0) - (a.version || 0));
-  // Get the doc to display in expanded view (respects version selector)
-  function getExpandedResearchDoc(): TicketDocument | null {
-    if (!expandedDoc || expandedDoc.type !== "research") return expandedDoc;
-    if (selectedVersion !== null) {
-      return researchDocs.find(d => d.version === selectedVersion) || expandedDoc;
-    }
-    return expandedDoc;
-  }
 
   function handleDescDrop(e: React.DragEvent<HTMLTextAreaElement>) {
     e.preventDefault();
@@ -764,66 +633,7 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
     }
   }
 
-  async function handleApproveResearch() {
-    if (!ticket) return;
-    setApprovingResearch(true);
-    try {
-      // Move ticket to planning state
-      const response = await fetch(`/api/tickets`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ticketId: ticket.id, state: "planning" }),
-      });
-      if (response.ok) {
-        router.refresh();
-      }
-    } finally {
-      setApprovingResearch(false);
-    }
-  }
 
-  async function handleApprovePlan() {
-    if (!ticket) return;
-
-    // Check if research artifact exists
-    const hasResearch = documents.some(d => d.type === "research");
-    if (!hasResearch) {
-      alert("Cannot move to building: research artifact is required");
-      return;
-    }
-
-    setApprovingPlan(true);
-    try {
-      // Call approve-plan endpoint which verifies artifacts and dispatches developer
-      const response = await fetch(`/api/tickets/${ticket.id}/approve-plan`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      if (response.ok) {
-        router.refresh();
-      } else {
-        const data = await response.json();
-        alert(data.error || "Failed to approve plan");
-      }
-    } finally {
-      setApprovingPlan(false);
-    }
-  }
-
-  async function handleDeleteDocument(docType: "research" | "implementation_plan" | "design" | "security_review") {
-    if (!ticket) return;
-    setDeletingDoc(docType);
-    try {
-      await fetch(`/api/tickets/${ticket.id}/documents?type=${docType}`, { method: "DELETE" });
-      setDocuments((prev) => prev.filter((d) => d.type !== docType));
-      // Research approval state is on the ticket — router.refresh() below will update it
-      if (expandedDoc?.type === docType) setExpandedDoc(null);
-      router.refresh();
-    } finally {
-      setDeletingDoc(null);
-    }
-  }
 
   // Accept ticket (test → ship)
   const [accepting, setAccepting] = useState(false);
@@ -1066,7 +876,7 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
   async function handlePostQuoteComment() {
     if (!ticket || !quoteModalText || !quoteComment.trim()) return;
     setPostingQuote(true);
-    const activeDoc = expandedDoc?.type === "research" ? getExpandedResearchDoc() : expandedDoc;
+    const activeDoc = expandedDoc;
     const docLabel = activeDoc
       ? activeDoc.type === "research"
         ? `Research Document v${activeDoc.version}`
@@ -1101,20 +911,6 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
     return type.startsWith("image/");
   }
 
-  // ── Document-scoped comment handlers ──────────────
-
-  async function loadDocComments(documentId: number) {
-    if (!ticket) return;
-    setLoadingDocComments(true);
-    try {
-      const res = await fetch(`/api/comments?ticketId=${ticket.id}&documentId=${documentId}`);
-      const data = await res.json();
-      setDocComments(data.comments || []);
-      setTimeout(() => docCommentsEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-    } finally {
-      setLoadingDocComments(false);
-    }
-  }
 
   async function handleDocCommentPost(text: string, attachments: CommentAttachment[]) {
     if (!ticket || !expandedDoc) return;
@@ -2066,88 +1862,7 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
               </div>
             )}
 
-            {/* Research & Plan Documents */}
-            <div>
-              <label className="block text-sm font-semibold mb-3" style={{ color: "var(--text-secondary)" }}>
-                Documents
-              </label>
-
-              {loadingDocuments ? (
-                <div className="text-sm py-4 text-center" style={{ color: "var(--text-muted)" }}>
-                  Loading documents...
-                </div>
-              ) : (documents.length > 0 || ticket?.researchCompletedAt || ticket?.planCompletedAt) ? (
-                <div className="grid grid-cols-3 gap-4">
-                  {(["research", "design", "implementation_plan", "security_review"] as const).map((docType) => {
-                    const doc = documents.find(d => d.type === docType);
-                    if (!doc && !(docType === "research" && ticket?.researchCompletedAt)) return null;
-
-                    const isResearch = docType === "research";
-                    const isDesign = docType === "design";
-                    const isSecurity = docType === "security_review";
-                    const title = isResearch ? "Research Document" : isDesign ? "Design Document" : isSecurity ? "Security Review" : "Implementation Plan";
-                    const color = isResearch ? "#f59e0b" : isDesign ? "#8b5cf6" : isSecurity ? "#ef4444" : "#8b5cf6";
-                    const icon = isResearch ? (
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                    ) : isDesign ? (
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.53 16.122a3 3 0 00-5.78 1.128 2.25 2.25 0 01-2.4 2.245 4.5 4.5 0 008.4-2.245c0-.399-.078-.78-.22-1.128zm0 0a15.998 15.998 0 003.388-1.62m-5.043-.025a15.994 15.994 0 011.622-3.395m3.42 3.42a15.995 15.995 0 004.764-4.648l3.876-5.814a1.151 1.151 0 00-1.597-1.597L14.146 6.32a15.996 15.996 0 00-4.649 4.763m3.42 3.42a6.776 6.776 0 00-3.42-3.42" />
-                    ) : isSecurity ? (
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-                    ) : (
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" />
-                    );
-
-                    return (
-                      <div key={docType} className="rounded-xl p-5 flex flex-col" style={{
-                        aspectRatio: '8.5 / 11',
-                        backgroundColor: `color-mix(in srgb, ${color} 8%, transparent)`,
-                        border: `1px solid color-mix(in srgb, ${color} 30%, transparent)`,
-                      }}>
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <svg className="w-5 h-5" style={{ color }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>{icon}</svg>
-                            <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{title}</span>
-                            {doc && <span className="px-2 py-0.5 rounded text-[10px] font-semibold" style={{ backgroundColor: `color-mix(in srgb, ${color} 20%, transparent)`, color }}>v{doc.version || 1}</span>}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {doc?.content && <button onClick={() => setExpandedDoc(doc)} className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors hover:bg-white/10" style={{ backgroundColor: "rgba(255,255,255,0.06)", color: "var(--text-secondary)" }}>View Full</button>}
-                            <button onClick={() => handleDeleteDocument(docType)} disabled={deletingDoc === docType} className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors hover:bg-red-500/15" style={{ color: "var(--text-muted)" }} title={`Delete ${title.toLowerCase()}`}>
-                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
-                            </button>
-                          </div>
-                        </div>
-                        {doc?.content && (
-                          <div className="relative flex-1 overflow-hidden cursor-pointer" style={{ color: "rgba(255, 255, 255, 0.8)" }} onClick={() => setExpandedDoc(doc)}>
-                            <div className="prose-sm"><ReactMarkdown components={{ h1: ({ children }) => <h1 className="text-base font-bold mb-1" style={{ color: "var(--text-primary)" }}>{children}</h1>, h2: ({ children }) => <h2 className="text-sm font-bold mb-1" style={{ color: "var(--text-primary)" }}>{children}</h2>, h3: ({ children }) => <h3 className="text-sm font-semibold mb-1" style={{ color: "var(--text-primary)" }}>{children}</h3>, p: ({ children }) => <p className="mb-1.5 text-xs">{children}</p>, strong: ({ children }) => <strong className="font-semibold text-white/90">{children}</strong>, code: ({ children }) => <code className="bg-white/10 px-1 rounded text-[11px]">{children}</code>, ul: ({ children }) => <ul className="list-disc list-inside mb-1.5 space-y-0.5 text-xs">{children}</ul>, ol: ({ children }) => <ol className="list-decimal list-inside mb-1.5 space-y-0.5 text-xs">{children}</ol> }}>{doc.content}</ReactMarkdown></div>
-                            <div className="absolute bottom-0 left-0 right-0 h-16" style={{ background: "linear-gradient(transparent, rgba(20, 15, 30, 0.98))" }} />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div
-                  className="rounded-xl p-5 flex items-center gap-3"
-                  style={{
-                    backgroundColor: "rgba(255,255,255,0.03)",
-                    border: "1px solid var(--border-subtle)",
-                  }}
-                >
-                  <svg className="w-5 h-5 flex-shrink-0" style={{ color: "var(--text-muted)", opacity: 0.5 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                  </svg>
-                  <div>
-                    <span className="text-sm" style={{ color: "var(--text-muted)" }}>
-                      No research or plan documents yet
-                    </span>
-                    <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)", opacity: 0.6 }}>
-                      Documents appear here once an agent researches this ticket
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
+            {/* Documents section removed — documents now stored as tagged attachments */}
 
             {/* Attachments */}
             <div>
@@ -2527,17 +2242,6 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
             >
               {saving ? "Saving..." : ticket?.state === "building" ? "Accept and Ship" : "Save Changes"}
             </button>
-            {ticket?.state === "planning" && (
-              <button
-                onClick={handleApprovePlan}
-                disabled={approvingPlan || !documents.some(d => d.type === "research")}
-                className="px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors hover:opacity-90"
-                style={{ backgroundColor: "#22c55e", color: "#fff", opacity: (approvingPlan || !documents.some(d => d.type === "research")) ? 0.5 : 1 }}
-                title={!documents.some(d => d.type === "research") ? "Research artifact required" : ""}
-              >
-                {approvingPlan ? "Moving..." : "Move to Building"}
-              </button>
-            )}
           </div>
         </div>
 
@@ -2797,398 +2501,9 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
     </div>
   );
 
-  // Full-screen document viewer — use version-aware doc for research
-  const displayDoc = expandedDoc?.type === "research" ? getExpandedResearchDoc() : expandedDoc;
-  const docViewer = expandedDoc && displayDoc && (
-    <div
-      className="fixed inset-0 z-[60] flex flex-col"
-      style={{ backgroundColor: "#0a0a0f" }}
-    >
-      {/* Header bar */}
-      <div
-        className="flex items-center justify-between px-8 py-4 border-b flex-shrink-0"
-        style={{ borderColor: "var(--border-subtle)", backgroundColor: "#0f0f1a" }}
-      >
-        <div className="flex items-center gap-3">
-          <svg className="w-5 h-5" style={{ color: expandedDoc.type === "research" ? "#f59e0b" : (expandedDoc.type as string) === "design" ? "#8b5cf6" : "#8b5cf6" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-          </svg>
-          <span className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
-            {expandedDoc.type === "research" ? "Research Document" : expandedDoc.type === "design" ? "Design Document" : expandedDoc.type === "security_review" ? "Security Review" : "Implementation Plan"}
-          </span>
-          <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
-            {ticket?.id}
-          </span>
-          {/* Version selector for research docs with multiple versions */}
-          {expandedDoc.type === "research" && researchDocs.length > 1 ? (
-            <select
-              value={selectedVersion ?? displayDoc.version}
-              onChange={(e) => setSelectedVersion(Number(e.target.value))}
-              className="px-2 py-1 rounded text-xs font-mono cursor-pointer"
-              style={{ backgroundColor: "rgba(255,255,255,0.08)", color: "var(--text-secondary)", border: "1px solid var(--border-medium)", outline: "none" }}
-            >
-              {researchDocs.map(d => (
-                <option key={d.version} value={d.version} style={{ backgroundColor: "#1a1a2e" }}>
-                  v{d.version} — {d.version === 1 ? "Initial Research" : d.version === 2 ? "Critic Review" : "Final Revision"}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-              v{displayDoc.version}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => handleDeleteDocument(expandedDoc.type as "research" | "implementation_plan" | "design")}
-            disabled={!!deletingDoc}
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors hover:bg-red-500/15"
-            style={{ color: "#ef4444" }}
-            title={`Delete ${expandedDoc.type === "research" ? "research" : (expandedDoc.type as string) === "design" ? "design" : "plan"} — agents will redo`}
-          >
-            {deletingDoc ? "Deleting..." : "Delete"}
-          </button>
-          <button
-            onClick={() => { setExpandedDoc(null); setSelectedVersion(null); }}
-            className="w-10 h-10 rounded-lg flex items-center justify-center transition-colors hover:bg-white/10"
-            style={{ color: "var(--text-muted)" }}
-          >
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      {/* Quote popup — always in DOM, shown/hidden via ref to avoid re-render clearing selection */}
-      <div
-        ref={quotePopupRef}
-        data-quote-popup
-        className="fixed items-center gap-1.5 px-3 py-1.5 rounded-lg shadow-lg cursor-pointer hover:brightness-110"
-        style={{
-          display: "none",
-          transform: "translate(-50%, -100%)",
-          backgroundColor: "var(--accent-blue)",
-          color: "#fff",
-          fontSize: "13px",
-          fontWeight: 600,
-          zIndex: 65,
-        }}
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={() => {
-          setQuoteModalText(quoteTextRef.current);
-          quotePopupRef.current!.style.display = "none";
-          setQuoteComment("");
-          window.getSelection()?.removeAllRanges();
-        }}
-      >
-        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 011.037-.443 48.282 48.282 0 005.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
-        </svg>
-        Quote
-      </div>
-
-      {/* Content row: document body + comments sidebar */}
-      <div className="flex-1 flex min-h-0">
-        {/* Document body — scrollable rendered markdown */}
-        <div
-          ref={docBodyRef}
-          className="flex-1 overflow-y-auto"
-          style={{ backgroundColor: "#0d0d14" }}
-          onMouseUp={handleDocMouseUp}
-          onMouseDown={handleDocMouseDown}
-        >
-          <div className="max-w-[780px] mx-auto px-12 py-14">
-            {/* Document title */}
-            <div className="mb-10">
-              <h1 className="text-[28px] font-bold tracking-tight leading-tight" style={{ color: "#fff" }}>
-                {expandedDoc.type === "research" ? "Research Document" : expandedDoc.type === "design" ? "Design Document" : expandedDoc.type === "security_review" ? "Security Review" : "Implementation Plan"}
-              </h1>
-              <div className="flex items-center gap-3 mt-3">
-                <span className="text-xs font-mono px-2 py-0.5 rounded" style={{ backgroundColor: "rgba(255,255,255,0.06)", color: "var(--text-muted)" }}>
-                  v{displayDoc.version}
-                </span>
-                {displayDoc.authorPersonaId && personasList.find(p => p.id === displayDoc.authorPersonaId) && (
-                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                    by {personasList.find(p => p.id === displayDoc.authorPersonaId)?.name}
-                  </span>
-                )}
-                <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  {formatTime(displayDoc.updatedAt || displayDoc.createdAt)}
-                </span>
-              </div>
-              <div className="mt-6" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }} />
-            </div>
-
-            {/* Rendered markdown body */}
-            <div className="prose prose-invert max-w-none">
-              <ReactMarkdown
-                components={{
-                  h1: ({ children }) => (
-                    <h1 className="text-[24px] font-bold mt-12 mb-5 pb-3" style={{ color: "#fff", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>{children}</h1>
-                  ),
-                  h2: ({ children }) => (
-                    <h2 className="text-[20px] font-bold mt-10 mb-4" style={{ color: "#fff" }}>{children}</h2>
-                  ),
-                  h3: ({ children }) => (
-                    <h3 className="text-[17px] font-semibold mt-8 mb-3" style={{ color: "rgba(255,255,255,0.95)" }}>{children}</h3>
-                  ),
-                  h4: ({ children }) => (
-                    <h4 className="text-[15px] font-semibold mt-6 mb-2" style={{ color: "rgba(255,255,255,0.85)" }}>{children}</h4>
-                  ),
-                  p: ({ children }) => (
-                    <p className="mb-4 text-[15px] leading-[1.75]" style={{ color: "rgba(255,255,255,0.78)" }}>{children}</p>
-                  ),
-                  strong: ({ children }) => <strong className="font-semibold" style={{ color: "rgba(255,255,255,0.95)" }}>{children}</strong>,
-                  em: ({ children }) => <em style={{ color: "rgba(255,255,255,0.65)" }}>{children}</em>,
-                  code: ({ children, className }) => {
-                    const isBlock = className?.includes("language-");
-                    if (isBlock) {
-                      return (
-                        <code
-                          className={`block whitespace-pre overflow-x-auto rounded-xl p-5 text-[13px] leading-[1.7] font-mono ${className || ""}`}
-                          style={{ backgroundColor: "rgba(0,0,0,0.5)", color: "#e2e8f0", border: "1px solid rgba(255,255,255,0.06)" }}
-                        >
-                          {children}
-                        </code>
-                      );
-                    }
-                    return (
-                      <code
-                        className="px-1.5 py-0.5 rounded text-[13px] font-mono"
-                        style={{ backgroundColor: "rgba(255,255,255,0.08)", color: "#fbbf24" }}
-                      >
-                        {children}
-                      </code>
-                    );
-                  },
-                  pre: ({ children }) => <pre className="mb-5 rounded-xl overflow-hidden">{children}</pre>,
-                  ul: ({ children }) => (
-                    <ul className="list-disc ml-6 mb-4 space-y-1.5 text-[15px]" style={{ color: "rgba(255,255,255,0.78)" }}>{children}</ul>
-                  ),
-                  ol: ({ children }) => (
-                    <ol className="list-decimal ml-6 mb-4 space-y-1.5 text-[15px]" style={{ color: "rgba(255,255,255,0.78)" }}>{children}</ol>
-                  ),
-                  li: ({ children }) => <li className="leading-[1.7] pl-1">{children}</li>,
-                  blockquote: ({ children }) => (
-                    <blockquote
-                      className="border-l-[3px] pl-5 py-1 my-5 rounded-r-lg"
-                      style={{ borderColor: "rgba(99,102,241,0.6)", backgroundColor: "rgba(99,102,241,0.05)", color: "rgba(255,255,255,0.7)" }}
-                    >
-                      {children}
-                    </blockquote>
-                  ),
-                  hr: () => <hr className="my-8" style={{ borderColor: "rgba(255,255,255,0.06)" }} />,
-                  a: ({ href, children }) => (
-                    <a href={href} className="underline decoration-1 underline-offset-2 transition-colors hover:text-white" style={{ color: "#818cf8" }}>{children}</a>
-                  ),
-                  table: ({ children }) => (
-                    <div className="overflow-x-auto mb-5 rounded-xl" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>
-                      <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>{children}</table>
-                    </div>
-                  ),
-                  thead: ({ children }) => <thead style={{ backgroundColor: "rgba(255,255,255,0.03)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>{children}</thead>,
-                  th: ({ children }) => (
-                    <th className="px-4 py-3 text-left text-xs font-semibold tracking-wide uppercase" style={{ color: "var(--text-muted)" }}>{children}</th>
-                  ),
-                  td: ({ children }) => (
-                    <td className="px-4 py-3 text-sm" style={{ color: "rgba(255,255,255,0.78)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>{children}</td>
-                  ),
-                }}
-              >
-                {displayDoc.content}
-              </ReactMarkdown>
-            </div>
-          </div>
-        </div>
-
-        {/* Document comments sidebar */}
-        <div
-          className="w-[420px] flex flex-col h-full flex-shrink-0 border-l"
-          style={{ backgroundColor: "#0a0a12", borderColor: "var(--border-subtle)" }}
-        >
-          {/* Doc comments header */}
-          <div className="px-6 py-5 border-b flex-shrink-0" style={{ borderColor: "var(--border-subtle)" }}>
-            <h3 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-              Document Comments {docComments.length > 0 && <span style={{ color: "var(--text-muted)" }}>({docComments.length})</span>}
-            </h3>
-          </div>
-
-          {/* Doc comments list */}
-          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-            {loadingDocComments ? (
-              <div className="flex items-center justify-center py-12" style={{ color: "var(--text-muted)" }}>
-                <span className="text-sm">Loading comments...</span>
-              </div>
-            ) : docComments.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center" style={{ color: "var(--text-muted)" }}>
-                <svg className="w-10 h-10 mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
-                </svg>
-                <span className="text-sm">No comments yet</span>
-                <span className="text-xs mt-1 opacity-60">Comment on this document below</span>
-              </div>
-            ) : (
-              docComments.map((comment) => (
-                <div key={comment.id} className="group">
-                  <div className="flex items-start gap-3">
-                    <div
-                      className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold text-white flex-shrink-0 overflow-hidden"
-                      style={{ backgroundColor: comment.author?.color || "var(--accent-indigo)" }}
-                    >
-                      {comment.author?.avatarUrl ? (
-                        <img src={comment.author.avatarUrl} alt={comment.author.name} className="w-full h-full object-cover" />
-                      ) : (
-                        comment.author?.name?.[0]?.toUpperCase() || (comment.authorType === "agent" ? "A" : "H")
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                          {comment.author?.name || (comment.authorType === "agent" ? "Agent" : "Human")}
-                        </span>
-                        <span
-                          className="text-[10px] px-1.5 py-0.5 rounded font-medium"
-                          style={{
-                            backgroundColor: comment.authorType === "agent" ? "rgba(139, 92, 246, 0.15)" : "rgba(59, 130, 246, 0.15)",
-                            color: comment.authorType === "agent" ? "#a78bfa" : "#60a5fa",
-                          }}
-                        >
-                          {comment.authorType === "agent" && comment.author?.role ? comment.author.role : comment.authorType}
-                        </span>
-                        <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                          {formatTime(comment.createdAt)}
-                        </span>
-                      </div>
-                      {comment.content && (
-                        comment.authorType === "agent" ? (
-                          <div className="text-sm leading-relaxed comment-markdown" style={{ color: "rgba(255,255,255,0.8)" }}>
-                            <ReactMarkdown
-                              components={{
-                                h1: ({ children }) => <h1 className="text-base font-bold mt-3 mb-1.5" style={{ color: "#fff" }}>{children}</h1>,
-                                h2: ({ children }) => <h2 className="text-[15px] font-bold mt-2.5 mb-1" style={{ color: "#fff" }}>{children}</h2>,
-                                h3: ({ children }) => <h3 className="text-sm font-semibold mt-2 mb-1" style={{ color: "rgba(255,255,255,0.95)" }}>{children}</h3>,
-                                p: ({ children }) => <p className="mb-2 text-sm leading-relaxed" style={{ color: "rgba(255,255,255,0.8)" }}>{highlightMentionsInChildren(children, personasList)}</p>,
-                                strong: ({ children }) => <strong className="font-semibold" style={{ color: "rgba(255,255,255,0.95)" }}>{highlightMentionsInChildren(children, personasList)}</strong>,
-                                em: ({ children }) => <em style={{ color: "rgba(255,255,255,0.65)" }}>{children}</em>,
-                                code: ({ children, className }) => {
-                                  const isBlock = className?.includes("language-");
-                                  if (isBlock) {
-                                    return <code className={`block whitespace-pre overflow-x-auto rounded-lg p-3 text-xs leading-relaxed ${className || ""}`} style={{ backgroundColor: "rgba(0,0,0,0.4)", color: "#e2e8f0", border: "1px solid rgba(255,255,255,0.06)" }}>{children}</code>;
-                                  }
-                                  return <code className="px-1 py-0.5 rounded text-xs" style={{ backgroundColor: "rgba(255,255,255,0.08)", color: "#fbbf24" }}>{children}</code>;
-                                },
-                                pre: ({ children }) => <pre className="mb-2 rounded-lg overflow-hidden">{children}</pre>,
-                                ul: ({ children }) => <ul className="list-disc ml-4 mb-2 space-y-0.5 text-sm" style={{ color: "rgba(255,255,255,0.8)" }}>{children}</ul>,
-                                ol: ({ children }) => <ol className="list-decimal ml-4 mb-2 space-y-0.5 text-sm" style={{ color: "rgba(255,255,255,0.8)" }}>{children}</ol>,
-                                li: ({ children }) => <li className="leading-relaxed">{highlightMentionsInChildren(children, personasList)}</li>,
-                                blockquote: ({ children }) => <blockquote className="border-l-2 pl-3 my-2" style={{ borderColor: "rgba(99,102,241,0.5)", color: "rgba(255,255,255,0.65)" }}>{children}</blockquote>,
-                                hr: () => <hr className="my-3" style={{ borderColor: "rgba(255,255,255,0.06)" }} />,
-                                a: ({ href, children }) => <a href={href} className="underline" style={{ color: "#818cf8" }}>{children}</a>,
-                              }}
-                            >
-                              {comment.content}
-                            </ReactMarkdown>
-                          </div>
-                        ) : (
-                          <div
-                            className="text-sm leading-relaxed whitespace-pre-wrap"
-                            style={{ color: "rgba(255,255,255,0.8)" }}
-                          >
-                            {renderCommentContent(comment.content, personasList)}
-                          </div>
-                        )
-                      )}
-                      {comment.attachments && comment.attachments.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {comment.attachments.map((att, i) => (
-                            isImageType(att.type) ? (
-                              <img
-                                key={i}
-                                src={att.data}
-                                alt={att.name}
-                                className="max-w-[200px] max-h-[150px] rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                                onClick={() => setLightboxImage(att.data)}
-                                style={{
-                                  backgroundColor: "#1a1a1a",
-                                  backgroundImage:
-                                    "linear-gradient(45deg, #2a2a2a 25%, transparent 25%), " +
-                                    "linear-gradient(-45deg, #2a2a2a 25%, transparent 25%), " +
-                                    "linear-gradient(45deg, transparent 75%, #2a2a2a 75%), " +
-                                    "linear-gradient(-45deg, transparent 75%, #2a2a2a 75%)",
-                                  backgroundSize: "20px 20px",
-                                  backgroundPosition: "0 0, 0 10px, 10px -10px, -10px 0px",
-                                }}
-                              />
-                            ) : (
-                              <div
-                                key={i}
-                                className="flex items-center gap-2 px-3 py-2 rounded-lg"
-                                style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
-                              >
-                                <span
-                                  className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-                                  style={{ backgroundColor: "rgba(255,255,255,0.1)", color: "var(--text-muted)" }}
-                                >
-                                  {getFileIcon(att.type)}
-                                </span>
-                                <span className="text-xs truncate max-w-[120px]" style={{ color: "var(--text-secondary)" }}>
-                                  {att.name}
-                                </span>
-                              </div>
-                            )
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-            {/* Doc typing indicator */}
-            {docTypingPersona && (
-              <div className="group px-2 py-1">
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold text-white flex-shrink-0 overflow-hidden"
-                    style={{ backgroundColor: docTypingPersona.color || "var(--accent-indigo)" }}
-                  >
-                    {docTypingPersona.avatarUrl ? (
-                      <img src={docTypingPersona.avatarUrl} alt={docTypingPersona.name} className="w-full h-full object-cover" />
-                    ) : (
-                      docTypingPersona.name?.[0]?.toUpperCase() || "A"
-                    )}
-                  </div>
-                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>{docTypingPersona.name}</span>
-                  <span className="flex gap-0.5">
-                    {[0, 1, 2].map((i) => (
-                      <span
-                        key={i}
-                        className="w-1.5 h-1.5 rounded-full"
-                        style={{
-                          backgroundColor: "var(--text-muted)",
-                          animation: `typing-dot 1.4s infinite ${i * 0.2}s`,
-                        }}
-                      />
-                    ))}
-                  </span>
-                </div>
-              </div>
-            )}
-            <div ref={docCommentsEndRef} />
-          </div>
-
-          {/* Doc comment input */}
-          <CommentInput
-            personasList={personasList}
-            placeholder="Comment on this document\u2026 @ to mention, # for columns"
-            onPost={handleDocCommentPost}
-          />
-        </div>
-      </div>
-    </div>
-  );
+  // Full-screen document viewer removed — documents now stored as tagged attachments
+  const displayDoc: any = null;
+  const docViewer = null;
 
   // Quote comment modal (overlays the doc viewer)
   const quoteModal = quoteModalText && (

@@ -74,6 +74,10 @@ export function TeamView({ projectSlug }: { projectSlug: string }) {
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Claude auth status
+  const [authStatus, setAuthStatus] = useState<{ loggedIn: boolean; authMethod: string; email?: string } | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
+
   // Modal state: null = closed, persona with empty id = create mode, persona with id = edit mode
   const [editingPersona, setEditingPersona] = useState<Persona | null>(null);
 
@@ -93,10 +97,6 @@ export function TeamView({ projectSlug }: { projectSlug: string }) {
   const [promptEdits, setPromptEdits] = useState<Record<string, string>>({});
   const [expandedPrompt, setExpandedPrompt] = useState<string | null>(null);
   const [savingPrompt, setSavingPrompt] = useState<string | null>(null);
-
-  const [roleContexts, setRoleContexts] = useState<Record<string, PromptData>>({});
-  const [roleContextEdit, setRoleContextEdit] = useState<string | undefined>(undefined);
-  const [savingContext, setSavingContext] = useState(false);
 
   const [eventPrompts, setEventPrompts] = useState<Record<string, PromptData>>({});
   const [eventPromptEdits, setEventPromptEdits] = useState<Record<string, string>>({});
@@ -131,7 +131,6 @@ export function TeamView({ projectSlug }: { projectSlug: string }) {
       setPrompts(promptsData.prompts || {});
       setPromptDefaults(promptsData.defaults || {});
       const eventData = await eventRes.json();
-      setRoleContexts(eventData.contexts || {});
       setEventPrompts(eventData.prompts || {});
       setAllEventDefaults(eventData.defaults || {});
     } catch (err) {
@@ -139,8 +138,39 @@ export function TeamView({ projectSlug }: { projectSlug: string }) {
     }
   }
 
+  async function fetchAuthStatus() {
+    try {
+      const res = await fetch("/api/auth/reauth");
+      if (res.ok) setAuthStatus(await res.json());
+    } catch {}
+  }
+
+  async function handleAuthLogin() {
+    setAuthLoading(true);
+    try {
+      await fetch("/api/auth/reauth", { method: "POST" });
+      // Poll until authenticated
+      const poll = setInterval(async () => {
+        const res = await fetch("/api/auth/reauth");
+        if (res.ok) {
+          const s = await res.json();
+          setAuthStatus(s);
+          if (s.loggedIn) {
+            setAuthLoading(false);
+            clearInterval(poll);
+          }
+        }
+      }, 3000);
+      // Stop polling after 5 minutes
+      setTimeout(() => { clearInterval(poll); setAuthLoading(false); }, 5 * 60 * 1000);
+    } catch {
+      setAuthLoading(false);
+    }
+  }
+
   useEffect(() => {
     fetchData();
+    fetchAuthStatus();
   }, []);
 
   // Auto-open edit modal when edit query param is present
@@ -164,7 +194,6 @@ export function TeamView({ projectSlug }: { projectSlug: string }) {
     setEditingSkillIndex(null);
     setExpandedPrompt(null);
     setPromptEdits({});
-    setRoleContextEdit(undefined);
     setExpandedEventPrompt(null);
     setEventPromptEdits({});
     if (role) {
@@ -293,39 +322,6 @@ export function TeamView({ projectSlug }: { projectSlug: string }) {
     setSavingEventPrompt(null);
   }
 
-  async function handleSaveContext(key: string, value: string) {
-    setSavingContext(true);
-    try {
-      await fetch("/api/settings/event-prompts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key, value }),
-      });
-      setRoleContexts({ ...roleContexts, [key]: { value, isDefault: false } });
-      setRoleContextEdit(undefined);
-    } catch (err) {
-      console.error("Failed to save context:", err);
-    }
-    setSavingContext(false);
-  }
-
-  async function handleResetContext(key: string) {
-    setSavingContext(true);
-    try {
-      const res = await fetch("/api/settings/event-prompts", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key }),
-      });
-      const data = await res.json();
-      setRoleContexts({ ...roleContexts, [key]: { value: data.value || allEventDefaults[key] || "", isDefault: true } });
-      setRoleContextEdit(undefined);
-    } catch (err) {
-      console.error("Failed to reset context:", err);
-    }
-    setSavingContext(false);
-  }
-
   async function handleDeleteWorker(personaId: string) {
     try {
       const res = await fetch(`/api/personas?id=${personaId}`, { method: "DELETE" });
@@ -428,6 +424,35 @@ export function TeamView({ projectSlug }: { projectSlug: string }) {
             <span className="ml-auto text-xs bg-white/10 px-2 py-0.5 rounded">{roles.length}</span>
           </button>
         </nav>
+
+        {/* Claude Auth Status */}
+        <div className="p-3 border-t border-[var(--border-subtle)]">
+          {authStatus === null ? null : authStatus.loggedIn ? (
+            <div className="px-3 py-2 rounded-lg bg-green-500/10 border border-green-500/20">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />
+                <span className="text-xs font-medium text-green-400">Claude authenticated</span>
+              </div>
+              {authStatus.email && (
+                <p className="text-xs text-[var(--text-muted)] mt-1 truncate pl-4">{authStatus.email}</p>
+              )}
+            </div>
+          ) : (
+            <div className="px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-2 h-2 rounded-full bg-red-400 flex-shrink-0" />
+                <span className="text-xs font-medium text-red-400">Not logged in</span>
+              </div>
+              <button
+                onClick={handleAuthLogin}
+                disabled={authLoading}
+                className="w-full px-2 py-1.5 rounded text-xs font-medium bg-white/10 hover:bg-white/20 text-[var(--text-primary)] transition-colors disabled:opacity-50"
+              >
+                {authLoading ? "Check your browser…" : "Authenticate Claude"}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Main Content */}
@@ -776,49 +801,6 @@ export function TeamView({ projectSlug }: { projectSlug: string }) {
                             </div>
                           );
                         })}
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* Role Context */}
-                {(() => {
-                  const slug = editingRole?.slug || roleForm.slug;
-                  if (!slug) return null;
-                  const contextKey = `context_role_${slug}`;
-                  const ctx = roleContexts[contextKey];
-                  const currentValue = ctx?.value || allEventDefaults[contextKey] || "";
-                  const isDefault = ctx?.isDefault !== false;
-                  const editValue = roleContextEdit;
-                  const hasEdits = editValue !== undefined && editValue !== currentValue;
-
-                  return (
-                    <div>
-                      <div className="mb-3">
-                        <label className="block text-xs font-medium text-[var(--text-muted)]">Role Context</label>
-                        <p className="text-[10px] text-[var(--text-muted)] mt-0.5">Background context injected into every dispatch for this role</p>
-                      </div>
-                      <div className="rounded-lg border border-[var(--border-medium)] bg-[var(--bg-input)] overflow-hidden">
-                        <div className="flex items-center justify-between px-3 py-2">
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded ${isDefault ? "bg-white/10 text-[var(--text-muted)]" : "bg-emerald-500/20 text-emerald-400"}`}>
-                            {isDefault ? "default" : "customized"}
-                          </span>
-                        </div>
-                        <div className="px-3 pb-3 border-t border-[var(--border-subtle)]">
-                          <textarea
-                            value={editValue !== undefined ? editValue : currentValue}
-                            onChange={(e) => setRoleContextEdit(e.target.value)}
-                            rows={8}
-                            className="w-full mt-2 px-3 py-2 rounded-lg text-xs font-mono bg-[var(--bg-primary)] border border-[var(--border-medium)] text-[var(--text-primary)] outline-none focus:border-[var(--accent-blue)] resize-y"
-                            style={{ minHeight: "120px" }}
-                          />
-                          <div className="flex items-center justify-between mt-2">
-                            <button type="button" onClick={() => handleResetContext(contextKey)} disabled={isDefault || savingContext} className="px-3 py-1.5 rounded-lg text-xs font-medium text-[var(--text-muted)] hover:bg-white/10 disabled:opacity-30">Reset to Default</button>
-                            <button type="button" onClick={() => handleSaveContext(contextKey, editValue || currentValue)} disabled={!hasEdits || savingContext} className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white bg-[var(--accent-blue)] disabled:opacity-40 hover:opacity-90">
-                              {savingContext ? "Saving..." : "Save Context"}
-                            </button>
-                          </div>
-                        </div>
                       </div>
                     </div>
                   );

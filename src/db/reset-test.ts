@@ -24,7 +24,7 @@ sqlite.pragma("foreign_keys = ON");
 const db = drizzle(sqlite, { schema });
 
 // Clear existing data (child tables first to satisfy FK constraints)
-db.delete(schema.ticketDocuments).run();
+db.delete(schema.ticketAttachments).run();
 db.delete(schema.comments).run();
 db.delete(schema.tickets).run();
 db.delete(schema.personas).run();

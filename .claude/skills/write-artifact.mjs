@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Claude Code skill: write-artifact
- * Saves a document artifact (research, implementation_plan, design) to the ticket system
+ * Saves a document artifact as a tagged ticket attachment
  */
 
 import { spawn } from 'node:child_process';
@@ -13,52 +13,47 @@ const webappRoot = path.resolve(__dirname, '../..');
 
 export const skill = {
   name: 'write-artifact',
-  description: 'Save a document artifact to the ticket system',
-  instructions: `Usage: /write-artifact <ticket-id> <type> <file-path>
+  description: 'Save a document artifact to the ticket as a tagged attachment',
+  instructions: `Usage: /write-artifact <ticket-id> <tag> <file-path>
 
-Types: research, implementation_plan, design
+Tags: research-doc, implementation-plan, design-doc, security-review, research-critique, plan-critique
 
-Example: /write-artifact 41 research /tmp/research.md
+Example: /write-artifact 41 research-doc /tmp/research.md
 
-This saves the artifact to the ticket_documents table, creates a comment, triggers auto-dispatch chains (e.g., critic review after research v1), and logs an audit event.
+This saves the artifact to ticket_attachments with the given tag, creates a comment, and logs an audit event.
 
-IMPORTANT: Use this to save research documents, implementation plans, and design documents. Do NOT post these as comments — save them as artifacts so they appear in the Documents section of the ticket.`,
+IMPORTANT: Use this to save research documents, implementation plans, and design documents. Do NOT post these as comments — save them as artifacts so they appear in the Attachments section of the ticket.`,
 };
 
 export async function run(args) {
   const parts = args.split(/\s+/).filter(Boolean);
-  const [ticketId, type, filePath] = parts;
+  const [ticketId, tag, filePath] = parts;
 
-  if (!ticketId || !type || !filePath) {
+  if (!ticketId || !tag || !filePath) {
     return {
-      error: 'Usage: /write-artifact <ticket-id> <type> <file-path>\nTypes: research, implementation_plan, design'
+      error: 'Usage: /write-artifact <ticket-id> <tag> <file-path>\nTags: research-doc, implementation-plan, design-doc'
     };
   }
 
-  const validTypes = ['research', 'implementation_plan', 'design'];
-  if (!validTypes.includes(type)) {
+  const validTags = ['research-doc', 'implementation-plan', 'design-doc', 'security-review', 'research-critique', 'plan-critique'];
+  if (!validTags.includes(tag)) {
     return {
-      error: `Invalid type '${type}'. Must be one of: ${validTypes.join(', ')}`
+      error: `Invalid tag '${tag}'. Must be one of: ${validTags.join(', ')}`
     };
   }
 
-  return new Promise((resolve, reject) => {
-    const proc = spawn('npx', ['tsx', 'bin/bonsai-cli.ts', 'write-artifact', ticketId, type, filePath], {
+  return new Promise((resolve) => {
+    const proc = spawn('npx', ['tsx', 'bin/bonsai-cli.ts', 'write-artifact', ticketId, tag, filePath], {
       cwd: webappRoot,
-      env: { ...process.env, BONSAI_ENV: 'dev' },
+      env: { ...process.env, BONSAI_ENV: process.env.BONSAI_ENV || 'prod' },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
     let stdout = '';
     let stderr = '';
 
-    proc.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    proc.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
+    proc.stdout.on('data', (data) => { stdout += data.toString(); });
+    proc.stderr.on('data', (data) => { stderr += data.toString(); });
 
     proc.on('close', (code) => {
       if (code !== 0) {
@@ -68,8 +63,6 @@ export async function run(args) {
       }
     });
 
-    proc.on('error', (err) => {
-      resolve({ error: err.message });
-    });
+    proc.on('error', (err) => { resolve({ error: err.message }); });
   });
 }

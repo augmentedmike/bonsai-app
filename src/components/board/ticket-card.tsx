@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import ReactMarkdown from "react-markdown";
 import type { Ticket } from "@/types";
 import { ticketTypes } from "@/lib/ticket-types";
 
@@ -15,77 +14,54 @@ interface TicketCardProps {
   onOpenEpic?: (epicId: number) => void;
 }
 
-const AGENT_ACTIVE_THRESHOLD_MS = 30 * 60 * 1000; // 30 min
+const AGENT_ACTIVE_THRESHOLD_MS = 30 * 60 * 1000;
 
 function isAgentActive(lastAgentActivity?: string): boolean {
   if (!lastAgentActivity) return false;
-  const last = new Date(lastAgentActivity).getTime();
-  return Date.now() - last < AGENT_ACTIVE_THRESHOLD_MS;
+  return Date.now() - new Date(lastAgentActivity).getTime() < AGENT_ACTIVE_THRESHOLD_MS;
 }
 
 type DocStatus = "none" | "pending" | "approved";
 
 function getDocStatus(completedAt?: string, approvedAt?: string): DocStatus {
-  // If approved, show as approved (regardless of completedAt)
   if (approvedAt) return "approved";
-  // If completed but not approved, show as pending
   if (completedAt) return "pending";
-  // If neither completed nor approved, show as none
   return "none";
 }
 
-const statusColors = {
-  none: { color: "rgba(255,255,255,0.2)", bg: "rgba(255,255,255,0.03)", opacity: 0.4 },
-  pending: { color: "#fbbf24", bg: "rgba(251, 191, 36, 0.18)", opacity: 1 },
-  approved: { color: "#4ade80", bg: "rgba(74, 222, 128, 0.18)", opacity: 1 },
+const docColors = {
+  none:     { color: "rgba(255,255,255,0.2)", bg: "rgba(255,255,255,0.03)" },
+  pending:  { color: "#fbbf24", bg: "rgba(251,191,36,0.15)" },
+  approved: { color: "#4ade80", bg: "rgba(74,222,128,0.15)" },
 };
-
 
 export function TicketCard({ ticket, onDragStart, onDragEnd, onEdit, onViewDocument, onOpenEpic }: TicketCardProps) {
   const router = useRouter();
   const style = ticketTypes[ticket.type] ?? { label: ticket.type, color: "#6b7280", bg: "#6b7280", text: "#d1d5db" };
   const [dragging, setDragging] = useState(false);
-  const [hovered, setHovered] = useState(false);
 
   const researchStatus = getDocStatus(ticket.researchCompletedAt, ticket.researchApprovedAt);
   const planStatus = getDocStatus(ticket.planCompletedAt, ticket.planApprovedAt);
 
-  // Shipped tickets never show as "working"
   const agentActive = ticket.state !== "shipped" && isAgentActive(ticket.lastAgentActivity);
-  // Use running agent_runs for accurate working status (not just assigneeId)
   const activeRunIds = new Set(ticket.activeRunPersonaIds ?? []);
-  // Fallback to assignee if no active runs tracked yet (e.g. first 15s after dispatch)
   const effectiveActiveIds = activeRunIds.size > 0
     ? activeRunIds
     : agentActive && ticket.assignee ? new Set([ticket.assignee.id]) : new Set<string>();
 
-  // Build avatar list: all agent participants
-  const avatars: { label: string; color?: string; imageUrl?: string; isAgent?: boolean; isWorking?: boolean }[] = [];
-  // Add all unique agent participants (assignee + research/plan authors + running agents)
+  // Avatar list
   const seen = new Set<string>();
+  const avatars: { label: string; color?: string; imageUrl?: string; isWorking?: boolean }[] = [];
   for (const p of ticket.participants ?? []) {
     if (seen.has(p.id)) continue;
     seen.add(p.id);
-    avatars.push({
-      label: p.name,
-      color: p.color,
-      imageUrl: p.avatar,
-      isAgent: true,
-      isWorking: effectiveActiveIds.has(p.id),
-    });
+    avatars.push({ label: p.name, color: p.color, imageUrl: p.avatar, isWorking: effectiveActiveIds.has(p.id) });
   }
-  // Fallback: if no participants but there's an assignee, show them
   if (seen.size === 0 && ticket.assignee) {
-    avatars.push({
-      label: ticket.assignee.name,
-      color: ticket.assignee.color,
-      imageUrl: ticket.assignee.avatar,
-      isAgent: true,
-      isWorking: agentActive,
-    });
+    avatars.push({ label: ticket.assignee.name, color: ticket.assignee.color, imageUrl: ticket.assignee.avatar, isWorking: agentActive });
   }
-  const visibleAvatars = avatars.slice(0, 4);
-  const overflow = avatars.length - 4;
+  const visibleAvatars = avatars.slice(0, 3);
+  const overflow = avatars.length - 3;
 
   return (
     <div
@@ -96,475 +72,198 @@ export function TicketCard({ ticket, onDragStart, onDragEnd, onEdit, onViewDocum
         e.dataTransfer.setData("text/plain", String(ticket.id));
         onDragStart?.(ticket.id);
       }}
-      onDragEnd={() => {
-        setDragging(false);
-        onDragEnd?.();
-      }}
+      onDragEnd={() => { setDragging(false); onDragEnd?.(); }}
       onClick={() => onEdit?.(ticket)}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      className="relative rounded-2xl p-6 cursor-pointer active:cursor-grabbing"
+      className="relative rounded-xl px-3 py-2.5 cursor-pointer active:cursor-grabbing"
       style={{
         backgroundColor: "var(--bg-card)",
         border: dragging
-          ? "1px solid rgba(91, 141, 249, 0.5)"
+          ? "1px solid rgba(91,141,249,0.5)"
           : ticket.blocked
-            ? "1px solid rgba(239, 68, 68, 0.4)"
+            ? "1px solid rgba(239,68,68,0.4)"
             : ticket.onHold
-              ? "1px solid rgba(245, 158, 11, 0.4)"
+              ? "1px solid rgba(245,158,11,0.4)"
               : "1px solid var(--border-subtle)",
         boxShadow: dragging
-          ? "0 20px 40px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(91, 141, 249, 0.15), 0 0 24px rgba(91, 141, 249, 0.08)"
-          : "0 1px 3px rgba(0, 0, 0, 0.1)",
-        transform: dragging ? "scale(1.03) rotate(-2deg)" : "scale(1) rotate(0deg)",
-        opacity: dragging ? 0.85 : 1,
-        zIndex: dragging ? 10 : "auto",
-        transition: "all 180ms cubic-bezier(0.2, 0, 0, 1)",
+          ? "0 12px 28px rgba(0,0,0,0.4), 0 0 16px rgba(91,141,249,0.1)"
+          : "0 1px 2px rgba(0,0,0,0.08)",
+        transform: dragging ? "scale(1.02) rotate(-1deg)" : "scale(1)",
+        opacity: dragging ? 0.9 : 1,
+        transition: "all 150ms cubic-bezier(0.2,0,0,1)",
       }}
     >
-      {/* Edit button - appears on hover */}
-      {hovered && !dragging && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit?.(ticket);
-          }}
-          className="absolute top-3 right-3 w-8 h-8 rounded-lg flex items-center justify-center transition-colors hover:bg-white/10"
+      {/* Top row: badges + status */}
+      <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+        {/* Type badge */}
+        <span
+          className="px-1.5 py-0.5 rounded text-[10px] font-semibold flex-shrink-0"
           style={{
-            backgroundColor: "rgba(0,0,0,0.4)",
-            color: "rgba(255,255,255,0.9)",
+            backgroundColor: `color-mix(in srgb, ${style.bg} 18%, transparent)`,
+            color: style.text,
           }}
-          title="Edit ticket"
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-          </svg>
-        </button>
-      )}
+          {style.label}
+        </span>
 
-      {/* Badge row */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <span
-            className="px-3 py-1 rounded-lg text-xs font-semibold"
-            style={{
-              backgroundColor: `color-mix(in srgb, ${style.bg} 15%, transparent)`,
-              color: style.text,
-            }}
-          >
-            {style.label}
+        {ticket.isEpic && (
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold flex-shrink-0" style={{ backgroundColor: "rgba(249,115,22,0.18)", color: "#fb923c" }}>
+            Epic
           </span>
-          {ticket.isEpic && (
-            <span
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold"
-              style={{
-                backgroundColor: "rgba(249, 115, 22, 0.18)",
-                color: "#fb923c",
-              }}
-            >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
-              </svg>
-              Epic
-            </span>
-          )}
-          {ticket.blocked && (
-            <span
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold"
-              style={{
-                backgroundColor: "rgba(239, 68, 68, 0.18)",
-                color: "#f87171",
-              }}
-              title={ticket.blockedReason || "Blocked"}
-            >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-              </svg>
-              Blocked
-            </span>
-          )}
+        )}
+        {ticket.blocked && (
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold flex-shrink-0" style={{ backgroundColor: "rgba(239,68,68,0.18)", color: "#f87171" }} title={ticket.blockedReason || "Blocked"}>
+            Blocked
+          </span>
+        )}
+        {ticket.onHold && (
           <button
-            onClick={async (e) => {
-              e.stopPropagation();
-              await fetch(`/api/tickets/${ticket.id}/hold`, {
-                method: ticket.onHold ? "DELETE" : "POST",
-              });
-              router.refresh();
-            }}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all hover:brightness-125"
-            style={{
-              backgroundColor: ticket.onHold ? "rgba(245, 158, 11, 0.18)" : "rgba(255,255,255,0.06)",
-              color: ticket.onHold ? "#fbbf24" : "rgba(255,255,255,0.35)",
-              border: ticket.onHold ? "1px solid rgba(245, 158, 11, 0.4)" : "1px solid rgba(255,255,255,0.12)",
-              cursor: "pointer",
-            }}
-            title={ticket.onHold ? "Resume (remove hold)" : "Put on hold"}
+            onClick={async (e) => { e.stopPropagation(); await fetch(`/api/tickets/${ticket.id}/hold`, { method: "DELETE" }); router.refresh(); }}
+            className="px-1.5 py-0.5 rounded text-[10px] font-semibold flex-shrink-0"
+            style={{ backgroundColor: "rgba(245,158,11,0.18)", color: "#fbbf24", border: "none", cursor: "pointer" }}
+            title="Remove hold"
           >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
-            </svg>
             Hold
           </button>
-          {ticket.state === "shipped" && ticket.mergedAt && (
-            <span
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold"
-              style={{
-                backgroundColor: "rgba(139, 92, 246, 0.18)",
-                color: "#a78bfa",
-              }}
-              title={`Merged ${ticket.mergeCommit ? `(${ticket.mergeCommit.slice(0, 7)})` : ""}`}
-            >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 011.043-3.296 3.746 3.746 0 013.296-1.043A3.746 3.746 0 0112 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.745 3.745 0 0121 12z" />
-              </svg>
-              Merged
-            </span>
-          )}
-        </div>
+        )}
+        {ticket.state === "shipped" && ticket.mergedAt && (
+          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold flex-shrink-0" style={{ backgroundColor: "rgba(139,92,246,0.18)", color: "#a78bfa" }}>
+            Merged
+          </span>
+        )}
+
+        {/* Agent working indicator */}
         {agentActive && effectiveActiveIds.size > 0 && (() => {
-          // Show the first running agent's name (from activeRunPersonaIds if available, else assignee)
-          const runningPersona = ticket.participants?.find(p => effectiveActiveIds.has(p.id))
-            ?? ticket.assignee;
-          if (!runningPersona) return null;
+          const p = ticket.participants?.find(x => effectiveActiveIds.has(x.id)) ?? ticket.assignee;
+          if (!p) return null;
           return (
-            <span
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold"
-              style={{
-                backgroundColor: "rgba(74, 222, 128, 0.12)",
-                color: "#4ade80",
-              }}
-            >
-              <span
-                className="w-1.5 h-1.5 rounded-full animate-pulse"
-                style={{ backgroundColor: "#4ade80" }}
-              />
-              {runningPersona.name} working
+            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold ml-auto flex-shrink-0" style={{ backgroundColor: "rgba(74,222,128,0.12)", color: "#4ade80" }}>
+              <span className="w-1 h-1 rounded-full animate-pulse" style={{ backgroundColor: "#4ade80" }} />
+              {p.name}
             </span>
           );
         })()}
         {!agentActive && ticket.createdAt && (
-          <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
-            {ticket.createdAt}
+          <span className="text-[10px] ml-auto flex-shrink-0" style={{ color: "var(--text-muted)" }}>
+            {ticket.createdAt.slice(0, 10)}
           </span>
         )}
       </div>
 
       {/* Title */}
-      <h3
-        className="text-lg font-bold mb-2.5 leading-tight tracking-tight"
-        style={{ color: "var(--text-primary)" }}
+      <p
+        className="text-sm font-semibold leading-snug mb-2"
+        style={{ color: "var(--text-primary)", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}
       >
         {ticket.title}
-      </h3>
+      </p>
 
-      {/* Parent epic label — clickable */}
+      {/* Parent epic label */}
       {ticket.epicId && ticket.epicTitle && (
         <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpenEpic?.(ticket.epicId!);
-          }}
-          className="flex items-center gap-1.5 mb-2.5 text-xs font-medium transition-opacity hover:opacity-80"
+          onClick={(e) => { e.stopPropagation(); onOpenEpic?.(ticket.epicId!); }}
+          className="flex items-center gap-1 mb-1.5 text-[10px] font-medium"
           style={{ color: "#fb923c", background: "none", border: "none", padding: 0, cursor: "pointer" }}
         >
-          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
-          </svg>
-          Epic: {ticket.epicTitle}
+          ↳ {ticket.epicTitle}
         </button>
       )}
 
-      {/* Description */}
-      <div
-        className="text-[15px] leading-relaxed mb-5 font-normal"
-        style={{ color: "rgba(255, 255, 255, 0.7)" }}
-      >
-        <ReactMarkdown
-          components={{
-            p: ({ children }) => <p className="mb-2">{children}</p>,
-            strong: ({ children }) => <strong className="font-semibold text-white/90">{children}</strong>,
-            em: ({ children }) => <em>{children}</em>,
-            code: ({ children }) => <code className="bg-white/10 px-1 rounded text-[13px]">{children}</code>,
-            ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-0.5">{children}</ul>,
-            ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-0.5">{children}</ol>,
-            li: ({ children }) => <li>{children}</li>,
-            br: () => <br />,
-          }}
-        >
-          {ticket.description.length > 1000
-            ? ticket.description.slice(0, 1000) + "..."
-            : ticket.description}
-        </ReactMarkdown>
-      </div>
-
       {/* Epic progress bar */}
       {ticket.isEpic && (ticket.childCount ?? 0) > 0 && (
-        <div className="mb-5">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs font-medium" style={{ color: "#fb923c" }}>
-              {ticket.childrenShipped} / {ticket.childCount} shipped
-            </span>
-            <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
-              {Math.round(((ticket.childrenShipped ?? 0) / (ticket.childCount ?? 1)) * 100)}%
-            </span>
+        <div className="mb-2">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[10px]" style={{ color: "#fb923c" }}>{ticket.childrenShipped}/{ticket.childCount} shipped</span>
+            <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{Math.round(((ticket.childrenShipped ?? 0) / (ticket.childCount ?? 1)) * 100)}%</span>
           </div>
-          <div className="w-full h-2 rounded-full overflow-hidden" style={{ backgroundColor: "rgba(249, 115, 22, 0.15)" }}>
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{
-                width: `${((ticket.childrenShipped ?? 0) / (ticket.childCount ?? 1)) * 100}%`,
-                backgroundColor: "#fb923c",
-              }}
-            />
+          <div className="w-full h-1 rounded-full overflow-hidden" style={{ backgroundColor: "rgba(249,115,22,0.15)" }}>
+            <div className="h-full rounded-full" style={{ width: `${((ticket.childrenShipped ?? 0) / (ticket.childCount ?? 1)) * 100}%`, backgroundColor: "#fb923c" }} />
           </div>
         </div>
       )}
 
-      {/* Footer: avatar stack + action icons */}
-      <div className="flex items-center justify-between">
+      {/* Footer: avatars + doc status + counts */}
+      <div className="flex items-center justify-between gap-2">
         {/* Avatar stack */}
         <div className="flex items-center">
           {visibleAvatars.map((av, i) => (
-            <div
-              key={i}
-              style={{
-                marginLeft: i > 0 ? -10 : 0,
-                zIndex: i + 1,
-                position: "relative",
-              }}
-              title={av.isWorking ? `${av.label} — working` : av.label}
-            >
-              {/* Pulsing ring for active agent */}
-              {av.isWorking && (
-                <span
-                  className="absolute inset-0 rounded-full animate-ping"
-                  style={{
-                    border: "2px solid #4ade80",
-                    opacity: 0.6,
-                  }}
-                />
-              )}
-              {av.isWorking && (
-                <span
-                  className="absolute inset-0 rounded-full"
-                  style={{
-                    border: "2px solid #4ade80",
-                  }}
-                />
-              )}
+            <div key={i} style={{ marginLeft: i > 0 ? -6 : 0, zIndex: i + 1, position: "relative" }} title={av.isWorking ? `${av.label} working` : av.label}>
+              {av.isWorking && <span className="absolute inset-0 rounded-full animate-ping" style={{ border: "1.5px solid #4ade80", opacity: 0.5 }} />}
               <div
-                className="rounded-full flex items-center justify-center text-xs font-semibold text-white"
+                className="rounded-full flex items-center justify-center text-[9px] font-bold text-white overflow-hidden"
                 style={{
-                  width: 40,
-                  height: 40,
+                  width: 22, height: 22,
                   backgroundColor: av.color ?? "var(--accent-indigo)",
-                  border: av.isWorking ? "2px solid #4ade80" : "2px solid var(--bg-card)",
+                  border: av.isWorking ? "1.5px solid #4ade80" : "1.5px solid var(--bg-card)",
                   position: "relative",
-                  overflow: "hidden",
                 }}
               >
-                {av.imageUrl ? (
-                  <img
-                    src={av.imageUrl}
-                    alt={av.label}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  av.label[0]?.toUpperCase()
-                )}
+                {av.imageUrl ? <img src={av.imageUrl} alt={av.label} className="w-full h-full object-cover" /> : av.label[0]?.toUpperCase()}
               </div>
-              {/* Small green dot indicator for working agent */}
-              {av.isWorking && (
-                <span
-                  className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full"
-                  style={{
-                    backgroundColor: "#4ade80",
-                    border: "2px solid var(--bg-card)",
-                  }}
-                />
-              )}
             </div>
           ))}
           {overflow > 0 && (
-            <div
-              className="rounded-full flex items-center justify-center text-xs font-semibold"
-              style={{
-                width: 40,
-                height: 40,
-                backgroundColor: "rgba(255,255,255,0.08)",
-                border: "2px solid var(--bg-card)",
-                color: "var(--text-muted)",
-                marginLeft: -10,
-                position: "relative",
-              }}
-            >
+            <div className="rounded-full flex items-center justify-center text-[9px] font-semibold" style={{ width: 22, height: 22, backgroundColor: "rgba(255,255,255,0.08)", border: "1.5px solid var(--bg-card)", color: "var(--text-muted)", marginLeft: -6 }}>
               +{overflow}
             </div>
           )}
           {avatars.length === 0 && (
-            <div
-              className="rounded-full flex items-center justify-center"
-              style={{
-                width: 40,
-                height: 40,
-                border: "1.5px dashed var(--border-medium)",
-                color: "var(--text-muted)",
-              }}
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0" />
-              </svg>
+            <div className="rounded-full flex items-center justify-center" style={{ width: 22, height: 22, border: "1.5px dashed var(--border-medium)", color: "var(--text-muted)" }}>
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0" /></svg>
             </div>
           )}
         </div>
 
-        {/* Action icon buttons */}
-        <div className="flex items-center gap-2">
-          {/* Acceptance criteria indicator */}
-          <div
-            className="h-9 px-2.5 rounded-lg flex items-center gap-1.5 transition-opacity"
-            style={{
-              backgroundColor: ticket.acceptanceCriteria ? "rgba(139, 92, 246, 0.18)" : "rgba(255,255,255,0.03)",
-              color: ticket.acceptanceCriteria ? "#a78bfa" : "rgba(255,255,255,0.2)",
-              opacity: ticket.acceptanceCriteria ? 1 : 0.4,
-            }}
-            title={ticket.acceptanceCriteria ? "Has acceptance criteria" : "No acceptance criteria"}
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span className="text-[10px] font-semibold">AC</span>
-          </div>
+        {/* Doc status + counts */}
+        <div className="flex items-center gap-1">
+          {/* AC */}
+          {ticket.acceptanceCriteria && (
+            <span className="flex items-center h-5 px-1.5 rounded text-[9px] font-semibold" style={{ backgroundColor: "rgba(139,92,246,0.15)", color: "#a78bfa" }} title="Has acceptance criteria">AC</span>
+          )}
 
-          {/* Research document status */}
+          {/* Research */}
           {researchStatus !== "none" ? (
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onViewDocument?.(ticket, "research");
-              }}
-              className="h-9 px-2.5 rounded-lg flex items-center gap-1.5 transition-all hover:brightness-125"
-              style={{
-                backgroundColor: statusColors[researchStatus].bg,
-                color: statusColors[researchStatus].color,
-                opacity: statusColors[researchStatus].opacity,
-                border: "none",
-                cursor: "pointer",
-              }}
-              title={`View research document (${researchStatus === "pending" ? "awaiting approval" : "approved"})`}
+              onClick={(e) => { e.stopPropagation(); onViewDocument?.(ticket, "research"); }}
+              className="flex items-center h-5 px-1.5 rounded text-[9px] font-semibold"
+              style={{ backgroundColor: docColors[researchStatus].bg, color: docColors[researchStatus].color, border: "none", cursor: "pointer" }}
+              title={`Research: ${researchStatus}`}
             >
-              {researchStatus === "pending" && (
-                <span
-                  className="w-1.5 h-1.5 rounded-full animate-pulse"
-                  style={{ backgroundColor: statusColors[researchStatus].color }}
-                />
-              )}
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-              </svg>
-              <span className="text-[10px] font-semibold">R</span>
-              {researchStatus === "approved" && (
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                </svg>
-              )}
+              {researchStatus === "pending" && <span className="w-1 h-1 rounded-full animate-pulse mr-0.5" style={{ backgroundColor: docColors.pending.color }} />}
+              R{researchStatus === "approved" && " ✓"}
             </button>
           ) : (
-            <div
-              className="h-9 px-2.5 rounded-lg flex items-center gap-1.5 transition-opacity"
-              style={{
-                backgroundColor: statusColors[researchStatus].bg,
-                color: statusColors[researchStatus].color,
-                opacity: statusColors[researchStatus].opacity,
-              }}
-              title="Research: Not started"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-              </svg>
-              <span className="text-[10px] font-semibold">R</span>
-            </div>
+            <span className="flex items-center h-5 px-1.5 rounded text-[9px] font-semibold opacity-30" style={{ backgroundColor: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)" }} title="Research: not started">R</span>
           )}
 
-          {/* Plan document status */}
+          {/* Plan */}
           {planStatus !== "none" ? (
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onViewDocument?.(ticket, "implementation_plan");
-              }}
-              className="h-9 px-2.5 rounded-lg flex items-center gap-1.5 transition-all hover:brightness-125"
-              style={{
-                backgroundColor: statusColors[planStatus].bg,
-                color: statusColors[planStatus].color,
-                opacity: statusColors[planStatus].opacity,
-                border: "none",
-                cursor: "pointer",
-              }}
-              title={`View implementation plan (${planStatus === "pending" ? "awaiting approval" : "approved"})`}
+              onClick={(e) => { e.stopPropagation(); onViewDocument?.(ticket, "implementation_plan"); }}
+              className="flex items-center h-5 px-1.5 rounded text-[9px] font-semibold"
+              style={{ backgroundColor: docColors[planStatus].bg, color: docColors[planStatus].color, border: "none", cursor: "pointer" }}
+              title={`Plan: ${planStatus}`}
             >
-              {planStatus === "pending" && (
-                <span
-                  className="w-1.5 h-1.5 rounded-full animate-pulse"
-                  style={{ backgroundColor: statusColors[planStatus].color }}
-                />
-              )}
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" />
-              </svg>
-              <span className="text-[10px] font-semibold">P</span>
-              {planStatus === "approved" && (
-                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                </svg>
-              )}
+              {planStatus === "pending" && <span className="w-1 h-1 rounded-full animate-pulse mr-0.5" style={{ backgroundColor: docColors.pending.color }} />}
+              P{planStatus === "approved" && " ✓"}
             </button>
           ) : (
-            <div
-              className="h-9 px-2.5 rounded-lg flex items-center gap-1.5 transition-opacity"
-              style={{
-                backgroundColor: statusColors[planStatus].bg,
-                color: statusColors[planStatus].color,
-                opacity: statusColors[planStatus].opacity,
-              }}
-              title="Plan: Not started"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" />
-              </svg>
-              <span className="text-[10px] font-semibold">P</span>
-            </div>
+            <span className="flex items-center h-5 px-1.5 rounded text-[9px] font-semibold opacity-30" style={{ backgroundColor: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)" }} title="Plan: not started">P</span>
           )}
 
-          {/* Comment icon + count */}
-          <div
-            className="h-9 px-2.5 rounded-lg flex items-center gap-1.5 transition-opacity"
-            style={{
-              backgroundColor: "rgba(255,255,255,0.03)",
-              color: "rgba(255,255,255,0.2)",
-              opacity: ticket.commentCount > 0 ? 1 : 0.4,
-            }}
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
-            </svg>
-            <span className="text-xs font-medium">{ticket.commentCount}</span>
-          </div>
+          {/* Comments */}
+          {ticket.commentCount > 0 && (
+            <span className="flex items-center gap-0.5 h-5 px-1.5 rounded text-[9px]" style={{ backgroundColor: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)" }}>
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" /></svg>
+              {ticket.commentCount}
+            </span>
+          )}
 
-          {/* Attachment icon + count */}
-          <div
-            className="h-9 px-2.5 rounded-lg flex items-center gap-1.5 transition-opacity"
-            style={{
-              backgroundColor: "rgba(255,255,255,0.03)",
-              color: "rgba(255,255,255,0.2)",
-              opacity: ticket.hasAttachments ? 1 : 0.4,
-            }}
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
-            </svg>
-            <span className="text-xs font-medium">{ticket.hasAttachments ? 1 : 0}</span>
-          </div>
+          {/* Attachments */}
+          {ticket.hasAttachments && (
+            <span className="flex items-center h-5 px-1.5 rounded text-[9px]" style={{ backgroundColor: "rgba(255,255,255,0.04)", color: "rgba(255,255,255,0.4)" }}>
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" /></svg>
+            </span>
+          )}
         </div>
       </div>
     </div>

@@ -116,9 +116,17 @@ export function ProjectChatPanel({
     }
   }
 
-  if (!open) return null;
-
   return (
+    <div
+      style={{
+        width: open ? "380px" : "0px",
+        height: "100%",
+        flexShrink: 0,
+        overflow: "hidden",
+        transition: "width 220ms cubic-bezier(0.4, 0, 0.2, 1)",
+        borderLeft: open ? "1px solid var(--border-medium)" : "none",
+      }}
+    >
     <div
       style={{
         width: "380px",
@@ -126,8 +134,6 @@ export function ProjectChatPanel({
         display: "flex",
         flexDirection: "column",
         backgroundColor: "var(--bg-primary)",
-        borderLeft: "1px solid var(--border-medium)",
-        flexShrink: 0,
       }}
     >
         {/* Header */}
@@ -278,6 +284,7 @@ export function ProjectChatPanel({
           30% { opacity: 1; transform: translateY(-3px); }
         }
       `}</style>
+    </div>
     </div>
   );
 }

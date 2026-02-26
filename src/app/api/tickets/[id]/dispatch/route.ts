@@ -6,21 +6,26 @@ import path from "node:path";
 import fs from "node:fs";
 import { getTicketById, updateTicket } from "@/db/data/tickets";
 import { createAgentComment, getRecentCommentsEnriched } from "@/db/data/comments";
-import { getDocumentsByTicketVersionDesc } from "@/db/data/documents";
+import { getAttachmentsByTag } from "@/db/data/attachments";
 import { getProjectById } from "@/db/data/projects";
-import { getProjectPersonasRaw, getAllPersonasRaw } from "@/db/data/personas";
+import { getGlobalPersonas, getAllPersonasRaw } from "@/db/data/personas";
 import { getRoleBySlug } from "@/db/data/roles";
 import { getSetting } from "@/db/data/settings";
 import { logAuditEvent } from "@/db/data/audit";
 import { insertAgentRun } from "@/db/data/agent-runs";
 import { getRecentProjectMessagesFormatted } from "@/db/data/project-messages";
 import { isPaused, pauseRemainingMs, projectPauseKey } from "@/lib/credit-pause";
+import { getOAuthTokenForDispatch } from "@/app/api/auth/reauth/route";
+import { getMaxAgents, getDailyBudget } from "@/app/api/settings/resources/route";
+import { getTodaySpendUsd } from "@/db/data/agent-runs";
 
 // ── Config ──────────────────────────────────────────
 const HOME = process.env.HOME || "~";
 const CLAUDE_CLI = path.join(HOME, ".local", "bin", "claude");
-const MODEL = "opus";
+const MODEL_OPUS = "opus";
+const MODEL_SONNET = "sonnet";
 const BONSAI_DIR = path.join(HOME, ".bonsai");
+// Concurrency limit is now read from DB via getMaxAgents() — no hardcoded constant
 const API_BASE = process.env.API_BASE || "http://localhost:3080";
 const BONSAI_CLI = path.join(process.cwd(), "cli", "bonsai-cli.ts");
 
@@ -33,6 +38,26 @@ const AGENTS_DIR = path.join(BONSAI_DIR, "agents");
 function shellEscape(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`;
 }
+
+/** Count running Claude CLI agent processes */
+function countRunningAgents(): number {
+  try {
+    const result = execFileSync("pgrep", ["-f", "claude -p --model"], {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    return result.trim().split("\n").filter(Boolean).length;
+  } catch {
+    return 0; // pgrep returns exit 1 when no matches
+  }
+}
+
+/** Pick model based on role — research/critic tasks use sonnet, everything else uses opus */
+function modelForRole(role: string | null): string {
+  if (role === "researcher" || role === "critic") return MODEL_SONNET;
+  return MODEL_OPUS;
+}
+
 
 const PROJECTS_DIR = path.join(HOME, "development", "bonsai", "projects");
 
@@ -116,14 +141,14 @@ function markPersonaDispatched(ticketId: number, personaId: string) {
 }
 
 // ── Agent Spawn (fire-and-forget, posts back when done) ──
-function spawnAgent(
+async function spawnAgent(
   sessionDir: string,
   cwd: string,
   tools: string[],
   ticketId: number,
   personaId: string,
   projectSlug: string,
-  opts?: { conversational?: boolean; documentId?: number; role?: string }
+  opts?: { conversational?: boolean; documentId?: number; role?: string; model?: string }
 ) {
   const taskFile = path.join(sessionDir, "task.md");
   const outputFile = path.join(sessionDir, "output.md");
@@ -185,7 +210,7 @@ function spawnAgent(
     `#!/bin/bash`,
     `# Unified Bonsai CLI wrapper`,
     `cd ${shellEscape(webappDir)} && \\`,
-    `BONSAI_ENV=dev BONSAI_PERSONA_ID="${personaId}" BONSAI_API_BASE="${API_BASE}" BONSAI_DB_DIR="${webappDir}" NODE_PATH=./node_modules \\`,
+    `BONSAI_ENV=${process.env.BONSAI_ENV || "dev"} BONSAI_PERSONA_ID="${personaId}" BONSAI_API_BASE="${API_BASE}" BONSAI_DB_DIR="${webappDir}" NODE_PATH=./node_modules \\`,
     `exec npx tsx ${BONSAI_CLI} "$@"`,
   ].join("\n"));
   fs.chmodSync(bonsaiCliWrapper, 0o755);
@@ -221,7 +246,7 @@ function spawnAgent(
     `cat ${shellEscape(taskFile)} |`,
     shellEscape(CLAUDE_CLI),
     `-p`,
-    `--model ${MODEL}`,
+    `--model ${opts?.model || MODEL_OPUS}`,
     `--allowedTools "${tools.join(",")}"`,
     `--output-format json`,
     `--no-session-persistence`,
@@ -229,6 +254,32 @@ function spawnAgent(
     ...addDirFlags,
     `> ${shellEscape(outputFile)} 2> ${shellEscape(stderrFile)}`,
   ].join(" ");
+
+  // ─── COST ANALYSIS LOGGING ───────────────────────────────────────────────────────────────────
+  try {
+    const systemPromptContent = fs.readFileSync(promptFile, "utf-8");
+    const taskContent = fs.readFileSync(taskFile, "utf-8");
+    console.log(
+      JSON.stringify({
+        level: "info",
+        service: "claude-cost-log",
+        message: "Claude agent dispatched",
+        ticketId,
+        personaId,
+        projectSlug,
+        model: opts?.model || MODEL_OPUS,
+        systemPromptLength: systemPromptContent.length,
+        taskLength: taskContent.length,
+        totalInputLength: systemPromptContent.length + taskContent.length,
+        systemPrompt: systemPromptContent,
+        task: taskContent,
+      })
+    );
+  } catch (e: any) {
+    console.error(`[claude-cost-log] Failed to log dispatch for ticket ${ticketId}: ${e.message}`);
+  }
+  // ─── END COST ANALYSIS LOGGING ───────────────────────────────────────────────────────────────
+
 
   // After claude finishes, post the output to agent-complete endpoint
   const postScriptFile = path.join(sessionDir, "post-output.mjs");
@@ -288,11 +339,12 @@ function spawnAgent(
     `  process.exit(0);`,
     `}`,
     `let output;`,
+    `let agentResult = null;`,
     `try {`,
-    `  const json = JSON.parse(raw);`,
-    `  output = json.result || "";`,
-    `  if (json.is_error) {`,
-    `    const errMsg = json.result || "unknown error";`,
+    `  agentResult = JSON.parse(raw);`,
+    `  output = agentResult.result || "";`,
+    `  if (agentResult.is_error) {`,
+    `    const errMsg = agentResult.result || "unknown error";`,
     `    if (/api_error|Internal server error|overloaded/i.test(errMsg)) {`,
     `      fs.writeFileSync(${JSON.stringify(path.join(sessionDir, "post-error.log"))}, "is_error API error caught: " + errMsg);`,
     `      process.exit(0);`,
@@ -310,7 +362,7 @@ function spawnAgent(
     `  const res = await fetch(${JSON.stringify(`${API_BASE}/api/tickets/${ticketId}/agent-complete`)}, {`,
     `    method: "POST",`,
     `    headers: { "Content-Type": "application/json" },`,
-    `    body: JSON.stringify({ personaId: ${JSON.stringify(personaId)}, content: output, conversational: ${!!opts?.conversational}, documentId: ${opts?.documentId ? opts.documentId : "null"} }),`,
+    `    body: JSON.stringify({ personaId: ${JSON.stringify(personaId)}, content: output, conversational: ${!!opts?.conversational}, documentId: ${opts?.documentId ? opts.documentId : "null"}, costUsd: agentResult?.total_cost_usd ?? null, inputTokens: agentResult?.usage?.input_tokens ?? null, outputTokens: agentResult?.usage?.output_tokens ?? null, cacheReadTokens: agentResult?.usage?.cache_read_input_tokens ?? null, sessionId: agentResult?.session_id ?? null, modelUsage: agentResult?.modelUsage ? JSON.stringify(agentResult.modelUsage) : null }),`,
     `  });`,
     `  const body = await res.text();`,
     `  fs.writeFileSync(${JSON.stringify(path.join(sessionDir, "post-result.log"))}, res.status + " " + body);`,
@@ -320,11 +372,18 @@ function spawnAgent(
   ].join("\n"));
   const postScript = `node ${shellEscape(postScriptFile)}`;
 
+  const oauthToken = await getOAuthTokenForDispatch();
   const child = spawn("sh", ["-c", `${claudeCmd} ; ${postScript}`], {
     cwd,
     detached: true,
     stdio: "ignore",
-    env: { ...process.env, DISABLE_AUTOUPDATER: "1", CLAUDECODE: "", GEMINI_API_KEY: process.env.GEMINI_API_KEY || "" },
+    env: {
+      ...process.env,
+      DISABLE_AUTOUPDATER: "1",
+      CLAUDECODE: "",
+      GEMINI_API_KEY: process.env.GEMINI_API_KEY || "",
+      ...(oauthToken ? { CLAUDE_CODE_OAUTH_TOKEN: oauthToken } : {}),
+    },
   });
   child.unref();
 }
@@ -366,13 +425,28 @@ function resolveTargetRole(ticket: typeof tickets.$inferSelect): string | null {
   return null;
 }
 
+// ── Decode base64 data URL to text ───────────────────
+function decodeAttachmentContent(dataUrl: string): string {
+  const match = dataUrl.match(/^data:[^;]+;base64,(.+)$/);
+  if (match) return Buffer.from(match[1], "base64").toString("utf-8");
+  return dataUrl;
+}
+
 // ── Fetch ticket context ─────────────────────────────
 async function getTicketContext(ticketId: number) {
   const enrichedComments = await getRecentCommentsEnriched(ticketId, 10);
-  const docs = await getDocumentsByTicketVersionDesc(ticketId);
 
-  const researchDoc = docs.find((d) => d.type === "research");
-  const implPlan = docs.find((d) => d.type === "implementation_plan");
+  // Fetch tagged attachments (research-doc and implementation-plan)
+  const researchAttachments = await getAttachmentsByTag(ticketId, "research-doc");
+  const planAttachments = await getAttachmentsByTag(ticketId, "implementation-plan");
+
+  // Use the latest of each (highest id)
+  const researchDoc = researchAttachments.length > 0
+    ? researchAttachments.sort((a, b) => b.id - a.id)[0]
+    : null;
+  const implPlan = planAttachments.length > 0
+    ? planAttachments.sort((a, b) => b.id - a.id)[0]
+    : null;
 
   return { enrichedComments, researchDoc, implPlan };
 }
@@ -390,6 +464,28 @@ export async function POST(
 
   if (conversational) {
     console.log(`[dispatch] Conversational dispatch for ${ticketId}, documentId=${documentId}, targetPersonaId=${targetPersonaId}`);
+  }
+
+  // ── Global concurrent agent gate (DB-configured) ─────────────
+  const [maxAgents, dailyBudget, todaySpend] = await Promise.all([
+    getMaxAgents(),
+    getDailyBudget(),
+    getTodaySpendUsd(),
+  ]);
+  const runningAgents = countRunningAgents();
+  if (runningAgents >= maxAgents) {
+    console.log(`[dispatch] Rejecting — ${runningAgents}/${maxAgents} agents running`);
+    return NextResponse.json(
+      { error: "too_many_agents", running: runningAgents, max: maxAgents },
+      { status: 503 }
+    );
+  }
+  if (dailyBudget > 0 && todaySpend >= dailyBudget) {
+    console.log(`[dispatch] Rejecting — daily budget $${dailyBudget} reached ($${todaySpend.toFixed(4)} spent)`);
+    return NextResponse.json(
+      { error: "daily_budget_exceeded", spent: todaySpend, budget: dailyBudget },
+      { status: 503 }
+    );
   }
 
   const ticket = await getTicketById(ticketId);
@@ -422,7 +518,7 @@ export async function POST(
   }
 
   // Get all non-deleted personas for this project
-  const projectPersonas = await getProjectPersonasRaw(project.id);
+  const projectPersonas = await getGlobalPersonas();
 
   // Handle @team dispatch — send to all project agents.
   // Also treat non-mentioned human comments as team dispatch so all personas see them.
@@ -475,7 +571,7 @@ export async function POST(
       );
 
       const personaTools = await toolsForRole(persona.role || "developer");
-      spawnAgent(sessionDir, cwd, personaTools, ticketId, persona.id, project.slug, { conversational, documentId, role: persona.role || "developer" });
+      await spawnAgent(sessionDir, cwd, personaTools, ticketId, persona.id, project.slug, { conversational, documentId, role: persona.role || "developer" });
       markPersonaDispatched(ticketId, persona.id);
 
       insertAgentRun({
@@ -600,6 +696,7 @@ export async function POST(
     });
   }
 
+  // ── Normal Claude CLI agent path ───────────────────────────────────────
   const cwd = ensureWorktree(project, ticketSlug);
 
   // Ensure workspace exists — create if missing so agent doesn't silently fail
@@ -623,7 +720,7 @@ export async function POST(
 
   // Spawn the agent (fire-and-forget, posts comment when done)
   const targetTools = await toolsForRole(targetPersona.role || "developer");
-  spawnAgent(sessionDir, cwd, targetTools, ticketId, targetPersona.id, project.slug, { conversational, documentId, role: targetPersona.role || "developer" });
+  await spawnAgent(sessionDir, cwd, targetTools, ticketId, targetPersona.id, project.slug, { conversational, documentId, role: targetPersona.role || "developer" });
   markPersonaDispatched(ticketId, targetPersona.id);
 
   insertAgentRun({
@@ -697,13 +794,24 @@ async function buildAgentSystemPrompt(
     || await getSetting(`prompt_role_${role}`)
     || `You are a ${role}. Follow your role's responsibilities for this project.`;
 
+  // Build team context from roles table — auto-assembled, no manual textarea needed
+  const teamRoleDescriptions = new Map<string, string>();
+  for (const member of teamMembers) {
+    if (member.role && !teamRoleDescriptions.has(member.role)) {
+      const memberRoleRow = await getRoleBySlug(member.role);
+      if (memberRoleRow) {
+        teamRoleDescriptions.set(member.role, memberRoleRow.description || member.role);
+      }
+    }
+  }
+
   // Tool/capability mappings by role
   const roleCapabilities: Record<string, string[]> = {
     researcher: [
       "Read, Grep, Glob (read-only file access)",
       "Bash (read-only commands)",
       "./bonsai-cli report (post progress updates)",
-      "./bonsai-cli write-artifact (save research/plan/design documents)",
+      "./bonsai-cli write-artifact (save tagged documents: research-doc, implementation-plan, design-doc)",
     ],
     developer: [
       "Read, Write, Edit, Grep, Glob (full file access)",
@@ -711,7 +819,7 @@ async function buildAgentSystemPrompt(
       "Git (status, diff, commit, push)",
       "./bonsai-cli report (post progress updates)",
       "./bonsai-cli check-criteria (mark acceptance criteria complete)",
-      "./bonsai-cli write-artifact (save research/plan/design documents)",
+      "./bonsai-cli write-artifact (save tagged documents: research-doc, implementation-plan, design-doc)",
       "apply_transparency (remove grey backgrounds from images)",
     ],
     designer: [
@@ -720,32 +828,36 @@ async function buildAgentSystemPrompt(
       "nano_banana (AI image generation via Gemini)",
       "apply_transparency (remove grey backgrounds from images)",
       "./bonsai-cli report (post progress updates)",
-      "./bonsai-cli write-artifact (save research/plan/design documents)",
+      "./bonsai-cli write-artifact (save tagged documents: research-doc, implementation-plan, design-doc)",
     ],
     hacker: [
       "Read, Write, Edit, Grep, Glob (full file access)",
       "Bash (full command access)",
       "Git (status, diff, commit, push)",
       "./bonsai-cli report (post progress updates)",
-      "./bonsai-cli write-artifact (save research/plan/design documents)",
+      "./bonsai-cli write-artifact (save tagged documents: research-doc, implementation-plan, design-doc)",
       "apply_transparency (remove grey backgrounds from images)",
     ],
     critic: [
       "Read, Grep, Glob (read-only file access)",
       "Bash (read-only commands)",
       "./bonsai-cli report (post progress updates)",
-      "./bonsai-cli write-artifact (save research/plan/design documents)",
+      "./bonsai-cli write-artifact (save tagged documents: research-doc, implementation-plan, design-doc)",
     ],
   };
 
   const capabilities = roleCapabilities[role] || roleCapabilities.developer;
 
-  const timestamp = new Date().toISOString();
+  const now = new Date();
+  const todayDate = now.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const timestamp = now.toISOString();
   const projectRoot = resolveProjectRoot(project);
   const mainRepo = resolveMainRepo(project);
 
   return [
-    `You are ${persona.name}, working on project "${project.name}".`,
+    `Today's date: ${todayDate}`,
+    "",
+    `You are the ${role}, working on project "${project.name}".`,
     `Workspace: ${workspace}`,
     `Project Root: ${projectRoot}`,
     `Main Repository: ${mainRepo}`,
@@ -787,12 +899,19 @@ async function buildAgentSystemPrompt(
     persona.personality ? `\n## Your Voice\n${persona.personality}\nKeep all status updates and comments SHORT (1-3 sentences). Be useful, not verbose.` : "",
     "",
     "## Your Team",
-    "These are the people on this project. Use @name in your chat messages to hand off or request help.",
-    ...teamMembers.map((p) => {
-      const you = p.id === persona.id ? " (you)" : "";
-      const skills = p.skills ? ` — skills: ${p.skills}` : "";
-      return `- **${p.name}** (${p.role || "member"})${you}${skills}`;
-    }),
+    "Use @role in your messages to hand off or request help. Collaborate only when another role's expertise is needed, it is a defined process handoff, or you need to escalate to @operator.",
+    ...teamMembers
+      .filter((p) => p.id !== persona.id)
+      .map((p) => {
+        const roleSlug = p.role || "member";
+        const desc = teamRoleDescriptions.get(roleSlug) || roleSlug;
+        return `- **@${roleSlug}** — ${desc}`;
+      }),
+    // Writer always gets an explicit note about @operator's identity role
+    ...(role === "writer" ? [
+      "",
+      "**Important for writing**: @operator is always consulted on soul, style, tone, and accuracy of representation. You write AS @operator — representing both AugmentedMike and Michael ONeal. Do not guess at their voice. When uncertain, ask @operator before finalizing.",
+    ] : []),
     "",
     "## Your Capabilities",
     "When asked what tools or capabilities you have, here is what you can do:",
@@ -816,9 +935,9 @@ async function buildAgentSystemPrompt(
     "## Saving Documents",
     "When you produce a research document, implementation plan, or design document, you MUST save it using the bonsai-cli tool.",
     "1. Write your document to a file (e.g. /tmp/research.md)",
-    `2. Run: \`./bonsai-cli write-artifact ${ticket.id} <type> <file>\``,
-    "   Types: research, implementation_plan, design",
-    `   Example: \`./bonsai-cli write-artifact ${ticket.id} research /tmp/research.md\``,
+    `2. Run: \`./bonsai-cli write-artifact ${ticket.id} <tag> <file>\``,
+    "   Tags: research-doc, implementation-plan, design-doc",
+    `   Example: \`./bonsai-cli write-artifact ${ticket.id} research-doc /tmp/research.md\``,
     "3. Your final chat response should be a brief summary (1-2 sentences), NOT the full document.",
     "",
     "CRITICAL: Do NOT output the full document as your response. Save it with ./bonsai-cli. Your response is just a chat message.",
@@ -972,7 +1091,7 @@ async function assembleAgentTask(
       qmdContext,
       "",
       "DO NOT repeat work that's already been completed. DO NOT re-research what's already been researched. If research exists, build on it. If a plan exists, implement it.",
-      "Use `./bonsai-cli read-artifact ${ticket.id} research` or `./bonsai-cli read-artifact ${ticket.id} implementation_plan` to read the full artifacts if needed.",
+      "Use `./bonsai-cli read-artifact ${ticket.id} research-doc` or `./bonsai-cli read-artifact ${ticket.id} implementation-plan` to read the full artifacts if needed.",
       ""
     );
   }
@@ -980,17 +1099,19 @@ async function assembleAgentTask(
   if (researchDoc) {
     // Critics need the full doc — only truncate for other roles
     const limit = persona.role === "critic" ? 12000 : 3000;
-    const content = researchDoc.content.length > limit
-      ? researchDoc.content.slice(0, limit) + "\n\n[...truncated]"
-      : researchDoc.content;
-    sections.push("", "## Research Document (v" + researchDoc.version + ")", content);
+    const rawContent = decodeAttachmentContent(researchDoc.data);
+    const content = rawContent.length > limit
+      ? rawContent.slice(0, limit) + "\n\n[...truncated]"
+      : rawContent;
+    sections.push("", "## Research Document", content);
   }
   if (implPlan) {
     const limit = persona.role === "critic" ? 12000 : 3000;
-    const content = implPlan.content.length > limit
-      ? implPlan.content.slice(0, limit) + "\n\n[...truncated]"
-      : implPlan.content;
-    sections.push("", "## Implementation Plan (v" + implPlan.version + ")", content);
+    const rawContent = decodeAttachmentContent(implPlan.data);
+    const content = rawContent.length > limit
+      ? rawContent.slice(0, limit) + "\n\n[...truncated]"
+      : rawContent;
+    sections.push("", "## Implementation Plan", content);
   }
 
   if (enrichedComments.length > 0) {

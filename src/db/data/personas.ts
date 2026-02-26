@@ -30,11 +30,10 @@ function personaFromRow(row: typeof personas.$inferSelect): Persona {
       row.permissions,
       { tools: [], folders: [] }
     ),
-    projectId: row.projectId ?? undefined,
   };
 }
 
-export function getPersonas(_projectId?: number): Promise<Persona[]> {
+export function getPersonas(): Promise<Persona[]> {
   // Global team: always return personas with project_id IS NULL (shared across all projects)
   const rows = db
     .select()
@@ -64,8 +63,8 @@ export function getPersonaRaw(personaId: string) {
   return asAsync(row ?? null);
 }
 
-/** Get all global sims (project_id IS NULL) — dispatch uses this, needs the full team */
-export function getProjectPersonasRaw(_projectId: number) {
+/** Get all global personas (project_id IS NULL) — dispatch uses this, needs the full team */
+export function getGlobalPersonas() {
   const rows = db
     .select()
     .from(personas)
@@ -94,7 +93,6 @@ export function createPersona(data: {
   processes: string[];
   goals: string[];
   permissions: { tools: string[]; folders: string[] };
-  projectId?: number;
   avatar?: string;
 }) {
   const allIds = db.select({ id: personas.id }).from(personas).all();
@@ -113,8 +111,6 @@ export function createPersona(data: {
     workerRoles[data.role as WorkerRole]?.color ||
     "#6366f1";
 
-  const projectId = data.projectId ?? null;
-
   const row = db
     .insert(personas)
     .values({
@@ -130,7 +126,7 @@ export function createPersona(data: {
       goals: JSON.stringify(data.goals),
       permissions: JSON.stringify(data.permissions),
       avatar: data.avatar || null,
-      projectId,
+      projectId: null,
     })
     .returning()
     .get();
@@ -159,14 +155,8 @@ export function softDeletePersona(id: string): Promise<void> {
   });
 }
 
-export function getPersonasByRole(
-  role: string,
-  opts?: { projectId?: number }
-) {
+export function getPersonasByRole(role: string) {
   const filters = [eq(personas.role, role), isNull(personas.deletedAt)];
-  if (opts?.projectId) {
-    filters.push(eq(personas.projectId, opts.projectId));
-  }
   const rows = db
     .select()
     .from(personas)
@@ -175,7 +165,7 @@ export function getPersonasByRole(
   return asAsync(rows);
 }
 
-export function isTeamComplete(_projectId?: number): Promise<boolean> {
+export function isTeamComplete(): Promise<boolean> {
   // Check global team has researcher + developer at minimum
   const enabledRoleSlugs = ["researcher", "developer"];
   const allRoles = db

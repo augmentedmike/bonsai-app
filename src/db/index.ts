@@ -197,24 +197,29 @@ if (!existingTables.has("users")) {
 const roleCount = (sqlite.prepare("SELECT count(*) as n FROM roles").get() as { n: number }).n;
 if (roleCount === 0) {
   const insertRole = sqlite.prepare("INSERT INTO roles (slug, title, description, color) VALUES (?, ?, ?, ?)");
-  insertRole.run("researcher", "Researcher", "Investigates problems, analyzes codebases, and produces research documents.", "#8b5cf6");
-  insertRole.run("developer", "Developer", "Builds features, fixes bugs, writes tests, and ships code.", "#3b82f6");
-  insertRole.run("designer", "Designer", "Creates UI/UX designs, design systems, and visual assets.", "#f59e0b");
-  insertRole.run("critic", "Critic", "Challenges assumptions and stress-tests ideas. The constructive contrarian.", "#ef4444");
-  insertRole.run("hacker", "Hacker", "Security-focused engineer who finds vulnerabilities and hardens the codebase.", "#06b6d4");
-  insertRole.run("writer", "Writer", "Creates blog posts, marketing copy, technical writing, and social content.", "#f59e0b");
-  console.log("[db] Seeded 6 default roles");
+  insertRole.run("researcher", "Researcher", "Investigates tickets before implementation. Explores the codebase, identifies constraints, and documents findings.", "#8b5cf6");
+  insertRole.run("developer", "Developer", "Implements features and fixes bugs. Works in two phases: planning (creates implementation plan from research) and building (executes the approved plan).", "#3b82f6");
+  insertRole.run("designer", "Designer", "Creates user interfaces and experiences. Works in planning (design spec) and building (component implementation). Assesses whether design work is needed per ticket.", "#ec4899");
+  console.log("[db] Seeded 3 default roles: researcher, developer, designer");
 }
 
-// ── Ensure writer role exists (self-healing for existing DBs) ──────────────────
+// ── Self-heal: ensure all 4 core roles exist ──────────────────
 {
-  const writerExists = (sqlite.prepare("SELECT count(*) as n FROM roles WHERE slug = 'writer'").get() as { n: number }).n;
-  if (writerExists === 0) {
-    sqlite.prepare("INSERT INTO roles (slug, title, description, color) VALUES (?, ?, ?, ?)")
-      .run("writer", "Writer", "Creates blog posts, marketing copy, technical writing, and social content.", "#f59e0b");
-    console.log("[db] Added writer role");
+  const coreRoles = [
+    { slug: "researcher", title: "Researcher", description: "Investigates tickets before implementation. Explores the codebase, identifies constraints, and documents findings.", color: "#8b5cf6" },
+    { slug: "developer", title: "Developer", description: "Implements features and fixes bugs. Works in two phases: planning (creates implementation plan from research) and building (executes the approved plan).", color: "#3b82f6" },
+    { slug: "designer", title: "Designer", description: "Creates user interfaces and experiences. Works in planning (design spec) and building (component implementation). Assesses whether design work is needed per ticket.", color: "#ec4899" },
+  ];
+  const upsertRole = sqlite.prepare(
+    "INSERT INTO roles (slug, title, description, color) VALUES (?, ?, ?, ?) ON CONFLICT(slug) DO NOTHING"
+  );
+  for (const r of coreRoles) {
+    upsertRole.run(r.slug, r.title, r.description, r.color);
   }
 }
+
+// ── context_role settings are now auto-built from roles.description at dispatch time ──────────────────
+// No static seeds needed — team context is dynamic.
 
 // ── Global team auto-seed (4 canonical sims if none exist) ──────────────────
 {
@@ -253,20 +258,12 @@ if (roleCount === 0) {
         processes: JSON.stringify(["Question the requirement before the design", "Design for edge cases", "Document decisions"]),
         goals: JSON.stringify(["Make it obvious", "Make it fast", "Make it feel right"]),
       },
-      {
-        id: "g-writer", name: "Remy", slug: "remy", color: "#f59e0b", role: "writer",
-        roleId: getRoleId("writer"),
-        personality: "Clear, direct, makes complex things readable. Hates jargon.",
-        skills: JSON.stringify(["Blog posts", "Marketing copy", "Technical writing", "SEO basics", "Social media content"]),
-        processes: JSON.stringify(["Know the audience before the first word", "Write the headline last", "Edit out every word that doesn't earn its place"]),
-        goals: JSON.stringify(["Get eyes on the work", "Build the brand", "Make the reader smarter or faster"]),
-      },
     ];
 
     for (const s of sims) {
       insertPersona.run(s.id, s.name, s.slug, s.color, s.role, s.roleId, s.personality, s.skills, s.processes, s.goals);
     }
-    console.log("[db] Seeded 4 global personas: Emi, Adaora, Layla, Remy");
+    console.log("[db] Seeded 3 global personas: Developer, Researcher, Designer");
   }
 }
 
@@ -331,5 +328,18 @@ if (!existingTables.has("project_messages")) {
     console.log("[db] Added hold columns to tickets");
   }
 }
+
+// ── Performance indexes (self-healing, idempotent) ──────────────────
+sqlite.exec(`
+  CREATE INDEX IF NOT EXISTS idx_tickets_project_id ON tickets (project_id);
+  CREATE INDEX IF NOT EXISTS idx_tickets_state ON tickets (state);
+  CREATE INDEX IF NOT EXISTS idx_tickets_project_state ON tickets (project_id, state, deleted_at);
+  CREATE INDEX IF NOT EXISTS idx_comments_ticket_id ON comments (ticket_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_comments_persona_id ON comments (persona_id);
+  CREATE INDEX IF NOT EXISTS idx_personas_project_id ON personas (project_id, deleted_at);
+  CREATE INDEX IF NOT EXISTS idx_ticket_documents_tid ON ticket_documents (ticket_id);
+  CREATE INDEX IF NOT EXISTS idx_ticket_attachments_tid ON ticket_attachments (ticket_id);
+  CREATE INDEX IF NOT EXISTS idx_ticket_audit_log_tid ON ticket_audit_log (ticket_id, created_at);
+`);
 
 export const db = drizzle(sqlite, { schema });

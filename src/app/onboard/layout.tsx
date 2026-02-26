@@ -14,12 +14,12 @@ export default async function OnboardLayout({
   const project = await getProject();
 
   // Fully onboarded → board
-  if (project && await isTeamComplete(Number(project.id)) && await hasTickets()) {
+  if (project && await isTeamComplete() && await hasTickets()) {
     redirect(`/p/${project.slug}`);
   }
 
   // Team done but no tickets → new ticket page (with sidebar visible)
-  if (project && await isTeamComplete(Number(project.id))) {
+  if (project && await isTeamComplete()) {
     redirect(`/p/${project.slug}/new-ticket`);
   }
 

@@ -558,15 +558,14 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
                 <span className="ml-2 text-xs font-normal text-[var(--text-muted)]">generating...</span>
               )}
             </label>
-            <div className="flex items-stretch gap-3">
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder={generatingTitle ? "Generating title..." : "Auto-generated from description"}
-                className="flex-1 px-5 rounded-lg text-lg outline-none transition-all bg-[var(--bg-input)] border border-[var(--border-medium)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] font-semibold focus:border-[var(--accent-blue)]"
-              />
-              <div className="flex gap-1.5">
+            <input
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder={generatingTitle ? "Generating title..." : "Auto-generated from description"}
+              className="w-full px-5 py-3 rounded-lg text-lg outline-none transition-all bg-[var(--bg-input)] border border-[var(--border-medium)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] font-semibold focus:border-[var(--accent-blue)]"
+            />
+            <div className="flex gap-1.5 mt-2">
               {(Object.keys(ticketTypes) as TicketType[]).map((key) => {
                 const opt = ticketTypes[key];
                 const selected = type === key;
@@ -574,7 +573,7 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
                   <button
                     key={key}
                     onClick={() => setType(key)}
-                    className="px-4 py-4 rounded-lg text-sm font-medium transition-colors border whitespace-nowrap"
+                    className="px-3 py-1.5 rounded-md text-xs font-medium transition-colors border whitespace-nowrap"
                     style={{
                       backgroundColor: selected ? `color-mix(in srgb, ${opt.color} 15%, transparent)` : "transparent",
                       borderColor: selected ? opt.color : "var(--border-medium)",
@@ -585,7 +584,6 @@ export function NewTicketForm({ projectId, projectSlug }: NewTicketFormProps) {
                   </button>
                 );
               })}
-              </div>
             </div>
           </div>
 

@@ -36,6 +36,22 @@ export async function geminiRequest(
   const key = getGeminiKey();
   if (!key) throw new GeminiKeyError("GEMINI_API_KEY not configured");
 
+  // ─── COST ANALYSIS LOGGING ───────────────────────────────────────────────────────────────────
+  try {
+    console.log(
+      JSON.stringify({
+        level: "info",
+        service: "gemini-cost-log",
+        message: "Gemini API request",
+        model,
+        requestBody: body,
+      })
+    );
+  } catch (e: any) {
+    console.error(`[gemini-cost-log] Failed to log request for model ${model}: ${e.message}`);
+  }
+  // ─── END COST ANALYSIS LOGGING ───────────────────────────────────────────────────────────────
+
   const res = await fetch(`${BASE}/${model}:generateContent`, {
     method: "POST",
     headers: {

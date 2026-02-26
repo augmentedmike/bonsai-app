@@ -1,5 +1,5 @@
 import { db, asAsync } from "./_driver";
-import { personas, tickets, comments, ticketDocuments } from "../schema";
+import { personas, tickets, comments } from "../schema";
 import { eq, desc, inArray, isNull, and } from "drizzle-orm";
 
 export function getWorkerActivity() {
@@ -39,16 +39,6 @@ export function getWorkerActivity() {
             .all()
         : [];
 
-    const allDocs =
-      ticketIds.length > 0
-        ? db
-            .select()
-            .from(ticketDocuments)
-            .where(inArray(ticketDocuments.ticketId, ticketIds))
-            .orderBy(desc(ticketDocuments.createdAt))
-            .all()
-        : [];
-
     const ticketTitleMap = new Map(
       assignedTickets.map((t) => [t.id, t.title])
     );
@@ -73,22 +63,6 @@ export function getWorkerActivity() {
           createdAt: c.createdAt || "",
         };
       }),
-      ...allDocs.map((d) => ({
-        kind: "document" as const,
-        id: `d-${d.id}`,
-        ticketId: d.ticketId,
-        ticketTitle: ticketTitleMap.get(d.ticketId) || d.ticketId,
-        authorType: "agent" as const,
-        authorName: p.name,
-        authorRole: p.role,
-        authorColor: p.color,
-        authorAvatar: p.avatar,
-        isSelf: true,
-        content: d.content.slice(0, 2000),
-        docType: d.type,
-        version: d.version,
-        createdAt: d.createdAt || "",
-      })),
     ].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
     return {

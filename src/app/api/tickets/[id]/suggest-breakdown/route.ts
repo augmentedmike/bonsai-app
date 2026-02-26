@@ -20,8 +20,7 @@ export async function POST(
     return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
   }
 
-  const leadContext = await getSetting("context_role_lead") || "";
-  const epicPrompt = await getSetting("prompt_lead_new_epic") || "You are breaking down an epic into smaller, actionable sub-tickets.";
+  const epicPrompt = await getSetting("prompt_researcher_epic_subtask") || "You are breaking down an epic into smaller, actionable sub-tickets.";
 
   const ticketSummary = [
     `Title: ${ticket.title}`,
@@ -30,7 +29,6 @@ export async function POST(
   ].filter(Boolean).join("\n");
 
   const prompt = [
-    leadContext,
     epicPrompt,
     "",
     "Break down this epic into 3-8 smaller, actionable sub-tickets. Each sub-ticket should be independently deliverable.",

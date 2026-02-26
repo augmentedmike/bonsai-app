@@ -134,7 +134,6 @@ export interface Persona {
   processes: string[];
   goals: string[];
   permissions: { tools: string[]; folders: string[] };
-  projectId?: number;
 }
 
 export interface Project {
@@ -159,12 +158,15 @@ export interface CommentAttachment {
   data: string; // base64 data URL
 }
 
+export type AttachmentTag = "research-doc" | "implementation-plan" | "design-doc" | "security-review" | "research-critique" | "plan-critique";
+
 export interface TicketAttachment {
   id: number;
   ticketId: number;
   filename: string;
   mimeType: string;
   data: string; // base64 data URL
+  tag?: AttachmentTag | null;
   createdByType: "human" | "agent";
   createdById?: string;
   createdAt: string;
@@ -237,10 +239,12 @@ export interface AgentRun {
   id: number;
   ticketId: number;
   ticketTitle: string | null;
+  projectId: number | null;
+  projectSlug: string | null;
+  projectName: string | null;
   personaId: string;
   personaName: string | null;
   personaColor: string | null;
-  personaAvatar: string | null;
   personaRole: string | null;
   phase: string;
   status: AgentRunStatus;
@@ -248,7 +252,14 @@ export interface AgentRun {
   dispatchSource: string | null;
   startedAt: string | null;
   lastReportAt: string | null;
+  lastReportMessage: string | null;
   completedAt: string | null;
   durationMs: number | null;
   errorMessage: string | null;
+  costUsd: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cacheReadTokens: number | null;
+  sessionId: string | null;
+  modelUsage: string | null; // JSON: per-model token/cost breakdown
 }

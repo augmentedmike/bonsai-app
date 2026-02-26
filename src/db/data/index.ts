@@ -4,7 +4,7 @@
 
 export * from "./tickets";
 export * from "./comments";
-export * from "./documents";
+// documents.ts removed — use attachments with tags (research-doc, implementation-plan, design-doc)
 export * from "./projects";
 export * from "./personas";
 export * from "./roles";

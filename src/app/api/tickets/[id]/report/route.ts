@@ -28,9 +28,9 @@ export async function POST(
     lastAgentActivity: new Date().toISOString(),
   });
 
-  // Touch the active agent run's lastReportAt
+  // Touch the active agent run's lastReportAt + store message
   if (personaId) {
-    await touchAgentRunReport(ticketId, personaId);
+    await touchAgentRunReport(ticketId, personaId, content.trim());
   }
 
   const persona = personaId ? await getPersonaRaw(personaId) : null;

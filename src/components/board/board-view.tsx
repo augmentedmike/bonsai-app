@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type { Ticket, TicketState, Persona, Project } from "@/types";
 import { Column } from "./column";
 import { TicketDetailModal } from "./ticket-detail-modal";
-import { ProjectInfoPanel } from "./project-info-panel";
 import { ProjectChatPanel } from "./project-chat-panel";
 import { PreviewPanel } from "./preview-panel";
 import { PixelOffice } from "./pixel-office";
@@ -77,6 +76,11 @@ interface BoardViewProps {
   project?: Project;
   ticketStats?: { planning: number; building: number; shipped: number };
   awakePersonaIds?: string[];
+  chatOpen?: boolean;
+  chatMentionPersonaId?: string | null;
+  onChatClose?: () => void;
+  hideOnHold?: boolean;
+  onHoldCountChange?: (count: number) => void;
   previewUrl?: string | null;
   startingPreview?: boolean;
   previewError?: string | null;
@@ -90,6 +94,11 @@ export function BoardView({
   project,
   ticketStats,
   awakePersonaIds: awakePersonaIdsList = [],
+  chatOpen = false,
+  chatMentionPersonaId = null,
+  onChatClose,
+  hideOnHold = false,
+  onHoldCountChange,
   previewUrl: externalPreviewUrl = null,
   startingPreview = false,
   previewError = null,
@@ -101,13 +110,6 @@ export function BoardView({
   const [draggingId, setDraggingId] = useState<number | null>(null);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [initialDocType, setInitialDocType] = useState<"research" | "implementation_plan" | undefined>();
-  const [hideOnHold, setHideOnHold] = useState(() => {
-    try { return localStorage.getItem("bonsai-hide-on-hold") === "true"; } catch { return false; }
-  });
-
-  // Chat panel state
-  const [chatOpen, setChatOpen] = useState(false);
-  const [chatMentionPersonaId, setChatMentionPersonaId] = useState<string | null>(null);
 
   // Preview state
   const previewUrl = externalPreviewUrl;
@@ -156,7 +158,23 @@ export function BoardView({
       const res = await fetch(`/api/tickets?projectId=${projectId}`);
       if (res.ok) {
         const fresh: Ticket[] = await res.json();
-        setTickets(fresh);
+        // Only replace if data actually changed — avoids full board re-render
+        setTickets((prev) => {
+          if (prev.length !== fresh.length) {
+            onHoldCountChange?.(fresh.filter((t) => t.onHold && !t.isEpic).length);
+            return fresh;
+          }
+          const changed = fresh.some((t, i) => {
+            const p = prev[i];
+            return t.id !== p.id || t.state !== p.state || t.title !== p.title
+              || t.commentCount !== p.commentCount || t.blocked !== p.blocked
+              || t.onHold !== p.onHold;
+          });
+          if (changed) {
+            onHoldCountChange?.(fresh.filter((t) => t.onHold && !t.isEpic).length);
+          }
+          return changed ? fresh : prev;
+        });
         // Keep selected ticket in sync with fresh data
         setSelectedTicket((prev) => {
           if (!prev) return null;
@@ -164,7 +182,7 @@ export function BoardView({
         });
       }
     } catch { /* network error — skip this cycle */ }
-  }, [projectId]);
+  }, [projectId, onHoldCountChange]);
 
   useEffect(() => {
     // Immediate fetch on mount to pick up changes since SSR
@@ -275,33 +293,8 @@ export function BoardView({
     router.refresh();
   }
 
-  function handlePersonaClick(personaId: string) {
-    // Navigate to team view to edit persona
-    router.push(`/p/${project?.slug}/team?edit=${personaId}`);
-  }
-
   return (
     <>
-      {/* Project info panel with clickable avatars */}
-      {project && ticketStats && (
-        <ProjectInfoPanel
-          project={project}
-          personas={personas}
-          ticketStats={ticketStats}
-          awakePersonaIds={awakePersonaIds}
-          onPersonaClick={handlePersonaClick}
-          onChatOpen={() => { setChatMentionPersonaId(null); setChatOpen(true); }}
-          hideOnHold={hideOnHold}
-          onHideOnHoldChange={(v: boolean) => { setHideOnHold(v); try { localStorage.setItem("bonsai-hide-on-hold", String(v)); } catch {} }}
-          holdCount={tickets.filter((t) => t.onHold && !t.isEpic).length}
-        />
-      )}
-
-      {/* Pixel office scene — disabled, will be rebuilt via CLI tools */}
-      {/* {personas.length > 0 && (
-        <PixelOffice personaStates={personaStates} />
-      )} */}
-
       {/* Main content area: columns OR preview + chat sidebar */}
       <div className="flex flex-1 h-full overflow-hidden">
         {previewUrl || startingPreview || previewError ? (
@@ -385,7 +378,7 @@ export function BoardView({
           projectId={projectId}
           personas={personas}
           open={chatOpen}
-          onClose={() => { setChatOpen(false); setChatMentionPersonaId(null); }}
+          onClose={() => onChatClose?.()}
           initialMentionPersonaId={chatMentionPersonaId}
         />
       </div>

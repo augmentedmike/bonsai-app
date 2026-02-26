@@ -222,7 +222,7 @@ export async function DELETE(req: Request) {
 
   // Delete associated resources to prevent orphans (order matters for FK constraints)
   const { db } = await import("@/db/index");
-  const { personas, tickets, comments, ticketDocuments, ticketAttachments, agentRuns, projectMessages } = await import("@/db/schema");
+  const { personas, tickets, comments, ticketAttachments, agentRuns, projectMessages } = await import("@/db/schema");
   const { eq, inArray, sql } = await import("drizzle-orm");
 
   const projectId = Number(id);
@@ -234,7 +234,6 @@ export async function DELETE(req: Request) {
   if (ticketIds.length > 0) {
     // Delete child records that reference tickets (deepest first)
     db.delete(comments).where(inArray(comments.ticketId, ticketIds)).run();
-    db.delete(ticketDocuments).where(inArray(ticketDocuments.ticketId, ticketIds)).run();
     db.delete(ticketAttachments).where(inArray(ticketAttachments.ticketId, ticketIds)).run();
     db.delete(agentRuns).where(inArray(agentRuns.ticketId, ticketIds)).run();
     // Audit log has no FK constraint but clean it up too
@@ -245,9 +244,6 @@ export async function DELETE(req: Request) {
 
   // Delete project messages
   db.delete(projectMessages).where(eq(projectMessages.projectId, projectId)).run();
-  // Delete personas
-  db.delete(personas).where(eq(personas.projectId, projectId)).run();
-
   await softDeleteProject(projectId);
   return NextResponse.json({ success: true });
 }

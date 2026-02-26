@@ -33,7 +33,7 @@ export async function POST(
     const ticketId = Number(id);
     const body = await request.json();
 
-    const { filename, mimeType, data, createdByType, createdById } = body;
+    const { filename, mimeType, data, tag, createdByType, createdById } = body;
 
     if (!filename || !mimeType || !data || !createdByType) {
       return NextResponse.json(
@@ -48,6 +48,7 @@ export async function POST(
       filename,
       mimeType,
       data,
+      tag: tag || null,
       createdByType,
       createdById,
     });

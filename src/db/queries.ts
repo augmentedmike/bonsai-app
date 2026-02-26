@@ -1,6 +1,6 @@
 import { db } from ".";
 import { eq, or, sql, desc, and, isNull, lt, asc } from "drizzle-orm";
-import { projects, personas, tickets, settings, comments, ticketDocuments, roles, ticketAuditLog } from "./schema";
+import { projects, personas, tickets, settings, comments, roles, ticketAuditLog } from "./schema";
 import type { Ticket, Persona, Project, WorkerRole } from "@/types";
 import { workerRoles } from "@/lib/worker-types";
 
@@ -62,17 +62,11 @@ export function getProjects(): Project[] {
   return db.select().from(projects).where(isNull(projects.deletedAt)).all().map(projectFromRow);
 }
 
-export function getPersonas(projectId?: number): Persona[] {
-  // Personas are project-scoped. If a projectId is given, only return that project's personas.
-  // Always exclude soft-deleted personas.
-  const rows = projectId
-    ? db.select().from(personas).where(
-        and(
-          eq(personas.projectId, projectId),
-          isNull(personas.deletedAt)
-        )
-      ).all()
-    : db.select().from(personas).where(isNull(personas.deletedAt)).all();
+export function getPersonas(): Persona[] {
+  // Global team: always return personas with project_id IS NULL
+  const rows = db.select().from(personas).where(
+    and(isNull(personas.projectId), isNull(personas.deletedAt))
+  ).all();
 
   return rows.map((r) => ({
     id: r.id,
@@ -90,7 +84,6 @@ export function getPersonas(projectId?: number): Persona[] {
       r.permissions,
       { tools: [], folders: [] }
     ),
-    projectId: r.projectId ?? undefined,
   }));
 }
 
@@ -119,7 +112,6 @@ export function getPersona(personaId: string): Persona | null {
       row.permissions,
       { tools: [], folders: [] }
     ),
-    projectId: row.projectId ?? undefined,
   };
 }
 
@@ -129,7 +121,7 @@ export function getTickets(projectId?: number): Ticket[] {
     : db.select().from(tickets).where(isNull(tickets.deletedAt)).all();
 
   const personaMap = new Map(
-    getPersonas(projectId).map((p) => [p.id, p])
+    getPersonas().map((p) => [p.id, p])
   );
 
   return rows.map((r) => {
@@ -221,7 +213,6 @@ export function createPersona(data: {
   processes: string[];
   goals: string[];
   permissions: { tools: string[]; folders: string[] };
-  projectId?: number;
   avatar?: string;
 }) {
   // Generate unique ID: find max existing p{N} and increment
@@ -238,9 +229,6 @@ export function createPersona(data: {
     || (workerRoles[data.role as WorkerRole]?.color)
     || "#6366f1";
 
-  // Company-wide personas have NULL projectId by default
-  const projectId = data.projectId ?? null;
-
   return db
     .insert(personas)
     .values({
@@ -256,7 +244,7 @@ export function createPersona(data: {
       goals: JSON.stringify(data.goals),
       permissions: JSON.stringify(data.permissions),
       avatar: data.avatar || null,
-      projectId,
+      projectId: null,
     })
     .returning()
     .get();
@@ -271,15 +259,6 @@ export function getCommentsByTicket(ticketId: number, limit: number = 10) {
     .where(and(eq(comments.ticketId, ticketId), isNull(comments.documentId)))
     .orderBy(desc(comments.createdAt))
     .limit(limit)
-    .all();
-}
-
-export function getTicketDocumentsByTicket(ticketId: number) {
-  return db
-    .select()
-    .from(ticketDocuments)
-    .where(eq(ticketDocuments.ticketId, ticketId))
-    .orderBy(desc(ticketDocuments.version))
     .all();
 }
 
@@ -391,16 +370,12 @@ export function getNextTicket(personaId?: string): typeof tickets.$inferSelect |
   return backlog || null;
 }
 
-export function isTeamComplete(projectId?: number): boolean {
+export function isTeamComplete(): boolean {
   const allRoles = db.select({ id: roles.id }).from(roles).all();
   if (allRoles.length === 0) return false;
-  const personaQuery = projectId
-    ? db.select({ roleId: personas.roleId }).from(personas)
-        .where(and(eq(personas.projectId, projectId), isNull(personas.deletedAt)))
-        .all()
-    : db.select({ roleId: personas.roleId }).from(personas)
-        .where(isNull(personas.deletedAt))
-        .all();
+  const personaQuery = db.select({ roleId: personas.roleId }).from(personas)
+    .where(and(isNull(personas.projectId), isNull(personas.deletedAt)))
+    .all();
   const filledRoleIds = new Set(
     personaQuery.map((r) => r.roleId).filter(Boolean)
   );

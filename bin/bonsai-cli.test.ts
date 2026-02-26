@@ -3,7 +3,7 @@ import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { db } from '../src/db/index';
-import { tickets, projects, personas, ticketDocuments, comments } from '../src/db/schema';
+import { tickets, projects, personas, comments } from '../src/db/schema';
 
 const CLI_PATH = path.join(__dirname, 'bonsai-cli.ts');
 const runCLI = (args: string[], env: Record<string, string> = {}): string => {
@@ -89,18 +89,18 @@ describe('bonsai-cli', () => {
       expect(result).toContain('Error: write-artifact requires');
     });
 
-    it('should validate type is one of: research, implementation_plan, design', async () => {
+    it('should validate tag is one of: research-doc, implementation-plan, design-doc', async () => {
       const tmpFile = '/tmp/test-artifact.md';
       fs.writeFileSync(tmpFile, '# Test artifact');
 
       const result = runCLI(['write-artifact', '999', 'invalid-type', tmpFile]);
-      expect(result).toMatch(/(Error: type must be|Error: Ticket)/);
+      expect(result).toMatch(/(Error: tag must be|Error: Ticket)/);
 
       fs.unlinkSync(tmpFile);
     });
 
     it('should handle file not found', () => {
-      const result = runCLI(['write-artifact', '1', 'research', '/nonexistent/file.md']);
+      const result = runCLI(['write-artifact', '1', 'research-doc', '/nonexistent/file.md']);
       expect(result).toContain('Error:');
     });
   });
@@ -117,8 +117,8 @@ describe('bonsai-cli', () => {
     });
 
     it('should handle missing artifact', () => {
-      const result = runCLI(['read-artifact', '999', 'research']);
-      expect(result).toMatch(/(Error:|No research artifact)/);
+      const result = runCLI(['read-artifact', '999', 'research-doc']);
+      expect(result).toMatch(/(Error:|No research-doc)/);
     });
   });
 
@@ -355,16 +355,16 @@ describe('bonsai-cli', () => {
       fs.writeFileSync(tmpFile, content);
 
       // Write artifact (will fail if ticket doesn't exist, but tests the flow)
-      const writeResult = runCLI(['write-artifact', '1', 'research', tmpFile]);
+      const writeResult = runCLI(['write-artifact', '1', 'research-doc', tmpFile]);
 
       // Read artifact
-      const readResult = runCLI(['read-artifact', '1', 'research']);
+      const readResult = runCLI(['read-artifact', '1', 'research-doc']);
 
       // Clean up
       fs.unlinkSync(tmpFile);
 
       // Both commands should execute (even if they error on missing ticket)
-      expect(writeResult).toMatch(/(Error:|Saved artifact)/);
+      expect(writeResult).toMatch(/(Error:|saved as attachment)/);
       expect(readResult).toMatch(/(Error:|No|===)/);
     });
   });

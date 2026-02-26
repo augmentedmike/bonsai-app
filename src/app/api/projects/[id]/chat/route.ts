@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { getProjectMessages, createProjectMessage } from "@/db/data/project-messages";
-import { getProjectPersonasRaw } from "@/db/data/personas";
+import { getGlobalPersonas } from "@/db/data/personas";
 import { getProjectById } from "@/db/data/projects";
 import { createTicket, getTicketsByProject, updateTicket } from "@/db/data/tickets";
 import { fireDispatch } from "@/lib/dispatch-agent";
+
+const API_BASE = process.env.API_BASE || "http://localhost:3080";
 
 /** GET — fetch project chat messages */
 export async function GET(
@@ -48,7 +50,7 @@ export async function POST(
   });
 
   // Extract @mentions from content
-  const projectPersonas = await getProjectPersonasRaw(projectId);
+  const projectPersonas = await getGlobalPersonas();
   const trimmed = content.trim();
 
   // Find mentioned personas (by name or role)
@@ -69,7 +71,7 @@ export async function POST(
   const inboxTicketId = await ensureInboxTicket(projectId);
 
   if (isTeam) {
-    fireDispatch("http://localhost:3080", inboxTicketId, {
+    fireDispatch(API_BASE, inboxTicketId, {
       commentContent: trimmed,
       team: true,
       silent: true,
@@ -77,7 +79,7 @@ export async function POST(
     }, "project-chat/@team");
   } else if (mentionedIds.length > 0) {
     for (const personaId of mentionedIds) {
-      fireDispatch("http://localhost:3080", inboxTicketId, {
+      fireDispatch(API_BASE, inboxTicketId, {
         commentContent: trimmed,
         targetPersonaId: personaId,
         conversational: true,
@@ -86,7 +88,7 @@ export async function POST(
     }
   } else {
     // No @mention — route to @researcher
-    fireDispatch("http://localhost:3080", inboxTicketId, {
+    fireDispatch(API_BASE, inboxTicketId, {
       commentContent: trimmed,
       targetRole: "researcher",
       conversational: true,

@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
   const projectSlug = req.nextUrl.searchParams.get("projectSlug");
   const all = req.nextUrl.searchParams.get("all");
 
-  // Return all paused projects
+  // Return all paused projects + focus state
   if (all === "true") {
     const rows = await getSettingsByPrefix(`${CREDITS_PAUSED_UNTIL}:`);
     const paused: Array<{ projectSlug: string; resumesAt: string; remainingMs: number }> = [];
@@ -25,7 +25,8 @@ export async function GET(req: NextRequest) {
         paused.push({ projectSlug: slug, resumesAt: row.value, remainingMs: pauseRemainingMs(row.value) });
       }
     }
-    return NextResponse.json({ paused: paused.length > 0, projects: paused });
+    const focusedProject = await getSetting("focused_project");
+    return NextResponse.json({ paused: paused.length > 0, projects: paused, focusedProject });
   }
 
   if (!projectSlug) {
@@ -100,7 +101,8 @@ export async function DELETE(req: NextRequest) {
   if (all === "true") {
     await deleteSettingsByPrefix(`${CREDITS_PAUSED_UNTIL}:`);
     await deleteSettingsByPrefix(`${CREDITS_PAUSE_REASON}:`);
-    console.log("[dispatch-pause] All project pauses cleared");
+    await deleteSetting("focused_project");
+    console.log("[dispatch-pause] All project pauses cleared, focus cleared");
     return NextResponse.json({ paused: false });
   }
 

@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, primaryKey } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, primaryKey } from "drizzle-orm/sqlite-core";
 import { sql } from "drizzle-orm";
 
 // ============================================================================
@@ -174,6 +174,7 @@ export const ticketAttachments = sqliteTable("ticket_attachments", {
   filename: text("filename").notNull(),
   mimeType: text("mime_type").notNull(),
   data: text("data").notNull(), // base64 data URL
+  tag: text("tag"), // optional: research-doc, implementation-plan, design-doc, etc.
   createdByType: text("created_by_type", { enum: ["human", "agent"] }).notNull(),
   createdById: text("created_by_id"), // user id or persona id
   createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`),
@@ -245,9 +246,16 @@ export const agentRuns = sqliteTable("agent_runs", {
   startedAt: text("started_at").default(sql`CURRENT_TIMESTAMP`),
   endedAt: text("ended_at"),
   lastReportAt: text("last_report_at"),
+  lastReportMessage: text("last_report_message"),
   completedAt: text("completed_at"),
   durationMs: integer("duration_ms"),
   errorMessage: text("error_message"),
+  costUsd: real("cost_usd"),
+  inputTokens: integer("input_tokens"),
+  outputTokens: integer("output_tokens"),
+  cacheReadTokens: integer("cache_read_tokens"),
+  sessionId: text("session_id"),
+  modelUsage: text("model_usage"), // JSON: per-model token/cost breakdown
 });
 
 export type AgentRunRow = typeof agentRuns.$inferSelect;

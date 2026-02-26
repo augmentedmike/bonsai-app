@@ -5,7 +5,7 @@
  */
 
 import { db } from "../src/db/index.js";
-import { tickets, projects, comments, ticketDocuments } from "../src/db/schema.js";
+import { tickets, projects, comments, ticketAttachments } from "../src/db/schema.js";
 import { eq, and, isNull, desc } from "drizzle-orm";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -25,22 +25,22 @@ Commands:
   get-comments <project-slug> <ticket-id> [--head N | --tail N]
                                               Get all comments for a ticket
   get-persona <persona-id>                    Get persona details (name, role, avatar status)
-  write-artifact <ticket-id> <type> <file>    Save a document artifact (research|implementation_plan|design)
-  read-artifact <ticket-id> <type>            Read the latest artifact of a type
-  sync-artifacts                              Export all artifacts to markdown files for QMD indexing
+  write-artifact <ticket-id> <tag> <file>     Save a tagged attachment (research-doc|implementation-plan|design-doc)
+  read-artifact <ticket-id> <tag>            Read the latest tagged attachment
+  sync-artifacts                              Export all tagged attachments to markdown files for QMD indexing
   search-artifacts <query>                    Search artifacts using QMD hybrid search
   report <ticket-id> <message>                Post a progress update to the ticket
   check-criteria <ticket-id> <index>          Mark an acceptance criterion as complete (0-indexed)
   update-ticket <ticket-id> --field <value>   Update ticket fields (--title, --description, --acceptance-criteria, --type, --state)
-  upload-attachment <ticket-id> <file> [name]  Upload a file attachment to a ticket
+  upload-attachment <ticket-id> <file> [name] [--tag <tag>]  Upload a file attachment to a ticket
   credit-status                               Check if API credits are paused
 
 Examples:
   bonsai-cli create-ticket my-project "Add login feature" --type feature --description "Implement user login" --acceptance-criteria "User can log in with email/password"
   bonsai-cli get-comments digitalworker-ai-demo 41 --tail 5
   bonsai-cli get-persona p8
-  bonsai-cli write-artifact 41 research /tmp/research.md
-  bonsai-cli read-artifact 41 research
+  bonsai-cli write-artifact 41 research-doc /tmp/research.md
+  bonsai-cli read-artifact 41 research-doc
   bonsai-cli sync-artifacts
   bonsai-cli search-artifacts "React 19 patterns"
   bonsai-cli report 41 "Starting implementation of auth module"
@@ -177,18 +177,18 @@ async function createTicketCmd(projectSlug: string, title: string, options: { ty
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// write-artifact <ticket-id> <type> <file>
+// write-artifact <ticket-id> <tag> <file>
 // ───────────────────────────────────────────────────────────────────────────
-async function writeArtifact(ticketId: string, type: string, filePath: string) {
+async function writeArtifact(ticketId: string, tag: string, filePath: string) {
   const ticketIdNum = Number(ticketId);
   if (!ticketIdNum) {
     console.error("Error: ticket-id must be a number");
     process.exit(1);
   }
 
-  const validTypes = ["research", "implementation_plan", "design"];
-  if (!validTypes.includes(type)) {
-    console.error(`Error: type must be one of: ${validTypes.join(", ")}`);
+  const validTags = ["research-doc", "implementation-plan", "design-doc", "security-review", "research-critique", "plan-critique"];
+  if (!validTags.includes(tag)) {
+    console.error(`Error: tag must be one of: ${validTags.join(", ")}`);
     process.exit(1);
   }
 
@@ -212,24 +212,33 @@ async function writeArtifact(ticketId: string, type: string, filePath: string) {
     process.exit(1);
   }
 
-  // Call the API endpoint
+  // Upload as a tagged attachment (markdown data URL)
   const personaId = process.env.BONSAI_PERSONA_ID || null;
+  const filename = `${tag}-${ticketId}.md`;
+  const dataUrl = `data:text/markdown;base64,${Buffer.from(content.trim()).toString("base64")}`;
+
   try {
     const apiBase = process.env.BONSAI_API_BASE || "http://localhost:3080";
-    const res = await fetch(`${apiBase}/api/tickets/${ticketId}/documents`, {
+    const res = await fetch(`${apiBase}/api/tickets/${ticketId}/attachments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type, content: content.trim(), personaId }),
+      body: JSON.stringify({
+        filename,
+        mimeType: "text/markdown",
+        data: dataUrl,
+        tag,
+        createdByType: "agent",
+        createdById: personaId,
+      }),
     });
 
     const data = await res.json();
     if (!res.ok) {
-      console.error(`Error: ${data.error || "Failed to save document"}`);
-      if (data.detail) console.error(data.detail);
+      console.error(`Error: ${data.error || "Failed to save artifact"}`);
       process.exit(1);
     }
 
-    console.log(`✓ ${type} v${data.version} saved to ticket ${ticketId}`);
+    console.log(`✓ ${tag} saved as attachment to ticket ${ticketId} (id: ${data.id})`);
   } catch (err: any) {
     console.error(`Error calling API: ${err.message}`);
     process.exit(1);
@@ -237,18 +246,18 @@ async function writeArtifact(ticketId: string, type: string, filePath: string) {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// read-artifact <ticket-id> <type>
+// read-artifact <ticket-id> <tag>
 // ───────────────────────────────────────────────────────────────────────────
-function readArtifact(ticketId: string, type: string) {
+function readArtifact(ticketId: string, tag: string) {
   const ticketIdNum = Number(ticketId);
   if (!ticketIdNum) {
     console.error("Error: ticket-id must be a number");
     process.exit(1);
   }
 
-  const validTypes = ["research", "implementation_plan", "design"];
-  if (!validTypes.includes(type)) {
-    console.error(`Error: type must be one of: ${validTypes.join(", ")}`);
+  const validTags = ["research-doc", "implementation-plan", "design-doc", "security-review", "research-critique", "plan-critique"];
+  if (!validTags.includes(tag)) {
+    console.error(`Error: tag must be one of: ${validTags.join(", ")}`);
     process.exit(1);
   }
 
@@ -258,26 +267,35 @@ function readArtifact(ticketId: string, type: string) {
     process.exit(1);
   }
 
-  // Fetch latest version of this document type
-  const docs = db.select().from(ticketDocuments)
+  // Fetch latest attachment with this tag (highest id = most recent)
+  const attachments = db.select().from(ticketAttachments)
     .where(and(
-      eq(ticketDocuments.ticketId, ticketIdNum),
-      eq(ticketDocuments.type, type as "research" | "implementation_plan" | "design")
+      eq(ticketAttachments.ticketId, ticketIdNum),
+      eq(ticketAttachments.tag, tag)
     ))
-    .orderBy(desc(ticketDocuments.version))
     .all();
 
-  if (docs.length === 0) {
-    console.error(`No ${type} documents found for ticket ${ticketId}`);
+  if (attachments.length === 0) {
+    console.error(`No ${tag} attachments found for ticket ${ticketId}`);
     process.exit(1);
   }
 
-  const latest = docs[0];
-  console.log(`\n=== ${type} v${latest.version} | Ticket #${ticketId} ===`);
+  const latest = attachments.sort((a, b) => b.id - a.id)[0];
+
+  // Decode base64 data URL to text
+  let content: string;
+  const match = latest.data.match(/^data:[^;]+;base64,(.+)$/);
+  if (match) {
+    content = Buffer.from(match[1], "base64").toString("utf-8");
+  } else {
+    content = latest.data;
+  }
+
+  console.log(`\n=== ${tag} | Ticket #${ticketId} ===`);
   console.log(`Created: ${latest.createdAt}`);
-  console.log(`Author: ${latest.authorPersonaId || 'human'}\n`);
+  console.log(`Author: ${latest.createdById || 'human'}\n`);
   console.log(`────────────────────────────────────────────────────────────────\n`);
-  console.log(latest.content);
+  console.log(content);
   console.log(`\n────────────────────────────────────────────────────────────────\n`);
 }
 
@@ -302,13 +320,12 @@ function getPersona(personaId: string) {
   console.log(`\n=== Persona: ${persona.name} (${personaId}) ===`);
   console.log(`Role: ${persona.role}`);
   console.log(`Color: ${persona.color}`);
-  console.log(`Project ID: ${persona.projectId}`);
   console.log(`Avatar: ${avatarPreview}`);
   console.log(`Deleted: ${persona.deletedAt || 'No'}\n`);
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// sync-artifacts — Export all artifacts to markdown files for QMD
+// sync-artifacts — Export all tagged attachments to markdown files for QMD
 // ───────────────────────────────────────────────────────────────────────────
 async function syncArtifacts() {
   const os = await import('node:os');
@@ -321,49 +338,55 @@ async function syncArtifacts() {
   await fs.mkdir(path.join(artifactsDir, 'plans'), { recursive: true });
   await fs.mkdir(path.join(artifactsDir, 'designs'), { recursive: true });
 
-  // Fetch all artifacts
-  const allDocs = db.select().from(ticketDocuments).all();
+  // Fetch all tagged attachments (only markdown/text ones with a tag)
+  const allAttachments = db.select().from(ticketAttachments).all()
+    .filter(a => a.tag && (a.mimeType === 'text/markdown' || a.mimeType === 'text/plain'));
 
-  console.log(`Syncing ${allDocs.length} artifacts to ${artifactsDir}...\n`);
+  console.log(`Syncing ${allAttachments.length} tagged artifacts to ${artifactsDir}...\n`);
 
   let synced = 0;
-  for (const doc of allDocs) {
-    const ticket = db.select().from(tickets).where(eq(tickets.id, doc.ticketId)).get();
+  for (const att of allAttachments) {
+    const ticket = db.select().from(tickets).where(eq(tickets.id, att.ticketId)).get();
     if (!ticket) continue;
 
     const ticketSlug = ticket.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
     let subdir: string;
-    let filename: string;
-
-    if (doc.type === 'research') {
+    if (att.tag === 'research-doc' || att.tag === 'research-critique') {
       subdir = 'research';
-      filename = `ticket-${doc.ticketId}-${ticketSlug}-v${doc.version}.md`;
-    } else if (doc.type === 'implementation_plan') {
+    } else if (att.tag === 'implementation-plan' || att.tag === 'plan-critique') {
       subdir = 'plans';
-      filename = `ticket-${doc.ticketId}-${ticketSlug}-v${doc.version}.md`;
-    } else if (doc.type === 'design') {
+    } else if (att.tag === 'design-doc') {
       subdir = 'designs';
-      filename = `ticket-${doc.ticketId}-${ticketSlug}-v${doc.version}.md`;
     } else {
-      continue;
+      subdir = 'other';
+      await fs.mkdir(path.join(artifactsDir, 'other'), { recursive: true });
     }
 
+    const filename = `ticket-${att.ticketId}-${ticketSlug}-${att.tag}-${att.id}.md`;
     const filePath = path.join(artifactsDir, subdir, filename);
+
+    // Decode base64 data URL to text
+    let content: string;
+    const match = att.data.match(/^data:[^;]+;base64,(.+)$/);
+    if (match) {
+      content = Buffer.from(match[1], "base64").toString("utf-8");
+    } else {
+      content = att.data;
+    }
 
     // Add frontmatter with metadata
     const frontmatter = `---
-ticketId: ${doc.ticketId}
+ticketId: ${att.ticketId}
 ticketTitle: ${ticket.title}
-type: ${doc.type}
-version: ${doc.version}
-author: ${doc.authorPersonaId || 'human'}
-created: ${doc.createdAt}
+tag: ${att.tag}
+author: ${att.createdById || 'human'}
+created: ${att.createdAt}
 ---
 
 `;
 
-    await fs.writeFile(filePath, frontmatter + doc.content, 'utf-8');
+    await fs.writeFile(filePath, frontmatter + content, 'utf-8');
     synced++;
   }
 
@@ -560,10 +583,10 @@ async function updateTicketCmd(ticketId: string, flags: string[]) {
 // credit-status — Check if API credits are paused
 // ───────────────────────────────────────────────────────────────────────────
 async function creditStatus() {
-  const apiBase = process.env.BONSAI_API_BASE || "http://localhost:3080";
+  const apiBase = process.env.BONSAI_API_BASE || "http://localhost:3090";
 
   try {
-    const response = await fetch(`${apiBase}/api/credit-pause`, {
+    const response = await fetch(`${apiBase}/api/credit-pause?all=true`, {
       method: "GET",
     });
 
@@ -610,7 +633,7 @@ const MIME_TYPES: Record<string, string> = {
   ".gz": "application/gzip",
 };
 
-async function uploadAttachment(ticketId: string, filePath: string, displayName?: string) {
+async function uploadAttachment(ticketId: string, filePath: string, displayName?: string, tag?: string) {
   const ticketIdNum = Number(ticketId);
   if (!ticketIdNum) {
     console.error("Error: ticket-id must be a number");
@@ -652,6 +675,7 @@ async function uploadAttachment(ticketId: string, filePath: string, displayName?
         filename,
         mimeType,
         data,
+        tag: tag || null,
         createdByType: "agent",
         createdById: personaId || null,
       }),
@@ -788,13 +812,17 @@ async function main() {
       await updateTicketCmd(args[0], args.slice(1));
       break;
 
-    case "upload-attachment":
+    case "upload-attachment": {
       if (args.length < 2) {
-        console.error("Error: upload-attachment requires <ticket-id> <file> [name]");
+        console.error("Error: upload-attachment requires <ticket-id> <file> [name] [--tag <tag>]");
         usage();
       }
-      await uploadAttachment(args[0], args[1], args[2]);
+      const tagIdx = args.indexOf("--tag");
+      const uploadTag = tagIdx >= 0 ? args[tagIdx + 1] : undefined;
+      const uploadArgs = tagIdx >= 0 ? args.slice(0, tagIdx) : args;
+      await uploadAttachment(uploadArgs[0], uploadArgs[1], uploadArgs[2], uploadTag);
       break;
+    }
 
     case "credit-status":
       await creditStatus();

@@ -11,7 +11,7 @@ export default async function BoardPage() {
     redirect("/onboard/github");
   }
 
-  if (!await isTeamComplete(Number(project.id))) {
+  if (!await isTeamComplete()) {
     redirect(`/p/${project.slug}/onboard/team`);
   }
 

@@ -39,7 +39,6 @@ function personaFromRow(row: typeof personas.$inferSelect): Persona {
       row.permissions,
       { tools: [], folders: [] }
     ),
-    projectId: row.projectId ?? undefined,
   };
 }
 
@@ -58,20 +57,12 @@ export function getTickets(projectId?: number): Promise<Ticket[]> {
         .where(isNull(tickets.deletedAt))
         .all();
 
-  // Build persona map
-  const personaRows = projectId
-    ? db
-        .select()
-        .from(personas)
-        .where(
-          and(eq(personas.projectId, projectId), isNull(personas.deletedAt))
-        )
-        .all()
-    : db
-        .select()
-        .from(personas)
-        .where(isNull(personas.deletedAt))
-        .all();
+  // Build persona map — always use global team
+  const personaRows = db
+    .select()
+    .from(personas)
+    .where(isNull(personas.deletedAt))
+    .all();
   const personaMap = new Map(
     personaRows.map((p) => [p.id, personaFromRow(p)])
   );

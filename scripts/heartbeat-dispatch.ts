@@ -114,10 +114,6 @@ interface ProjectRow {
   local_path: string | null;
 }
 
-interface DocRow {
-  content: string;
-}
-
 // ── Settings (direct SQL, no Drizzle) ───────────
 const getSettingStmt = db.prepare(`SELECT value FROM settings WHERE key = ?`);
 const upsertSettingStmt = db.prepare(`
@@ -176,16 +172,15 @@ const getProject = db.prepare(`
   FROM projects WHERE id = ?
 `);
 
-const getDocumentContent = db.prepare(`
-  SELECT content FROM ticket_documents
-  WHERE ticket_id = ? AND type = ?
-  ORDER BY version DESC LIMIT 1
+const getTaggedAttachmentContent = db.prepare(`
+  SELECT id, data, created_by_id FROM ticket_attachments
+  WHERE ticket_id = ? AND tag = ?
+  ORDER BY id DESC LIMIT 1
 `);
 
-const getDocumentLatestVersion = db.prepare(`
-  SELECT version, content FROM ticket_documents
-  WHERE ticket_id = ? AND type = ?
-  ORDER BY version DESC LIMIT 1
+const getTaggedAttachmentCount = db.prepare(`
+  SELECT COUNT(*) as count FROM ticket_attachments
+  WHERE ticket_id = ? AND tag = ?
 `);
 
 const markAgentActivity = db.prepare(`
@@ -195,9 +190,9 @@ const markAgentActivity = db.prepare(`
   WHERE id = ?
 `);
 
-const insertDocument = db.prepare(`
-  INSERT INTO ticket_documents (ticket_id, type, content, version, created_at, updated_at)
-  VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+const insertTaggedAttachment = db.prepare(`
+  INSERT INTO ticket_attachments (ticket_id, filename, mime_type, data, tag, created_by_type, created_by_id, created_at)
+  VALUES (?, ?, 'text/markdown', ?, ?, 'agent', ?, CURRENT_TIMESTAMP)
 `);
 
 const markResearchCompleted = db.prepare(`
@@ -213,6 +208,18 @@ const markPlanCompleted = db.prepare(`
       plan_completed_by = ?
   WHERE id = ?
 `);
+
+// Helper to decode base64 data URL to text
+function decodeDataUrl(dataUrl: string): string {
+  const match = dataUrl.match(/^data:[^;]+;base64,(.+)$/);
+  if (match) return Buffer.from(match[1], "base64").toString("utf-8");
+  return dataUrl;
+}
+
+// Helper to encode text to base64 data URL
+function encodeAsDataUrl(content: string): string {
+  return `data:text/markdown;base64,${Buffer.from(content).toString("base64")}`;
+}
 
 const markTicketState = db.prepare(`
   UPDATE tickets SET state = ? WHERE id = ?
@@ -469,6 +476,28 @@ async function runClaude(
   const outputFile = path.join(sessionDir, "output.md");
   const stderrFile = path.join(sessionDir, "stderr.log");
   const promptFile = path.join(sessionDir, "system-prompt.txt");
+
+  // ─── COST ANALYSIS LOGGING ───────────────────────────────────────────────────────────────────
+  try {
+    const taskContent = fs.readFileSync(taskFile, "utf-8");
+    log(
+      JSON.stringify({
+        level: "info",
+        service: "claude-cost-log-heartbeat",
+        message: "Claude agent dispatched via heartbeat",
+        sessionDir,
+        model: MODEL,
+        systemPromptLength: systemPrompt.length,
+        taskLength: taskContent.length,
+        totalInputLength: systemPrompt.length + taskContent.length,
+        systemPrompt: systemPrompt,
+        task: taskContent,
+      })
+    );
+  } catch (e: any) {
+    log(`[claude-cost-log-heartbeat] Failed to log dispatch for session ${sessionDir}: ${e.message}`);
+  }
+  // ─── END COST ANALYSIS LOGGING ───────────────────────────────────────────────────────────────
 
   const cmd = [
     `cat ${shellEscape(taskFile)} |`,
@@ -949,8 +978,8 @@ async function dispatch(maxTickets: number) {
 
       } else if (!ticket.plan_completed_at) {
         phase = "plan";
-        const researchDoc = getDocumentContent.get(ticket.id, "research") as DocRow | undefined;
-        const researchContent = researchDoc?.content || "(No research document found)";
+        const researchAtt = getTaggedAttachmentContent.get(ticket.id, "research-doc") as { id: number; data: string } | undefined;
+        const researchContent = researchAtt ? decodeDataUrl(researchAtt.data) : "(No research document found)";
         systemPrompt = await buildPlannerPrompt(persona, project, ticket, workspacePath);
         taskContent = [
           `# Implementation Plan for: ${ticket.id}`,
@@ -965,10 +994,10 @@ async function dispatch(maxTickets: number) {
 
       } else {
         phase = "implement";
-        const researchDoc = getDocumentContent.get(ticket.id, "research") as DocRow | undefined;
-        const planDoc = getDocumentContent.get(ticket.id, "implementation_plan") as DocRow | undefined;
-        const researchContent = researchDoc?.content || "(No research document)";
-        const planContent = planDoc?.content || "(No implementation plan)";
+        const researchAtt2 = getTaggedAttachmentContent.get(ticket.id, "research-doc") as { id: number; data: string } | undefined;
+        const planAtt = getTaggedAttachmentContent.get(ticket.id, "implementation-plan") as { id: number; data: string } | undefined;
+        const researchContent = researchAtt2 ? decodeDataUrl(researchAtt2.data) : "(No research document)";
+        const planContent = planAtt ? decodeDataUrl(planAtt.data) : "(No implementation plan)";
         systemPrompt = await buildDeveloperPrompt(persona, project, ticket, workspacePath);
         taskContent = [
           `# Implement: ${ticket.id}`,
@@ -1003,29 +1032,29 @@ async function dispatch(maxTickets: number) {
       markTicketPickedUp(ticket.id);
       dispatched++;
 
-      // Snapshot doc version before agent runs, so we can detect if agent saved via API
-      const docType = phase === "research" ? "research" : phase === "plan" ? "implementation_plan" : null;
-      const preRunDoc = docType
-        ? getDocumentLatestVersion.get(ticket.id, docType) as { version: number; content: string } | undefined
-        : undefined;
-      const preRunVersion = preRunDoc?.version || 0;
+      // Snapshot attachment count before agent runs, so we can detect if agent saved via API
+      const docTag = phase === "research" ? "research-doc" : phase === "plan" ? "implementation-plan" : null;
+      const preRunCount = docTag
+        ? (getTaggedAttachmentCount.get(ticket.id, docTag) as { count: number })?.count || 0
+        : 0;
 
       const result = await runAgentPhase(ticket, persona, project, phase, systemPrompt, taskContent, tools, timeoutMs);
 
       if (phase === "research") {
-        // Check if agent saved the document via save-document.sh (API)
-        const existingDoc = getDocumentLatestVersion.get(ticket.id, "research") as { version: number; content: string } | undefined;
-        if (existingDoc && existingDoc.version > preRunVersion && existingDoc.content.length > 100) {
-          // Agent used save-document.sh — document is already in DB
+        // Check if agent saved via write-artifact (attachment API)
+        const postRunCount = (getTaggedAttachmentCount.get(ticket.id, "research-doc") as { count: number })?.count || 0;
+        const existingAtt = getTaggedAttachmentContent.get(ticket.id, "research-doc") as { id: number; data: string } | undefined;
+        if (existingAtt && postRunCount > preRunCount) {
+          const content = decodeDataUrl(existingAtt.data);
           markResearchCompleted.run(new Date().toISOString(), persona.id, ticket.id);
-          const summary = result ? extractSummary(result) : extractSummary(existingDoc.content);
-          postAgentComment(ticket.id, persona.id, `**Research complete** (v${existingDoc.version})\n\n${summary}`);
-          log(`  COMPLETE: ${ticket.id} — research saved via API (v${existingDoc.version}, ${existingDoc.content.length} chars)`);
+          const summary = result ? extractSummary(result) : extractSummary(content);
+          postAgentComment(ticket.id, persona.id, `**Research complete**\n\n${summary}`);
+          log(`  COMPLETE: ${ticket.id} — research saved via API (${content.length} chars)`);
           completed++;
         } else if (result) {
-          // Fallback: agent used stdout — insert directly
-          log(`  WARN: ${ticket.id} — agent did not use save-document.sh, falling back to stdout capture`);
-          insertDocument.run(ticket.id, "research", result);
+          // Fallback: agent used stdout — insert as tagged attachment
+          log(`  WARN: ${ticket.id} — agent did not use write-artifact, falling back to stdout capture`);
+          insertTaggedAttachment.run(ticket.id, `research-doc-${ticket.id}.md`, encodeAsDataUrl(result), "research-doc", persona.id);
           markResearchCompleted.run(new Date().toISOString(), persona.id, ticket.id);
           const summary = extractSummary(result);
           postAgentComment(ticket.id, persona.id, `**Research complete**\n\n${summary}`);
@@ -1036,16 +1065,18 @@ async function dispatch(maxTickets: number) {
           log(`  FAILED: ${ticket.id} — no document saved and no stdout output`);
         }
       } else if (phase === "plan") {
-        const existingDoc = getDocumentLatestVersion.get(ticket.id, "implementation_plan") as { version: number; content: string } | undefined;
-        if (existingDoc && existingDoc.version > preRunVersion && existingDoc.content.length > 100) {
+        const postRunCount = (getTaggedAttachmentCount.get(ticket.id, "implementation-plan") as { count: number })?.count || 0;
+        const existingAtt = getTaggedAttachmentContent.get(ticket.id, "implementation-plan") as { id: number; data: string } | undefined;
+        if (existingAtt && postRunCount > preRunCount) {
+          const content = decodeDataUrl(existingAtt.data);
           markPlanCompleted.run(new Date().toISOString(), persona.id, ticket.id);
-          const summary = result ? extractSummary(result) : extractSummary(existingDoc.content);
-          postAgentComment(ticket.id, persona.id, `**Implementation plan complete** (v${existingDoc.version})\n\n${summary}`);
-          log(`  COMPLETE: ${ticket.id} — plan saved via API (v${existingDoc.version}, ${existingDoc.content.length} chars)`);
+          const summary = result ? extractSummary(result) : extractSummary(content);
+          postAgentComment(ticket.id, persona.id, `**Implementation plan complete**\n\n${summary}`);
+          log(`  COMPLETE: ${ticket.id} — plan saved via API (${content.length} chars)`);
           completed++;
         } else if (result) {
-          log(`  WARN: ${ticket.id} — agent did not use save-document.sh, falling back to stdout capture`);
-          insertDocument.run(ticket.id, "implementation_plan", result);
+          log(`  WARN: ${ticket.id} — agent did not use write-artifact, falling back to stdout capture`);
+          insertTaggedAttachment.run(ticket.id, `implementation-plan-${ticket.id}.md`, encodeAsDataUrl(result), "implementation-plan", persona.id);
           markPlanCompleted.run(new Date().toISOString(), persona.id, ticket.id);
           const summary = extractSummary(result);
           postAgentComment(ticket.id, persona.id, `**Implementation plan complete**\n\n${summary}`);

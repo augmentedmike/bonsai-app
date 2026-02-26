@@ -1,5 +1,5 @@
 import { db, asAsync, runAsync } from "./_driver";
-import { projects, tickets, comments, ticketDocuments, ticketAttachments, ticketAuditLog, personas, projectMessages } from "../schema";
+import { projects, tickets, comments, ticketAttachments, ticketAuditLog, personas, projectMessages } from "../schema";
 import { eq, and, or, isNull, sql } from "drizzle-orm";
 import type { Project } from "@/types";
 import { getSetting } from "./settings";
@@ -122,7 +122,6 @@ export function softDeleteProject(id: number): Promise<void> {
       // Hard-delete all related data for these tickets
       for (const tid of ticketIds) {
         db.delete(comments).where(eq(comments.ticketId, tid)).run();
-        db.delete(ticketDocuments).where(eq(ticketDocuments.ticketId, tid)).run();
         db.delete(ticketAttachments).where(eq(ticketAttachments.ticketId, tid)).run();
         db.delete(ticketAuditLog).where(eq(ticketAuditLog.ticketId, tid)).run();
       }
@@ -135,9 +134,6 @@ export function softDeleteProject(id: number): Promise<void> {
     if (remaining.length === 0) {
       db.run(sql`UPDATE sqlite_sequence SET seq = 0 WHERE name = 'tickets'`);
     }
-
-    // Hard-delete personas for this project
-    db.delete(personas).where(eq(personas.projectId, id)).run();
 
     // Hard-delete project messages
     db.delete(projectMessages).where(eq(projectMessages.projectId, id)).run();

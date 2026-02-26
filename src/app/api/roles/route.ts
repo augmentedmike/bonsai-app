@@ -36,6 +36,9 @@ export async function POST(request: NextRequest) {
   return NextResponse.json(result);
 }
 
+// Roles that cannot be modified or deleted via API
+const PROTECTED_ROLE_SLUGS = new Set(["operator"]);
+
 // PUT /api/roles - Update a role
 export async function PUT(request: NextRequest) {
   const body = await request.json();
@@ -43,6 +46,13 @@ export async function PUT(request: NextRequest) {
 
   if (!id) {
     return NextResponse.json({ error: "ID is required" }, { status: 400 });
+  }
+
+  // Check if role is protected
+  const allRoles = await getRoles();
+  const target = allRoles.find((r) => r.id === id);
+  if (target && PROTECTED_ROLE_SLUGS.has(target.slug)) {
+    return NextResponse.json({ error: "This role is read-only and cannot be modified" }, { status: 403 });
   }
 
   const updates: Parameters<typeof updateRole>[1] = {};
@@ -92,6 +102,13 @@ export async function DELETE(request: NextRequest) {
 
   if (!id) {
     return NextResponse.json({ error: "ID is required" }, { status: 400 });
+  }
+
+  // Check if role is protected
+  const allRoles = await getRoles();
+  const target = allRoles.find((r) => r.id === parseInt(id));
+  if (target && PROTECTED_ROLE_SLUGS.has(target.slug)) {
+    return NextResponse.json({ error: "This role is read-only and cannot be deleted" }, { status: 403 });
   }
 
   await deleteRole(parseInt(id));

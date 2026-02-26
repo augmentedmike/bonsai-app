@@ -15,7 +15,7 @@ export default async function TeamOnboardLayout({
   const project = await getProjectBySlug(slug);
   if (!project) redirect("/onboard/project");
   // Already has a team → go to board
-  if (await isTeamComplete(Number(project.id))) {
+  if (await isTeamComplete()) {
     redirect(`/p/${slug}`);
   }
   return (

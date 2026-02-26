@@ -54,8 +54,8 @@ export async function POST(req: Request, context: RouteContext) {
   }, "approve-research");
 
   // Auto-dispatch designer if the project has one — generate mockups in parallel with planning
-  if (ticket.projectId) {
-    const designers = await getPersonasByRole("designer", { projectId: ticket.projectId });
+  {
+    const designers = await getPersonasByRole("designer");
     if (designers.length > 0) {
       fireDispatch(origin, ticketId, {
         commentContent: "Research has been approved. Generate UI mockups for this ticket based on the description and research findings. Use nano-banana to create the images and attach them to the ticket.",

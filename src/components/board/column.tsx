@@ -129,7 +129,7 @@ export function Column({
       </div>
 
       {/* Ticket list */}
-      <div className="flex flex-col gap-4 overflow-y-auto px-1 pb-4 flex-1">
+      <div className="flex flex-col gap-2 overflow-y-auto px-1 pb-4 flex-1">
         {tickets.map((ticket) => (
           <TicketCard
             key={ticket.id}

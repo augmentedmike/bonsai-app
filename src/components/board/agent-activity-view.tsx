@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import type { AgentRun } from "@/types";
 
 // --- Helpers ---
@@ -28,27 +28,57 @@ function formatDuration(ms: number): string {
   return `${hrs}h ${remMins}m`;
 }
 
-function formatTime(dateStr: string | null): string {
+function formatDateTime(dateStr: string | null): string {
   if (!dateStr) return "—";
-  return new Date(dateStr).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const d = new Date(dateStr);
+  return d.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function formatTimeAgo(dateStr: string | null): string {
+  if (!dateStr) return "never";
+  const ms = Date.now() - new Date(dateStr).getTime();
+  const secs = Math.floor(ms / 1000);
+  if (secs < 60) return `${secs}s ago`;
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  return `${hrs}h ago`;
+}
+
+function formatCost(usd: number | null): string {
+  if (usd == null) return "—";
+  if (usd < 0.01) return "<$0.01";
+  return `$${usd.toFixed(2)}`;
+}
+
+function formatTokens(n: number | null): string {
+  if (n == null) return "—";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}k`;
+  return String(n);
+}
+
+function isToday(dateStr: string | null): boolean {
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
 }
 
 // --- Badges & Avatars ---
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, { bg: string; text: string }> = {
-    running: { bg: "rgba(34, 197, 94, 0.15)", text: "#22c55e" },
-    completed: { bg: "rgba(34, 197, 94, 0.15)", text: "#22c55e" },
-    failed: { bg: "rgba(239, 68, 68, 0.15)", text: "#ef4444" },
-    timeout: { bg: "rgba(234, 179, 8, 0.15)", text: "#eab308" },
+    running:   { bg: "rgba(34, 197, 94, 0.15)",   text: "#22c55e" },
+    completed: { bg: "rgba(34, 197, 94, 0.15)",   text: "#22c55e" },
+    failed:    { bg: "rgba(239, 68, 68, 0.15)",   text: "#ef4444" },
+    timeout:   { bg: "rgba(234, 179, 8, 0.15)",   text: "#eab308" },
     abandoned: { bg: "rgba(107, 114, 128, 0.15)", text: "#6b7280" },
   };
   const c = colors[status] || colors.abandoned;
   return (
-    <span
-      className="px-2 py-0.5 rounded text-xs font-medium capitalize"
-      style={{ backgroundColor: c.bg, color: c.text }}
-    >
+    <span className="px-2 py-0.5 rounded text-xs font-medium capitalize"
+      style={{ backgroundColor: c.bg, color: c.text }}>
       {status}
     </span>
   );
@@ -56,37 +86,23 @@ function StatusBadge({ status }: { status: string }) {
 
 function PhaseBadge({ phase }: { phase: string }) {
   return (
-    <span
-      className="px-2 py-0.5 rounded text-xs font-medium"
-      style={{ backgroundColor: "rgba(99, 102, 241, 0.15)", color: "#818cf8" }}
-    >
+    <span className="px-2 py-0.5 rounded text-xs font-medium"
+      style={{ backgroundColor: "rgba(99, 102, 241, 0.15)", color: "#818cf8" }}>
       {phase}
     </span>
   );
 }
 
-function PersonaAvatar({ name, color, avatar, size = 28 }: { name: string | null; color: string | null; avatar: string | null; size?: number }) {
-  if (avatar) {
-    return (
-      <img
-        src={avatar}
-        alt={name || "Agent"}
-        className="rounded-full object-cover flex-shrink-0"
-        style={{ width: size, height: size }}
-      />
-    );
-  }
+function PersonaAvatar({ name, color, size = 36 }: { name: string | null; color: string | null; size?: number }) {
   return (
-    <div
-      className="rounded-full flex items-center justify-center font-bold text-white flex-shrink-0"
-      style={{ width: size, height: size, backgroundColor: color || "#6366f1", fontSize: size * 0.35 }}
-    >
+    <div className="rounded-full flex items-center justify-center font-bold text-white flex-shrink-0"
+      style={{ width: size, height: size, backgroundColor: color || "#6366f1", fontSize: size * 0.38 }}>
       {(name || "?")[0].toUpperCase()}
     </div>
   );
 }
 
-// --- Dispatch Pause Banner ---
+// --- Credit Pause Banner ---
 
 interface CreditPauseStatus {
   paused: boolean;
@@ -97,12 +113,9 @@ interface CreditPauseStatus {
 
 function CreditPauseBanner({ status, onResume }: { status: CreditPauseStatus; onResume: () => void }) {
   const [remaining, setRemaining] = useState(status.remainingMs);
-
   useEffect(() => {
     setRemaining(status.remainingMs);
-    const interval = setInterval(() => {
-      setRemaining((prev) => Math.max(0, prev - 1000));
-    }, 1000);
+    const interval = setInterval(() => setRemaining(p => Math.max(0, p - 1000)), 1000);
     return () => clearInterval(interval);
   }, [status.remainingMs]);
 
@@ -113,36 +126,18 @@ function CreditPauseBanner({ status, onResume }: { status: CreditPauseStatus; on
     : null;
 
   return (
-    <div
-      className="rounded-lg px-4 py-3 mb-6"
-      style={{ backgroundColor: "rgba(245, 158, 11, 0.12)", border: "1px solid rgba(245, 158, 11, 0.25)" }}
-    >
+    <div className="rounded-lg px-4 py-3 mb-6"
+      style={{ backgroundColor: "rgba(245, 158, 11, 0.12)", border: "1px solid rgba(245, 158, 11, 0.25)" }}>
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <svg className="w-5 h-5 flex-shrink-0" style={{ color: "#f59e0b" }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-          </svg>
-          <span className="text-sm font-semibold" style={{ color: "#f59e0b" }}>
-            Dispatch Paused
-          </span>
-          <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
-            {timeStr ? `Resumes at ${timeStr}` : "Paused"}{" "}
-            <span className="font-mono" style={{ color: "var(--text-muted)" }}>
-              ({mins}m {secs}s)
-            </span>
-          </span>
-        </div>
-        <button
-          onClick={onResume}
-          className="text-xs font-medium py-1.5 px-3 rounded transition-colors"
-          style={{
-            backgroundColor: "rgba(245, 158, 11, 0.15)",
-            color: "#f59e0b",
-            border: "1px solid rgba(245, 158, 11, 0.3)",
-          }}
-          onMouseEnter={(e) => { (e.target as HTMLElement).style.backgroundColor = "rgba(245, 158, 11, 0.25)"; }}
-          onMouseLeave={(e) => { (e.target as HTMLElement).style.backgroundColor = "rgba(245, 158, 11, 0.15)"; }}
-        >
+        <span className="text-sm font-semibold" style={{ color: "#f59e0b" }}>
+          Dispatch Paused
+          {timeStr && <span className="font-normal ml-2" style={{ color: "var(--text-secondary)" }}>
+            Resumes at {timeStr} <span className="font-mono text-xs" style={{ color: "var(--text-muted)" }}>({mins}m {secs}s)</span>
+          </span>}
+        </span>
+        <button onClick={onResume}
+          className="text-xs font-medium py-1.5 px-3 rounded"
+          style={{ backgroundColor: "rgba(245, 158, 11, 0.15)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.3)" }}>
           Resume Now
         </button>
       </div>
@@ -150,123 +145,7 @@ function CreditPauseBanner({ status, onResume }: { status: CreditPauseStatus; on
   );
 }
 
-// --- Stat Card ---
-
-function StatCard({ label, count, color }: { label: string; count: number; color: string }) {
-  return (
-    <div
-      className="rounded-lg px-4 py-3"
-      style={{ backgroundColor: "var(--bg-card, var(--bg-secondary))", border: "1px solid var(--border-subtle)" }}
-    >
-      <div className="text-2xl font-bold" style={{ color }}>{count}</div>
-      <div className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{label}</div>
-    </div>
-  );
-}
-
-// --- Active Agent Card ---
-
-function ActiveAgentCard({ run }: { run: AgentRun }) {
-  const [elapsed, setElapsed] = useState(run.startedAt ? formatElapsed(run.startedAt) : "0s");
-
-  useEffect(() => {
-    if (!run.startedAt) return;
-    const interval = setInterval(() => {
-      setElapsed(formatElapsed(run.startedAt!));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [run.startedAt]);
-
-  return (
-    <div
-      className="rounded-lg p-4 transition-colors hover:bg-white/[0.02]"
-      style={{
-        backgroundColor: "var(--bg-card, var(--bg-secondary))",
-        border: "1px solid var(--border-subtle)",
-        borderLeft: "3px solid #22c55e",
-      }}
-    >
-      <div className="flex items-start gap-3">
-        <div className="relative flex-shrink-0">
-          <PersonaAvatar name={run.personaName} color={run.personaColor} avatar={run.personaAvatar} size={40} />
-          <div
-            className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2"
-            style={{
-              backgroundColor: "#22c55e",
-              borderColor: "var(--bg-card, var(--bg-secondary))",
-              animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
-            }}
-          />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-              {run.personaName || "Agent"}
-            </span>
-            {run.personaRole && (
-              <span
-                className="px-1.5 py-0.5 rounded text-[10px] font-medium"
-                style={{ backgroundColor: "rgba(107, 114, 128, 0.15)", color: "#9ca3af" }}
-              >
-                {run.personaRole}
-              </span>
-            )}
-            <PhaseBadge phase={run.phase} />
-          </div>
-          <div className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
-            {run.ticketTitle || run.ticketId}
-          </div>
-          <div className="flex items-center gap-4 mt-2 text-xs" style={{ color: "var(--text-muted)" }}>
-            <span className="font-mono">{elapsed}</span>
-            {run.lastReportAt && (
-              <span>Last report: {formatTime(run.lastReportAt)}</span>
-            )}
-            {run.dispatchSource && (
-              <span>via {run.dispatchSource}</span>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// --- Filter Tabs ---
-
-type FilterTab = "all" | "completed" | "failed" | "timeout" | "abandoned";
-
-function FilterTabs({ active, counts, onChange }: { active: FilterTab; counts: Record<FilterTab, number>; onChange: (tab: FilterTab) => void }) {
-  const tabs: { key: FilterTab; label: string; color: string }[] = [
-    { key: "all", label: "All", color: "var(--text-secondary)" },
-    { key: "completed", label: "Completed", color: "#22c55e" },
-    { key: "failed", label: "Failed", color: "#ef4444" },
-    { key: "timeout", label: "Timeout", color: "#eab308" },
-    { key: "abandoned", label: "Abandoned", color: "#6b7280" },
-  ];
-
-  return (
-    <div className="flex items-center gap-1 mb-4">
-      {tabs.map((tab) => (
-        <button
-          key={tab.key}
-          onClick={() => onChange(tab.key)}
-          className="px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
-          style={
-            active === tab.key
-              ? { backgroundColor: "rgba(255, 255, 255, 0.1)", color: tab.color }
-              : { color: "var(--text-muted)" }
-          }
-          onMouseEnter={(e) => { if (active !== tab.key) (e.target as HTMLElement).style.backgroundColor = "rgba(255, 255, 255, 0.05)"; }}
-          onMouseLeave={(e) => { if (active !== tab.key) (e.target as HTMLElement).style.backgroundColor = "transparent"; }}
-        >
-          {tab.label} ({counts[tab.key]})
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// --- Main Component ---
+// --- Heartbeat Bar ---
 
 interface HeartbeatStatus {
   status: "running" | "idle" | "unknown";
@@ -285,88 +164,218 @@ function HeartbeatBar({ hb, onReauthDone }: { hb: HeartbeatStatus | null; onReau
     return () => clearInterval(i);
   }, []);
 
-  // Auth expired banner — auto-triggered, show status + manual fallback
   if (hb?.authExpired) {
-    const handleManualTrigger = async () => {
-      setReauthState("triggered");
-      try {
-        await fetch("/api/auth/reauth", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-      } catch { /* ignore */ }
-    };
-
-    const handleForceResume = async () => {
-      await fetch("/api/auth/reauth", { method: "DELETE" });
-      onReauthDone();
-    };
-
     return (
-      <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs" style={{ backgroundColor: "rgba(239, 68, 68, 0.12)", border: "1px solid rgba(239, 68, 68, 0.3)" }}>
-        <span className="flex-shrink-0" style={{ color: "#f87171" }}>⚠ Auth expired — re-authenticating via Chrome…</span>
+      <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs"
+        style={{ backgroundColor: "rgba(239, 68, 68, 0.12)", border: "1px solid rgba(239, 68, 68, 0.3)" }}>
+        <span style={{ color: "#f87171" }}>⚠ Auth expired — re-authenticating…</span>
         {reauthState === "idle" && (
-          <button
-            onClick={handleManualTrigger}
-            className="px-2 py-0.5 rounded text-xs font-semibold transition-opacity hover:opacity-80 flex-shrink-0"
-            style={{ backgroundColor: "rgba(239, 68, 68, 0.25)", color: "#f87171", border: "none", cursor: "pointer" }}
-          >
+          <button onClick={async () => { setReauthState("triggered"); await fetch("/api/auth/reauth", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => {}); }}
+            className="px-2 py-0.5 rounded text-xs font-semibold"
+            style={{ backgroundColor: "rgba(239, 68, 68, 0.25)", color: "#f87171" }}>
             Retry
           </button>
         )}
-        {reauthState === "triggered" && (
-          <span className="flex-shrink-0" style={{ color: "rgba(255,255,255,0.4)" }}>Chrome opening…</span>
-        )}
-        <button
-          onClick={handleForceResume}
-          className="px-2 py-0.5 rounded text-xs transition-opacity hover:opacity-80 flex-shrink-0"
-          style={{ backgroundColor: "transparent", color: "rgba(255,255,255,0.3)", border: "none", cursor: "pointer" }}
-          title="Clear flag manually if you've already logged in"
-        >
+        {reauthState === "triggered" && <span style={{ color: "rgba(255,255,255,0.4)" }}>Chrome opening…</span>}
+        <button onClick={async () => { await fetch("/api/auth/reauth", { method: "DELETE" }); onReauthDone(); }}
+          className="px-2 py-0.5 rounded text-xs"
+          style={{ color: "rgba(255,255,255,0.3)" }} title="Clear if already logged in">
           Resume
         </button>
       </div>
     );
   }
 
-  if (!hb || !hb.lastPing) {
+  if (!hb?.lastPing) {
     return (
-      <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs" style={{ backgroundColor: "rgba(255,255,255,0.03)", color: "var(--text-muted)" }}>
+      <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs"
+        style={{ backgroundColor: "rgba(255,255,255,0.03)", color: "var(--text-muted)" }}>
         <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "rgba(255,255,255,0.2)" }} />
-        Heartbeat — no data yet
+        Heartbeat — no data
       </div>
     );
   }
 
-  const sinceMs = hb.lastPing ? Date.now() - new Date(hb.lastPing).getTime() : null;
   const sinceCompleteMs = hb.lastCompleted ? Date.now() - new Date(hb.lastCompleted).getTime() : null;
+  const sinceMs = hb.lastPing ? Date.now() - new Date(hb.lastPing).getTime() : null;
   const isRunning = hb.status === "running";
-  const isStale = sinceMs !== null && sinceMs > 90_000; // >90s since last ping = possibly stuck
-
+  const isStale = sinceMs !== null && sinceMs > 90_000;
   const color = isRunning ? "#818cf8" : isStale ? "#f59e0b" : "#22c55e";
-  const label = isRunning
-    ? "Scanning now…"
-    : sinceCompleteMs !== null
-    ? `Last scan ${formatElapsed(hb.lastCompleted!)} ago`
-    : "Heartbeat idle";
-
+  const label = isRunning ? "Scanning…" : sinceCompleteMs !== null ? `Last scan ${formatElapsed(hb.lastCompleted!)} ago` : "Idle";
   const resultStr = hb.lastResult
-    ? `${hb.lastResult.dispatched} dispatched · ${hb.lastResult.completed} completed · ${hb.lastResult.skipped} skipped`
+    ? `${hb.lastResult.dispatched} dispatched · ${hb.lastResult.skipped} skipped`
     : null;
 
   return (
-    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs" style={{ backgroundColor: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-      <div
-        className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-        style={{
-          backgroundColor: color,
-          animation: isRunning ? "pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite" : undefined,
-        }}
-      />
+    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs"
+      style={{ backgroundColor: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+      <div className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+        style={{ backgroundColor: color, animation: isRunning ? "pulse 1s cubic-bezier(0.4,0,0.6,1) infinite" : undefined }} />
       <span style={{ color }}>{label}</span>
-      {resultStr && !isRunning && (
-        <span style={{ color: "var(--text-muted)" }}>— {resultStr}</span>
-      )}
+      {resultStr && !isRunning && <span style={{ color: "var(--text-muted)" }}>— {resultStr}</span>}
     </div>
   );
 }
+
+// --- Active Agent Card ---
+
+function ActiveAgentCard({ run, projectSlug }: { run: AgentRun; projectSlug: string }) {
+  const [elapsed, setElapsed] = useState(run.startedAt ? formatElapsed(run.startedAt) : "0s");
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    if (!run.startedAt) return;
+    const interval = setInterval(() => {
+      setElapsed(formatElapsed(run.startedAt!));
+      setTick(t => t + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [run.startedAt]);
+
+  const slug = run.projectSlug || projectSlug;
+  const ticketHref = slug ? `/p/${slug}/board` : undefined;
+
+  return (
+    <div className="rounded-lg p-4"
+      style={{
+        backgroundColor: "var(--bg-card, var(--bg-secondary))",
+        border: "1px solid var(--border-subtle)",
+        borderLeft: "3px solid #22c55e",
+      }}>
+      {/* Top row: avatar + name + tags */}
+      <div className="flex items-start gap-3">
+        <div className="relative flex-shrink-0 mt-0.5">
+          <PersonaAvatar name={run.personaName} color={run.personaColor} size={38} />
+          <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2"
+            style={{ backgroundColor: "#22c55e", borderColor: "var(--bg-card, var(--bg-secondary))", animation: "pulse 2s cubic-bezier(0.4,0,0.6,1) infinite" }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+              {run.personaName || "Agent"}
+            </span>
+            {run.personaRole && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-medium"
+                style={{ backgroundColor: "rgba(107,114,128,0.15)", color: "#9ca3af" }}>
+                {run.personaRole}
+              </span>
+            )}
+            <PhaseBadge phase={run.phase} />
+            {(run.projectName || run.projectSlug) && (
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded"
+                style={{ backgroundColor: "rgba(129,140,248,0.1)", color: "#a5b4fc" }}>
+                {run.projectName || run.projectSlug}
+              </span>
+            )}
+          </div>
+
+          {/* Ticket title */}
+          <div className="mt-1">
+            {ticketHref ? (
+              <a href={ticketHref}
+                className="text-sm hover:underline"
+                style={{ color: "var(--text-secondary)" }}>
+                #{run.ticketId} {run.ticketTitle || "Untitled"}
+              </a>
+            ) : (
+              <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                #{run.ticketId} {run.ticketTitle || "Untitled"}
+              </span>
+            )}
+          </div>
+
+          {/* Last report message */}
+          {run.lastReportMessage && (
+            <div className="mt-2 px-3 py-2 rounded text-xs italic"
+              style={{ backgroundColor: "rgba(255,255,255,0.04)", color: "var(--text-secondary)", borderLeft: "2px solid rgba(129,140,248,0.4)" }}>
+              "{run.lastReportMessage}"
+            </div>
+          )}
+          {!run.lastReportMessage && (
+            <div className="mt-2 text-xs" style={{ color: "var(--text-muted)" }}>
+              No status updates yet…
+            </div>
+          )}
+
+          {/* Footer: elapsed + last update + source */}
+          <div className="flex items-center gap-3 mt-2 text-xs" style={{ color: "var(--text-muted)" }}>
+            <span className="font-mono font-semibold" style={{ color: "#22c55e" }}>{elapsed}</span>
+            {run.lastReportAt && (
+              <span>Updated {formatTimeAgo(run.lastReportAt)}</span>
+            )}
+            {run.dispatchSource && (
+              <span style={{ color: "rgba(255,255,255,0.2)" }}>via {run.dispatchSource}</span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- History Row ---
+
+type FilterTab = "all" | "completed" | "failed" | "timeout" | "abandoned";
+
+function HistoryRow({ run, projectSlug }: { run: AgentRun; projectSlug: string }) {
+  const slug = run.projectSlug || projectSlug;
+  const ticketHref = slug ? `/p/${slug}/board` : undefined;
+
+  return (
+    <div className="grid gap-3 px-4 py-2.5 items-center text-sm transition-colors hover:bg-white/[0.02]"
+      style={{ gridTemplateColumns: "2fr 3fr 1fr 1fr 1fr 1fr 1fr", borderBottom: "1px solid var(--border-subtle)" }}>
+      {/* Agent */}
+      <div className="flex items-center gap-2 min-w-0">
+        <PersonaAvatar name={run.personaName} color={run.personaColor} size={24} />
+        <span className="truncate text-xs" style={{ color: "var(--text-secondary)" }}>
+          {run.personaName || "Agent"}
+        </span>
+      </div>
+      {/* Ticket */}
+      <div className="min-w-0">
+        {ticketHref ? (
+          <a href={ticketHref} className="text-xs truncate block hover:underline"
+            style={{ color: "var(--text-secondary)" }} title={run.ticketTitle || undefined}>
+            #{run.ticketId} {run.ticketTitle}
+          </a>
+        ) : (
+          <span className="text-xs truncate block" style={{ color: "var(--text-secondary)" }}>
+            #{run.ticketId} {run.ticketTitle}
+          </span>
+        )}
+        {(run.projectName || run.projectSlug) && (
+          <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+            {run.projectName || run.projectSlug}
+          </span>
+        )}
+      </div>
+      {/* Phase */}
+      <div><PhaseBadge phase={run.phase} /></div>
+      {/* Status */}
+      <div><StatusBadge status={run.status} /></div>
+      {/* Duration */}
+      <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+        {run.durationMs != null ? formatDuration(run.durationMs) : "—"}
+      </span>
+      {/* Cost */}
+      <div>
+        {run.costUsd != null ? (
+          <span className="text-xs font-mono" style={{ color: run.costUsd > 1 ? "#f87171" : run.costUsd > 0.25 ? "#fbbf24" : "#4ade80" }}>
+            {formatCost(run.costUsd)}
+          </span>
+        ) : (
+          <span className="text-xs" style={{ color: "var(--text-muted)" }}>—</span>
+        )}
+      </div>
+      {/* When */}
+      <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+        {formatDateTime(run.startedAt)}
+      </span>
+    </div>
+  );
+}
+
+// --- Main Component ---
 
 export function AgentActivityView({ projectSlug }: { projectSlug: string }) {
   const [runs, setRuns] = useState<AgentRun[]>([]);
@@ -404,18 +413,25 @@ export function AgentActivityView({ projectSlug }: { projectSlug: string }) {
     } catch {}
   }
 
-  const activeRuns = runs.filter((r) => r.status === "running");
-  const finishedRuns = runs.filter((r) => r.status !== "running");
+  const activeRuns = runs.filter(r => r.status === "running");
+  const finishedRuns = runs.filter(r => r.status !== "running");
 
-  const counts: Record<FilterTab, number> = {
+  // Today's stats
+  const todayRuns = runs.filter(r => isToday(r.startedAt));
+  const todayCost = todayRuns.reduce((sum, r) => sum + (r.costUsd ?? 0), 0);
+  const todayCompleted = todayRuns.filter(r => r.status === "completed").length;
+  const todayInputTokens = todayRuns.reduce((sum, r) => sum + (r.inputTokens ?? 0), 0);
+  const todayOutputTokens = todayRuns.reduce((sum, r) => sum + (r.outputTokens ?? 0), 0);
+  const todayCacheTokens = todayRuns.reduce((sum, r) => sum + (r.cacheReadTokens ?? 0), 0);
+
+  const filteredRuns = filter === "all" ? finishedRuns : finishedRuns.filter(r => r.status === filter);
+  const filterCounts: Record<FilterTab, number> = {
     all: finishedRuns.length,
-    completed: finishedRuns.filter((r) => r.status === "completed").length,
-    failed: finishedRuns.filter((r) => r.status === "failed").length,
-    timeout: finishedRuns.filter((r) => r.status === "timeout").length,
-    abandoned: finishedRuns.filter((r) => r.status === "abandoned").length,
+    completed: finishedRuns.filter(r => r.status === "completed").length,
+    failed: finishedRuns.filter(r => r.status === "failed").length,
+    timeout: finishedRuns.filter(r => r.status === "timeout").length,
+    abandoned: finishedRuns.filter(r => r.status === "abandoned").length,
   };
-
-  const filteredRuns = filter === "all" ? finishedRuns : finishedRuns.filter((r) => r.status === filter);
 
   return (
     <div className="h-full flex flex-col" style={{ backgroundColor: "var(--bg-primary)" }}>
@@ -426,158 +442,119 @@ export function AgentActivityView({ projectSlug }: { projectSlug: string }) {
             <h1 className="text-xl font-semibold" style={{ color: "var(--text-primary)" }}>Agent Activity</h1>
             {activeRuns.length > 0 && (
               <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "#22c55e", animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite" }} />
-                <span className="text-xs" style={{ color: "#22c55e" }}>{activeRuns.length} active</span>
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "#22c55e", animation: "pulse 2s cubic-bezier(0.4,0,0.6,1) infinite" }} />
+                <span className="text-xs font-medium" style={{ color: "#22c55e" }}>{activeRuns.length} running</span>
               </div>
             )}
           </div>
-          <div className="flex items-center gap-3">
-            {/* Heart icon — pulses when heartbeat is running, dim when paused */}
-            <svg
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              className="w-4 h-4 flex-shrink-0"
-              style={{
-                color: (() => {
-                  if (heartbeat?.authExpired) return "#ef4444"; // auth expired — bright red
-                  if (creditPause?.paused) return "rgba(255,255,255,0.12)";
-                  if (!heartbeat?.lastPing) return "rgba(255,255,255,0.12)"; // no data
-                  const sinceMs = Date.now() - new Date(heartbeat.lastPing).getTime();
-                  if (sinceMs > 90_000) return "#6b7280"; // stale — grey
-                  if (heartbeat.status === "running") return "#f43f5e"; // active — red
-                  return "rgba(255,255,255,0.25)"; // idle — dim
-                })(),
-                animation: (heartbeat?.authExpired || (heartbeat?.status === "running" && !creditPause?.paused))
-                  ? "pulse 0.8s cubic-bezier(0.4, 0, 0.6, 1) infinite"
-                  : undefined,
-                transition: "color 0.3s",
-              }}
-            >
-              <path d="M11.645 20.91l-.007-.003-.022-.012a15.247 15.247 0 01-.383-.218 25.18 25.18 0 01-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0112 5.052 5.5 5.5 0 0116.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 01-4.244 3.17 15.247 15.247 0 01-.383.219l-.022.012-.007.004-.003.001a.752.752 0 01-.704 0l-.003-.001z" />
-            </svg>
-            <HeartbeatBar
-              hb={heartbeat}
-              onReauthDone={() => setHeartbeat(hb => hb ? { ...hb, authExpired: false } : hb)}
-            />
-          </div>
+          <HeartbeatBar hb={heartbeat} onReauthDone={() => setHeartbeat(hb => hb ? { ...hb, authExpired: false } : hb)} />
         </div>
 
-        {/* Stat Cards */}
-        <div className="grid grid-cols-5 gap-3">
-          <StatCard label="Active Now" count={activeRuns.length} color="#22c55e" />
-          <StatCard label="Completed" count={counts.completed} color="#22c55e" />
-          <StatCard label="Failed" count={counts.failed} color="#ef4444" />
-          <StatCard label="Timeout" count={counts.timeout} color="#eab308" />
-          <StatCard label="Abandoned" count={counts.abandoned} color="#6b7280" />
+        {/* Stats row — today's totals */}
+        <div className="flex items-center gap-6 text-sm" style={{ color: "var(--text-muted)" }}>
+          <div>
+            <span className="font-semibold text-base" style={{ color: todayCost > 5 ? "#f87171" : todayCost > 1 ? "#fbbf24" : "var(--text-primary)" }}>
+              {todayCost > 0 ? formatCost(todayCost) : "—"}
+            </span>
+            <span className="ml-1 text-xs">today</span>
+          </div>
+          <div className="w-px h-4" style={{ backgroundColor: "var(--border-subtle)" }} />
+          <div>
+            <span className="font-semibold" style={{ color: "var(--text-primary)" }}>{todayCompleted}</span>
+            <span className="ml-1 text-xs">completed</span>
+          </div>
+          {todayInputTokens > 0 && (
+            <>
+              <div className="w-px h-4" style={{ backgroundColor: "var(--border-subtle)" }} />
+              <div className="text-xs flex gap-3">
+                <span><span style={{ color: "var(--text-secondary)" }}>{formatTokens(todayInputTokens)}</span> in</span>
+                <span><span style={{ color: "var(--text-secondary)" }}>{formatTokens(todayOutputTokens)}</span> out</span>
+                <span><span style={{ color: "var(--text-secondary)" }}>{formatTokens(todayCacheTokens)}</span> cache reads</span>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
       {/* Scrollable Content */}
       <div className="flex-1 overflow-y-auto px-8 py-6">
-        {/* Dispatch Pause Banner */}
         {creditPause?.paused && (
           <CreditPauseBanner status={creditPause} onResume={handleResume} />
         )}
 
-        {/* Active Agents Section */}
+        {/* Active Agents */}
         <div className="mb-8">
-          <div className="flex items-center gap-2 mb-4">
-            <div
-              className="w-2 h-2 rounded-full"
-              style={{ backgroundColor: activeRuns.length > 0 ? "#22c55e" : "var(--text-muted)" }}
-            />
-            <h2 className="text-sm font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
-              Active Agents ({activeRuns.length})
-            </h2>
-          </div>
+          <h2 className="text-xs font-semibold uppercase tracking-wider mb-3 flex items-center gap-2"
+            style={{ color: "var(--text-muted)" }}>
+            <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: activeRuns.length > 0 ? "#22c55e" : "var(--text-muted)" }} />
+            Running ({activeRuns.length})
+          </h2>
 
           {activeRuns.length === 0 ? (
-            <div
-              className="rounded-lg px-6 py-8 text-center"
-              style={{ backgroundColor: "var(--bg-card, var(--bg-secondary))", border: "1px solid var(--border-subtle)" }}
-            >
+            <div className="rounded-lg px-6 py-8 text-center"
+              style={{ backgroundColor: "var(--bg-card, var(--bg-secondary))", border: "1px solid var(--border-subtle)" }}>
               <span className="text-sm" style={{ color: "var(--text-muted)" }}>No agents running</span>
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
-              {activeRuns.map((run) => (
-                <ActiveAgentCard key={run.id} run={run} />
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+              {activeRuns.map(run => (
+                <ActiveAgentCard key={run.id} run={run} projectSlug={projectSlug} />
               ))}
             </div>
           )}
         </div>
 
-        {/* Run History Section */}
+        {/* Run History */}
         <div>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>
-              Run History
-            </h2>
+            <div className="flex items-center gap-1">
+              <h2 className="text-xs font-semibold uppercase tracking-wider mr-2" style={{ color: "var(--text-muted)" }}>
+                History
+              </h2>
+              {(["all", "completed", "failed", "timeout", "abandoned"] as FilterTab[]).map(tab => (
+                <button key={tab}
+                  onClick={() => setFilter(tab)}
+                  className="px-2.5 py-1 rounded text-xs font-medium transition-colors"
+                  style={filter === tab
+                    ? { backgroundColor: "rgba(255,255,255,0.1)", color: "var(--text-primary)" }
+                    : { color: "var(--text-muted)" }}>
+                  {tab === "all" ? "All" : tab.charAt(0).toUpperCase() + tab.slice(1)} ({filterCounts[tab]})
+                </button>
+              ))}
+            </div>
             {finishedRuns.length > 0 && (
               <button
                 onClick={async () => {
                   await fetch(`/api/agent-runs?projectSlug=${projectSlug}`, { method: "DELETE" });
-                  setRuns((prev) => prev.filter((r) => r.status === "running"));
+                  setRuns(prev => prev.filter(r => r.status === "running"));
                 }}
                 className="text-xs transition-colors hover:opacity-80"
-                style={{ color: "var(--text-muted)" }}
-              >
+                style={{ color: "var(--text-muted)" }}>
                 Clear
               </button>
             )}
           </div>
-          <FilterTabs active={filter} counts={counts} onChange={setFilter} />
 
           {filteredRuns.length === 0 ? (
-            <div
-              className="rounded-lg px-6 py-8 text-center"
-              style={{ backgroundColor: "var(--bg-card, var(--bg-secondary))", border: "1px solid var(--border-subtle)" }}
-            >
-              <span className="text-sm" style={{ color: "var(--text-muted)" }}>No runs to show</span>
+            <div className="rounded-lg px-6 py-8 text-center"
+              style={{ backgroundColor: "var(--bg-card, var(--bg-secondary))", border: "1px solid var(--border-subtle)" }}>
+              <span className="text-sm" style={{ color: "var(--text-muted)" }}>No runs</span>
             </div>
           ) : (
-            <div
-              className="rounded-lg overflow-hidden"
-              style={{ border: "1px solid var(--border-subtle)" }}
-            >
-              {/* Table Header */}
-              <div
-                className="grid grid-cols-[2fr_3fr_1fr_1fr_1fr_1fr] gap-4 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider"
-                style={{ backgroundColor: "var(--bg-card, var(--bg-secondary))", color: "var(--text-muted)", borderBottom: "1px solid var(--border-subtle)" }}
-              >
+            <div className="rounded-lg overflow-hidden" style={{ border: "1px solid var(--border-subtle)" }}>
+              {/* Header */}
+              <div className="grid gap-3 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider"
+                style={{ gridTemplateColumns: "2fr 3fr 1fr 1fr 1fr 1fr 1fr", backgroundColor: "var(--bg-card, var(--bg-secondary))", color: "var(--text-muted)", borderBottom: "1px solid var(--border-subtle)" }}>
                 <span>Agent</span>
                 <span>Ticket</span>
                 <span>Phase</span>
                 <span>Status</span>
                 <span>Duration</span>
-                <span>Started</span>
+                <span>Cost</span>
+                <span>When</span>
               </div>
-
-              {/* Table Rows */}
-              {filteredRuns.map((run) => (
-                <div
-                  key={run.id}
-                  className="grid grid-cols-[2fr_3fr_1fr_1fr_1fr_1fr] gap-4 px-4 py-3 items-center transition-colors hover:bg-white/[0.02]"
-                  style={{ borderBottom: "1px solid var(--border-subtle)" }}
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <PersonaAvatar name={run.personaName} color={run.personaColor} avatar={run.personaAvatar} size={28} />
-                    <span className="text-sm truncate" style={{ color: "var(--text-secondary)" }}>
-                      {run.personaName || "Agent"}
-                    </span>
-                  </div>
-                  <span className="text-sm truncate" style={{ color: "var(--text-secondary)" }}>
-                    {run.ticketTitle || run.ticketId}
-                  </span>
-                  <div><PhaseBadge phase={run.phase} /></div>
-                  <div><StatusBadge status={run.status} /></div>
-                  <span className="text-sm font-mono" style={{ color: "var(--text-muted)" }}>
-                    {run.durationMs != null ? formatDuration(run.durationMs) : "—"}
-                  </span>
-                  <span className="text-sm" style={{ color: "var(--text-muted)" }}>
-                    {formatTime(run.startedAt)}
-                  </span>
-                </div>
+              {filteredRuns.map(run => (
+                <HistoryRow key={run.id} run={run} projectSlug={projectSlug} />
               ))}
             </div>
           )}

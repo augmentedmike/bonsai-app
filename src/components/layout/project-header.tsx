@@ -24,7 +24,7 @@ export function ProjectHeader({ project, allProjects }: ProjectHeaderProps) {
 
   return (
     <div
-      className="flex items-center px-6 py-3 border-b"
+      className="flex items-center px-6 py-2 border-b"
       style={{ borderColor: "var(--border-subtle)" }}
     >
       <ProjectSelector

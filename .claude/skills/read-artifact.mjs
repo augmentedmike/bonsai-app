@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Claude Code skill: read-artifact
- * Reads the latest version of a document artifact from the ticket system
+ * Reads the latest tagged attachment artifact from a ticket
  */
 
 import { spawn } from 'node:child_process';
@@ -13,49 +13,44 @@ const webappRoot = path.resolve(__dirname, '../..');
 
 export const skill = {
   name: 'read-artifact',
-  description: 'Read the latest artifact of a given type from a ticket',
-  instructions: `Usage: /read-artifact <ticket-id> <type>
+  description: 'Read the latest artifact of a given tag from a ticket',
+  instructions: `Usage: /read-artifact <ticket-id> <tag>
 
-Types: research, implementation_plan, design
+Tags: research-doc, implementation-plan, design-doc, security-review, research-critique, plan-critique
 
-Example: /read-artifact 41 research
+Example: /read-artifact 41 research-doc
 
-This retrieves the latest version of the specified artifact type from the ticket_documents table and displays its content.`,
+This retrieves the latest attachment with the specified tag from ticket_attachments and displays its content.`,
 };
 
 export async function run(args) {
-  const [ticketId, type] = args.split(/\s+/).filter(Boolean);
+  const [ticketId, tag] = args.split(/\s+/).filter(Boolean);
 
-  if (!ticketId || !type) {
+  if (!ticketId || !tag) {
     return {
-      error: 'Usage: /read-artifact <ticket-id> <type>\nTypes: research, implementation_plan, design'
+      error: 'Usage: /read-artifact <ticket-id> <tag>\nTags: research-doc, implementation-plan, design-doc'
     };
   }
 
-  const validTypes = ['research', 'implementation_plan', 'design'];
-  if (!validTypes.includes(type)) {
+  const validTags = ['research-doc', 'implementation-plan', 'design-doc', 'security-review', 'research-critique', 'plan-critique'];
+  if (!validTags.includes(tag)) {
     return {
-      error: `Invalid type '${type}'. Must be one of: ${validTypes.join(', ')}`
+      error: `Invalid tag '${tag}'. Must be one of: ${validTags.join(', ')}`
     };
   }
 
-  return new Promise((resolve, reject) => {
-    const proc = spawn('npx', ['tsx', 'bin/bonsai-cli.ts', 'read-artifact', ticketId, type], {
+  return new Promise((resolve) => {
+    const proc = spawn('npx', ['tsx', 'bin/bonsai-cli.ts', 'read-artifact', ticketId, tag], {
       cwd: webappRoot,
-      env: { ...process.env, BONSAI_ENV: 'dev' },
+      env: { ...process.env, BONSAI_ENV: process.env.BONSAI_ENV || 'prod' },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
     let stdout = '';
     let stderr = '';
 
-    proc.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    proc.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
+    proc.stdout.on('data', (data) => { stdout += data.toString(); });
+    proc.stderr.on('data', (data) => { stderr += data.toString(); });
 
     proc.on('close', (code) => {
       if (code !== 0) {
@@ -65,8 +60,6 @@ export async function run(args) {
       }
     });
 
-    proc.on('error', (err) => {
-      resolve({ error: err.message });
-    });
+    proc.on('error', (err) => { resolve({ error: err.message }); });
   });
 }

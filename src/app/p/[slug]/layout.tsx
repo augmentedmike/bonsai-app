@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import { getProjectBySlug, getProjects } from "@/db/data/projects";
-import { ProjectHeader } from "@/components/layout/project-header";
+import { getProjectBySlug } from "@/db/data/projects";
 
 export default async function ProjectLayout({
   children,
@@ -16,14 +15,9 @@ export default async function ProjectLayout({
     redirect("/board");
   }
 
-  const allProjects = await getProjects();
-
   return (
     <div className="flex flex-col h-full">
-      <ProjectHeader project={project} allProjects={allProjects} />
-      <div className="flex-1 overflow-hidden">
-        {children}
-      </div>
+      {children}
     </div>
   );
 }

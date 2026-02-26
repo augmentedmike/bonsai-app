@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import { getTicketById } from "@/db/data/tickets";
 import { createCommentAndBumpCount } from "@/db/data/comments";
 import { createAgentProjectMessage } from "@/db/data/project-messages";
-import { getPersonaRaw, getProjectPersonasRaw } from "@/db/data/personas";
+import { getPersonaRaw, getGlobalPersonas } from "@/db/data/personas";
 import { logAuditEvent } from "@/db/data/audit";
 import { completeAgentRun, isChainedRun } from "@/db/data/agent-runs";
 import { getSetting } from "@/db/data/settings";
 import { fireDispatch } from "@/lib/dispatch-agent";
+
+const API_BASE = process.env.API_BASE || "http://localhost:3080";
 
 // Called by the agent wrapper script when claude -p finishes.
 // Posts the agent's final output as a chat comment.
@@ -17,7 +19,7 @@ export async function POST(
 ) {
   const { id } = await params;
   const ticketId = Number(id);
-  const { personaId, content, documentId } = await req.json();
+  const { personaId, content, documentId, costUsd, inputTokens, outputTokens, cacheReadTokens, sessionId, modelUsage } = await req.json();
 
   if (!content?.trim()) {
     return NextResponse.json({ error: "empty output" }, { status: 400 });
@@ -43,7 +45,7 @@ export async function POST(
     // Agent→agent @mention chaining (max 1 hop to prevent infinite loops)
     const wasChained = personaId ? isChainedRun(ticketId, personaId) : false;
     if (!wasChained) {
-      const projectPersonas = await getProjectPersonasRaw(ticket.projectId);
+      const projectPersonas = await getGlobalPersonas();
       const sorted = [...projectPersonas].sort((a, b) => b.name.length - a.name.length);
       for (const p of sorted) {
         if (p.id === personaId) continue; // don't self-dispatch
@@ -51,7 +53,7 @@ export async function POST(
         const namePattern = new RegExp(`@${escapedName}\\b`, 'i');
         if (namePattern.test(trimmed)) {
           console.log(`[agent-complete/inbox] Agent ${personaId} mentioned @${p.name} — dispatching (1-hop chain)`);
-          fireDispatch("http://localhost:3080", ticketId, {
+          fireDispatch(API_BASE, ticketId, {
             commentContent: trimmed,
             targetPersonaId: p.id,
             conversational: true,
@@ -63,7 +65,7 @@ export async function POST(
     }
 
     if (personaId) {
-      await completeAgentRun(ticketId, personaId, "completed");
+      await completeAgentRun(ticketId, personaId, "completed", undefined, { costUsd, inputTokens, outputTokens, cacheReadTokens, sessionId, modelUsage });
     }
 
     await logAuditEvent({
@@ -88,38 +90,39 @@ export async function POST(
     documentId: documentId || null,
   });
 
-  // DISABLED: @mention chaining causes infinite loops and wastes API credits
-  // ── Agent @mention dispatch ────────────────────────────
-  // Fetch fresh ticket state for phase-gating BEFORE processing mentions
+  // ── Agent @mention dispatch (1-hop max via noChain) ───────────────────
   const freshTicket = await getTicketById(ticketId);
+  const wasChained = personaId ? isChainedRun(ticketId, personaId) : false;
 
-  // const projectPersonas = ticket.projectId
-  //   ? await getProjectPersonasRaw(ticket.projectId)
-  //   : [];
+  if (!wasChained && freshTicket) {
+    const projectPersonas = await getGlobalPersonas();
+    const sorted = [...projectPersonas].sort((a, b) => b.name.length - a.name.length);
+    const mentioned = new Set<string>();
 
-  // const sorted = [...projectPersonas].sort((a, b) => b.name.length - a.name.length);
-  const mentioned = new Set<string>(); // Keep this for lead triage fallback check
-
-  // for (const p of sorted) {
-  //   if (p.id === personaId) continue;
-  //   const escapedName = p.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  //   const escapedRole = p.role ? p.role.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : null;
-  //   const namePattern = new RegExp(`@${escapedName}\\b`, 'i');
-  //   const rolePattern = escapedRole ? new RegExp(`@${escapedRole}\\b`, 'i') : null;
-  //   if ((namePattern.test(trimmed) || (rolePattern && rolePattern.test(trimmed))) && !mentioned.has(p.id)) {
-  //     mentioned.add(p.id);
-  //     console.log(`[agent-complete] Agent ${personaId} mentioned @${p.name} — dispatching`);
-  //     fireDispatch("http://localhost:3080", ticketId, {
-  //       commentContent: trimmed,
-  //       targetPersonaId: p.id,
-  //       conversational: true,
-  //     }, `agent-complete/@${p.name}`);
-  //   }
-  // }
+    for (const p of sorted) {
+      if (p.id === personaId) continue; // no self-dispatch
+      if (p.role === "operator") continue; // operator goes via inbox, not here
+      const escapedName = p.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const escapedRole = p.role ? p.role.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : null;
+      const namePattern = new RegExp(`@${escapedName}\\b`, 'i');
+      const rolePattern = escapedRole ? new RegExp(`@${escapedRole}\\b`, 'i') : null;
+      if ((namePattern.test(trimmed) || (rolePattern && rolePattern.test(trimmed))) && !mentioned.has(p.id)) {
+        mentioned.add(p.id);
+        console.log(`[agent-complete] ${personaId} mentioned @${p.name} — dispatching (1-hop chain)`);
+        fireDispatch(API_BASE, ticketId, {
+          commentContent: trimmed,
+          targetPersonaId: p.id,
+          conversational: true,
+          silent: true,
+          noChain: true, // prevent the chained agent from chaining further
+        }, `agent-complete/@${p.name}`);
+      }
+    }
+  }
 
   // ── Mark agent run completed ────────────────────────────
   if (personaId) {
-    await completeAgentRun(ticketId, personaId, "completed");
+    await completeAgentRun(ticketId, personaId, "completed", undefined, { costUsd, inputTokens, outputTokens, cacheReadTokens, sessionId, modelUsage });
   }
 
   // ── Audit ──────────────────────────────────────────────

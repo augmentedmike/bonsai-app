@@ -201,19 +201,13 @@ export async function POST(req: Request) {
   if (isEpic) {
     // Epic breakdown is handled interactively by the wizard UI — no auto-dispatch
   } else if (epicId) {
-    // Sub-ticket of an epic: dispatch lead to triage, then lead dispatches researcher.
-    // Do NOT dispatch designer or developer at creation — they run in building phase only.
-    const leadContext = await getSetting("context_role_lead") || "";
-    const leadPrompt = await getSetting("prompt_lead_new_ticket") || "New ticket created. Evaluate it and dispatch the researcher to begin research. Do NOT dispatch developer or designer — they work in the building phase only.";
+    // Sub-ticket of an epic: dispatch researcher directly.
     fireDispatch(origin, id, {
       commentContent: [ticketSummary, "New ticket created. Begin research on this ticket. Investigate the codebase, understand the requirements, and document your findings."].filter(Boolean).join("\n\n"),
       targetRole: "researcher",
     }, "ticket-create/researcher-research");
   } else {
-    // Standalone ticket: lead evaluates first, then dispatches researcher for planning.
-    const leadContext = await getSetting("context_role_lead") || "";
-    const leadPrompt = await getSetting("prompt_lead_new_ticket") || "New ticket created. Evaluate it and dispatch the researcher to begin research. Do NOT dispatch developer or designer — they run in the building phase only.";
-    const leadContent = [leadContext, leadPrompt, ticketSummary].filter(Boolean).join("\n\n");
+    // Standalone ticket: dispatch researcher to begin investigation.
     fireDispatch(origin, id, {
       commentContent: [ticketSummary, "New ticket created. Begin research on this ticket. Investigate the codebase, understand the requirements, and document your findings."].filter(Boolean).join("\n\n"),
       targetRole: "researcher",
