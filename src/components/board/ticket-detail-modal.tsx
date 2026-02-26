@@ -395,11 +395,13 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
     return () => document.removeEventListener("keydown", handleKey);
   }, [ticket, onClose, lightboxImage]);
 
-  // Poll comments every 10s while modal is open (doesn't touch form state)
-  // When new comments arrive, also refresh documents & attachments immediately
+  // Single 30s polling interval: comments + attachments + (audit when panel open)
+  // Consolidating from 3 separate intervals (10s/10s/15s) → one 30s interval
+  // reduces server load from ~8 req/min to ~2 req/min per open modal.
   useEffect(() => {
     if (!ticketId) return;
     const poll = setInterval(async () => {
+      // Poll comments
       try {
         const res = await fetch(`/api/comments?ticketId=${ticketId}`);
         const data = await res.json();
@@ -422,9 +424,33 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
           return prev;
         });
       } catch { /* skip cycle */ }
-    }, 10_000);
+
+      // Poll attachments
+      try {
+        const res = await fetch(`/api/tickets/${ticketId}/attachments`);
+        const data = await res.json();
+        const fresh = data || [];
+        setAttachments((prev) => {
+          if (fresh.length !== prev.length) return fresh;
+          return prev;
+        });
+      } catch { /* skip cycle */ }
+
+      // Poll audit log only when activity panel is visible
+      if (showActivity) {
+        fetch(`/api/tickets/${ticketId}/audit`)
+          .then((r) => r.json())
+          .then((data) => setAuditLog(data.audit || []))
+          .catch(() => {});
+      }
+    }, 30_000);
     return () => clearInterval(poll);
-  }, [ticketId]);
+  }, [ticketId, showActivity]);
+
+  // Load audit log immediately when activity panel opens (poll handles subsequent refreshes)
+  useEffect(() => {
+    if (ticketId && showActivity) loadAuditLog(ticketId);
+  }, [ticketId, showActivity]);
 
   // Update timestamps every 30 seconds to keep relative times accurate
   useEffect(() => {
@@ -433,38 +459,6 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
     }, 30_000);
     return () => clearInterval(interval);
   }, []);
-
-
-  // Poll attachments every 10s while modal is open (for designer-generated images)
-  useEffect(() => {
-    if (!ticketId) return;
-    const poll = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/tickets/${ticketId}/attachments`);
-        const data = await res.json();
-        const fresh = data || [];
-        setAttachments((prev) => {
-          // Only update if count changed (new attachments added or deleted)
-          if (fresh.length !== prev.length) return fresh;
-          return prev;
-        });
-      } catch { /* skip cycle */ }
-    }, 10_000);
-    return () => clearInterval(poll);
-  }, [ticketId]);
-
-  // Poll audit log every 15s when activity panel is open
-  useEffect(() => {
-    if (!ticketId || !showActivity) return;
-    loadAuditLog(ticketId);
-    const poll = setInterval(() => {
-      fetch(`/api/tickets/${ticketId}/audit`)
-        .then((r) => r.json())
-        .then((data) => setAuditLog(data.audit || []))
-        .catch(() => {});
-    }, 15_000);
-    return () => clearInterval(poll);
-  }, [ticketId, showActivity]);
 
 
   async function loadComments(ticketId: number) {
