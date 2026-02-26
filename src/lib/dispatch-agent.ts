@@ -20,7 +20,8 @@ interface DispatchParams {
   conversational?: boolean;
   documentId?: number;
   urgent?: boolean; // Bypass cooldown for critical state transitions (plan approval, research completion)
-  noChain?: boolean; // Prevent agent→agent @mention chaining (max 1 hop)
+  noChain?: boolean;
+  chainDepth?: number; // hop depth; blocks dispatch when >= MAX
 }
 
 export function fireDispatch(

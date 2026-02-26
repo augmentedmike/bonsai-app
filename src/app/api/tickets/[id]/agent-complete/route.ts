@@ -4,7 +4,7 @@ import { createCommentAndBumpCount } from "@/db/data/comments";
 import { createAgentProjectMessage } from "@/db/data/project-messages";
 import { getPersonaRaw, getGlobalPersonas, getAllPersonasRaw } from "@/db/data/personas";
 import { logAuditEvent } from "@/db/data/audit";
-import { completeAgentRun, isChainedRun } from "@/db/data/agent-runs";
+import { completeAgentRun, isChainedRun, getRunChainDepth } from "@/db/data/agent-runs";
 import { getSetting } from "@/db/data/settings";
 import { fireDispatch } from "@/lib/dispatch-agent";
 
@@ -42,11 +42,11 @@ export async function POST(
   if (isInbox && ticket.projectId) {
     await createAgentProjectMessage(ticket.projectId, personaId, trimmed);
 
-    // Agent→agent @mention chaining (max 1 hop to prevent infinite loops)
+    // Agent→agent @mention chaining — allow up to 3 hops in project chat.
     // Search ALL personas so @name mentions resolve even for project-specific personas.
-    // If the matched persona is project-specific (not g-* global), dispatch by role instead.
-    const wasChained = personaId ? isChainedRun(ticketId, personaId) : false;
-    if (!wasChained) {
+    const MAX_INBOX_DEPTH = 3;
+    const currentDepth = personaId ? getRunChainDepth(ticketId, personaId) : MAX_INBOX_DEPTH;
+    if (currentDepth < MAX_INBOX_DEPTH) {
       const allPersonas = await getAllPersonasRaw();
       const sorted = [...allPersonas].sort((a, b) => b.name.length - a.name.length);
       const dispatched = new Set<string>(); // dedupe by role/id
@@ -65,13 +65,13 @@ export async function POST(
           const dispatchTarget = isGlobal
             ? { targetPersonaId: p.id }
             : { targetRole: p.role ?? undefined };
-          console.log(`[agent-complete/inbox] Agent ${personaId} mentioned @${p.name} — dispatching (1-hop chain, ${isGlobal ? 'by id' : 'by role: ' + p.role})`);
+          console.log(`[agent-complete/inbox] Agent ${personaId} mentioned @${p.name} — dispatching (depth ${currentDepth + 1}/${MAX_INBOX_DEPTH}, ${isGlobal ? 'by id' : 'by role: ' + p.role})`);
           fireDispatch(API_BASE, ticketId, {
             commentContent: trimmed,
             ...dispatchTarget,
             conversational: true,
             silent: true,
-            noChain: true, // prevent further chaining
+            chainDepth: currentDepth + 1,
           }, `agent-complete/inbox/@${p.name}`);
         }
       }
@@ -103,11 +103,11 @@ export async function POST(
     documentId: documentId || null,
   });
 
-  // ── Agent @mention dispatch (1-hop max via noChain) ───────────────────
+  // ── Agent @mention dispatch (1-hop max for regular tickets) ───────────
   const freshTicket = await getTicketById(ticketId);
-  const wasChained = personaId ? isChainedRun(ticketId, personaId) : false;
+  const ticketChainDepth = personaId ? getRunChainDepth(ticketId, personaId) : 1;
 
-  if (!wasChained && freshTicket) {
+  if (ticketChainDepth < 1 && freshTicket) {
     const allPersonas = await getAllPersonasRaw();
     const sorted = [...allPersonas].sort((a, b) => b.name.length - a.name.length);
     const dispatched = new Set<string>();
@@ -127,13 +127,13 @@ export async function POST(
         const dispatchTarget = isGlobal
           ? { targetPersonaId: p.id }
           : { targetRole: p.role ?? undefined };
-        console.log(`[agent-complete] ${personaId} mentioned @${p.name} — dispatching (1-hop chain)`);
+        console.log(`[agent-complete] ${personaId} mentioned @${p.name} — dispatching (depth 1)`);
         fireDispatch(API_BASE, ticketId, {
           commentContent: trimmed,
           ...dispatchTarget,
           conversational: true,
           silent: true,
-          noChain: true,
+          chainDepth: 1,
         }, `agent-complete/@${p.name}`);
       }
     }

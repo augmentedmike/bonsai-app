@@ -47,6 +47,11 @@ export function insertAgentRun(params: {
 
 /** Check if the most recent running run for a ticket+persona was a chained dispatch */
 export function isChainedRun(ticketId: number, personaId: string): boolean {
+  return getRunChainDepth(ticketId, personaId) > 0;
+}
+
+/** Returns the chain hop depth of the currently-running agent run (0 = human-triggered). */
+export function getRunChainDepth(ticketId: number, personaId: string): number {
   const run = db
     .select({ dispatchSource: agentRuns.dispatchSource })
     .from(agentRuns)
@@ -60,7 +65,11 @@ export function isChainedRun(ticketId: number, personaId: string): boolean {
     .orderBy(desc(agentRuns.startedAt))
     .limit(1)
     .get();
-  return run?.dispatchSource === "agent-chain";
+  const src = run?.dispatchSource ?? "api";
+  if (!src || src === "api") return 0;
+  if (src === "agent-chain") return 1; // legacy format
+  const m = src.match(/^agent-chain-(\d+)$/);
+  return m ? parseInt(m[1], 10) : 0;
 }
 
 export function completeAgentRun(
