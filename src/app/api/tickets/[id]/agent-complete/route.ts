@@ -103,18 +103,19 @@ export async function POST(
     documentId: documentId || null,
   });
 
-  // ── Agent @mention dispatch (1-hop max for regular tickets) ───────────
+  // ── Agent @mention dispatch (2-hop max for regular tickets) ───────────
+  // 2 hops allows: researcher → developer → @AugmentedMike (operator)
+  const MAX_TICKET_DEPTH = 2;
   const freshTicket = await getTicketById(ticketId);
-  const ticketChainDepth = personaId ? getRunChainDepth(ticketId, personaId) : 1;
+  const ticketChainDepth = personaId ? getRunChainDepth(ticketId, personaId) : MAX_TICKET_DEPTH;
 
-  if (ticketChainDepth < 1 && freshTicket) {
+  if (ticketChainDepth < MAX_TICKET_DEPTH && freshTicket) {
     const allPersonas = await getAllPersonasRaw();
     const sorted = [...allPersonas].sort((a, b) => b.name.length - a.name.length);
     const dispatched = new Set<string>();
 
     for (const p of sorted) {
       if (p.id === personaId) continue; // no self-dispatch
-      if (p.role === "operator") continue; // operator goes via inbox, not here
       const escapedName = p.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const escapedRole = p.role ? p.role.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : null;
       const namePattern = new RegExp(`@${escapedName}\\b`, 'i');
@@ -127,7 +128,7 @@ export async function POST(
         const dispatchTarget = isGlobal
           ? { targetPersonaId: p.id }
           : { targetRole: p.role ?? undefined };
-        console.log(`[agent-complete] ${personaId} mentioned @${p.name} — dispatching (depth 1)`);
+        console.log(`[agent-complete] ${personaId} mentioned @${p.name} — dispatching (depth ${ticketChainDepth + 1}/${MAX_TICKET_DEPTH})`);
         fireDispatch(API_BASE, ticketId, {
           commentContent: trimmed,
           ...dispatchTarget,
