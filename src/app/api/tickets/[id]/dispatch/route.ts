@@ -113,6 +113,17 @@ function ensureWorktree(
   }
 }
 
+// ── Avatar blob stripping ──────────────────────────────────
+// Avatars are stored as base64 data URLs in the DB. Never return raw blobs
+// in dispatch/agent-runs responses — they bloat payloads by 200-500 KB each.
+// Callers that need avatar display should use the persona's color as fallback
+// or fetch /api/personas/[id] separately.
+function stripAvatarBlob(avatar: string | null | undefined): string | null {
+  if (!avatar) return null;
+  if (avatar.startsWith("data:")) return null; // strip inline base64 blobs
+  return avatar; // keep plain URLs (https://...)
+}
+
 // ── Per-persona dispatch cooldown ──────────────────────
 // Tracks recent dispatches to prevent duplicate agent runs.
 // Key: "ticketId:personaId" → timestamp
@@ -589,7 +600,7 @@ export async function POST(
         name: persona.name,
         role: persona.role,
         color: persona.color,
-        avatarUrl: persona.avatar,
+        avatarUrl: stripAvatarBlob(persona.avatar),
       });
 
       await logAuditEvent({
@@ -631,7 +642,7 @@ export async function POST(
       return NextResponse.json({
         skipped: true,
         reason: "agent_active",
-        persona: assignee ? { id: assignee.id, name: assignee.name, role: assignee.role, color: assignee.color, avatarUrl: assignee.avatar || undefined } : null,
+        persona: assignee ? { id: assignee.id, name: assignee.name, role: assignee.role, color: assignee.color, avatarUrl: stripAvatarBlob(assignee.avatar) } : null,
       });
     }
   }
@@ -757,7 +768,7 @@ export async function POST(
       name: targetPersona.name,
       role: targetPersona.role,
       color: targetPersona.color,
-      avatarUrl: targetPersona.avatar || undefined,
+      avatarUrl: stripAvatarBlob(targetPersona.avatar),
     },
     pmComment: {
       id: Date.now(),
@@ -765,7 +776,7 @@ export async function POST(
       authorType: "agent" as const,
       author: {
         name: targetPersona.name,
-        avatarUrl: targetPersona.avatar || undefined,
+        avatarUrl: stripAvatarBlob(targetPersona.avatar),
         color: targetPersona.color,
         role: targetPersona.role || undefined,
       },
