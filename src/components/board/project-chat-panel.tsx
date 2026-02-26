@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import type { Persona, ProjectMessage, CommentAttachment } from "@/types";
 import { CommentInput } from "./comment-input";
 import { usePolling } from "@/hooks/use-polling";
@@ -56,6 +56,13 @@ export function ProjectChatPanel({
 
   // Poll messages while open
   usePolling(fetchMessages, open ? 10_000 : null);
+
+  // Scroll to bottom when chat opens or messages first load
+  useEffect(() => {
+    if (open && messages.length > 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "instant" });
+    }
+  }, [open, messages.length > 0]);
 
   async function handlePost(text: string, attachments: CommentAttachment[]) {
     if (!text.trim() && attachments.length === 0) return;
