@@ -70,3 +70,4 @@ skills/_shared/[0-9]*.md
 scripts/seed-augmentedmike.ts
 # Machine-specific PM2 config (hardcoded local paths)
 ecosystem.config.cjs
+worktrees/
