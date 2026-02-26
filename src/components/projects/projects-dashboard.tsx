@@ -375,11 +375,12 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                   {[
-                    { key: "name" as SortKey, label: "Project", w: "22%" },
-                    { key: null, label: "Description", w: "22%" },
-                    { key: "tickets" as SortKey, label: "Planning · Building · Shipped", w: "24%" },
+                    { key: "name" as SortKey, label: "Project", w: "20%" },
+                    { key: null, label: "Description", w: "20%" },
+                    { key: "tickets" as SortKey, label: "Planning · Building · Shipped", w: "20%" },
                     { key: null, label: "", w: "4%" },  // visibility icon col
-                    { key: null, label: "Stack", w: "12%" },
+                    { key: null, label: "Stack", w: "10%" },
+                    { key: null, label: "Team", w: "10%" },
                     { key: null, label: "Actions", w: "16%" },
                   ].map(({ key, label, w }) => (
                     <th key={label} onClick={key ? () => toggleSort(key) : undefined} className={key ? "cursor-pointer select-none" : ""} style={{ width: w, padding: "9px 14px", textAlign: "left", color: "var(--text-muted)", fontWeight: 500, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
@@ -391,7 +392,7 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
               <tbody>
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="py-14 text-center text-sm" style={{ color: "var(--text-muted)" }}>
+                    <td colSpan={7} className="py-14 text-center text-sm" style={{ color: "var(--text-muted)" }}>
                       {search ? "No projects match your search." : "No projects."}
                     </td>
                   </tr>
@@ -467,6 +468,44 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
                         ) : <span style={{ color: "var(--text-muted)", fontSize: 11 }}>—</span>}
                       </td>
 
+                      {/* Team — worker avatar bubbles for building-state tickets */}
+                      <td style={{ padding: "10px 14px" }}>
+                        {p.activeWorkers && p.activeWorkers.length > 0 ? (
+                          <div className="flex items-center" style={{ gap: -4 }}>
+                            {p.activeWorkers.slice(0, 4).map((w, i) => (
+                              <div
+                                key={w.id}
+                                title={w.name}
+                                className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold"
+                                style={{
+                                  backgroundColor: w.color,
+                                  color: "#fff",
+                                  marginLeft: i === 0 ? 0 : -6,
+                                  zIndex: i,
+                                  fontSize: 9,
+                                  boxShadow: "0 0 0 2px var(--bg-card)",
+                                }}
+                              >
+                                {w.avatar
+                                  ? <img src={w.avatar} alt={w.name} className="w-full h-full rounded-full object-cover" />
+                                  : w.name.charAt(0).toUpperCase()
+                                }
+                              </div>
+                            ))}
+                            {p.activeWorkers.length > 4 && (
+                              <div
+                                className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center"
+                                style={{ backgroundColor: "var(--bg-secondary)", color: "var(--text-muted)", fontSize: 9, fontWeight: 600, marginLeft: -6, boxShadow: "0 0 0 2px var(--bg-card)" }}
+                              >
+                                +{p.activeWorkers.length - 4}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span style={{ color: "var(--text-muted)", fontSize: 11 }}>—</span>
+                        )}
+                      </td>
+
                       {/* Actions */}
                       <td style={{ padding: "10px 14px" }} onClick={(e) => e.stopPropagation()}>
                         {deletingId === p.id ? (
@@ -475,37 +514,39 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
                             <button onClick={(e) => { e.stopPropagation(); setDeletingId(null); }} className="px-1.5 py-0.5 rounded text-xs hover:bg-white/5" style={{ color: "var(--text-muted)" }}>No</button>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-0.5">
+                          <div className="flex items-center gap-0.5" style={{ flexWrap: "nowrap" }}>
                             {/* Pause/Resume */}
                             <button onClick={(e) => handlePause(e, p)} disabled={actionLoading === `pause-${p.slug}`} title={isPaused ? "Resume dispatch" : "Pause dispatch"}
-                              className="w-6 h-6 rounded flex items-center justify-center transition-all hover:bg-white/10"
+                              className="w-6 h-6 flex-shrink-0 rounded flex items-center justify-center transition-all hover:bg-white/10"
                               style={{ color: isPaused ? "#fb923c" : "var(--text-muted)", backgroundColor: isPaused ? "rgba(251,146,60,0.12)" : "transparent", opacity: actionLoading === `pause-${p.slug}` ? 0.5 : 1 }}>
                               {isPaused ? <IconPlay className="w-3 h-3" /> : <IconPause className="w-3 h-3" />}
                             </button>
                             {/* Focus */}
                             <button onClick={(e) => handleFocus(e, p)} disabled={actionLoading === `focus-${p.slug}`} title={isFocused ? "Unfocus" : "Focus (pause others)"}
-                              className="w-6 h-6 rounded flex items-center justify-center transition-all hover:bg-white/10"
+                              className="w-6 h-6 flex-shrink-0 rounded flex items-center justify-center transition-all hover:bg-white/10"
                               style={{ color: isFocused ? "#facc15" : "var(--text-muted)", backgroundColor: isFocused ? "rgba(250,204,21,0.12)" : "transparent" }}>
                               <IconCrosshair className="w-3.5 h-3.5" />
                             </button>
                             {/* Hold */}
                             <button onClick={(e) => handleHold(e, p)} disabled={actionLoading === `hold-${p.id}`} title="Hold all tickets"
-                              className="w-6 h-6 rounded flex items-center justify-center transition-all hover:bg-white/10"
+                              className="w-6 h-6 flex-shrink-0 rounded flex items-center justify-center transition-all hover:bg-white/10"
                               style={{ color: "var(--text-muted)" }}>
                               <IconHand className="w-3.5 h-3.5" />
                             </button>
-                            {/* GitHub */}
-                            {p.githubOwner && p.githubRepo && (
-                              <a href={`https://github.com/${p.githubOwner}/${p.githubRepo}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="w-6 h-6 rounded flex items-center justify-center hover:bg-white/10 transition-all" style={{ color: "var(--text-muted)" }} title="GitHub">
+                            {/* GitHub — always reserve the slot to prevent layout shift */}
+                            {p.githubOwner && p.githubRepo ? (
+                              <a href={`https://github.com/${p.githubOwner}/${p.githubRepo}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="w-6 h-6 flex-shrink-0 rounded flex items-center justify-center hover:bg-white/10 transition-all" style={{ color: "var(--text-muted)" }} title="GitHub">
                                 <IconGitHub className="w-3.5 h-3.5" />
                               </a>
+                            ) : (
+                              <span className="w-6 h-6 flex-shrink-0" />
                             )}
                             {/* Settings */}
-                            <button onClick={(e) => { e.stopPropagation(); router.push(`/p/${p.slug}/settings`); }} className="w-6 h-6 rounded flex items-center justify-center hover:bg-white/10" style={{ color: "var(--text-muted)" }} title="Settings">
+                            <button onClick={(e) => { e.stopPropagation(); router.push(`/p/${p.slug}/settings`); }} className="w-6 h-6 flex-shrink-0 rounded flex items-center justify-center hover:bg-white/10" style={{ color: "var(--text-muted)" }} title="Settings">
                               <IconSettings className="w-3.5 h-3.5" />
                             </button>
                             {/* Delete */}
-                            <button onClick={(e) => { e.stopPropagation(); setDeletingId(p.id); }} className="w-6 h-6 rounded flex items-center justify-center hover:bg-white/10" style={{ color: "var(--text-muted)" }} title="Delete">
+                            <button onClick={(e) => { e.stopPropagation(); setDeletingId(p.id); }} className="w-6 h-6 flex-shrink-0 rounded flex items-center justify-center hover:bg-white/10" style={{ color: "var(--text-muted)" }} title="Delete">
                               <IconTrash className="w-3.5 h-3.5" />
                             </button>
                           </div>

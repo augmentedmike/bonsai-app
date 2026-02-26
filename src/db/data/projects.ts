@@ -5,11 +5,13 @@ import type { Project } from "@/types";
 import { getSetting } from "./settings";
 
 type StatusCounts = { planning: number; building: number; shipped: number };
+type WorkerInfo = { id: string; name: string; color: string; avatar: string | null };
 
 function projectFromRow(
   row: typeof projects.$inferSelect,
   ticketCount?: number,
-  statusCounts?: StatusCounts
+  statusCounts?: StatusCounts,
+  activeWorkers?: WorkerInfo[]
 ): Project {
   return {
     id: String(row.id),
@@ -23,6 +25,12 @@ function projectFromRow(
     planningCount: statusCounts?.planning ?? 0,
     buildingCount: statusCounts?.building ?? 0,
     shippedCount: statusCounts?.shipped ?? 0,
+    activeWorkers: activeWorkers?.map((w) => ({
+      id: w.id,
+      name: w.name,
+      color: w.color,
+      avatar: w.avatar ? `/api/personas/${w.id}/avatar` : undefined,
+    })),
     githubOwner: row.githubOwner ?? undefined,
     githubRepo: row.githubRepo ?? undefined,
     localPath: row.localPath ?? undefined,
@@ -61,6 +69,38 @@ function getStatusCounts(projectIds: number[]): Map<number, StatusCounts> {
     if (r.state === "planning") e.planning = r.count;
     else if (r.state === "building") e.building = r.count;
     else if (r.state === "shipped") e.shipped = r.count;
+  }
+  return map;
+}
+
+/**
+ * Personas with at least one building-state ticket per project.
+ * Deduped — each persona appears at most once per project.
+ */
+function getActiveWorkers(projectIds: number[]): Map<number, WorkerInfo[]> {
+  if (projectIds.length === 0) return new Map();
+  const rows = db
+    .selectDistinct({
+      projectId: tickets.projectId,
+      personaId: personas.id,
+      name: personas.name,
+      color: personas.color,
+      avatar: personas.avatar,
+    })
+    .from(tickets)
+    .innerJoin(personas, eq(tickets.assigneeId, personas.id))
+    .where(
+      and(
+        sql`${tickets.projectId} IN (${sql.join(projectIds.map((id) => sql`${id}`), sql`, `)})`,
+        eq(tickets.state, "building"),
+        isNull(personas.deletedAt)
+      )
+    )
+    .all();
+  const map = new Map<number, WorkerInfo[]>();
+  for (const r of rows) {
+    if (!map.has(r.projectId!)) map.set(r.projectId!, []);
+    map.get(r.projectId!)!.push({ id: r.personaId, name: r.name, color: r.color, avatar: r.avatar });
   }
   return map;
 }
@@ -111,7 +151,8 @@ export function getProjects(): Promise<Project[]> {
   const ids = rows.map((r) => r.id);
   const counts = getTicketCounts(ids);
   const statuses = getStatusCounts(ids);
-  return asAsync(rows.map((r) => projectFromRow(r, counts.get(r.id) ?? 0, statuses.get(r.id))));
+  const workers = getActiveWorkers(ids);
+  return asAsync(rows.map((r) => projectFromRow(r, counts.get(r.id) ?? 0, statuses.get(r.id), workers.get(r.id))));
 }
 
 export function createProject(data: {
