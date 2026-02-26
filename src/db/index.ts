@@ -13,6 +13,10 @@ const dbPath = path.join(dbDir, dbFile);
 const sqlite = new Database(dbPath);
 sqlite.pragma("journal_mode = WAL");
 sqlite.pragma("foreign_keys = ON");
+// Reduce fsync calls in WAL mode (safe: survives crash, just slower startup if OS crashes)
+sqlite.pragma("synchronous = NORMAL");
+// Avoid SQLITE_BUSY when heartbeat and server share the same DB file
+sqlite.pragma("busy_timeout = 5000");
 
 // Auto-create tables if they don't exist (self-healing for fresh DBs / previews)
 // This replaces the need for a separate `db:push` step.

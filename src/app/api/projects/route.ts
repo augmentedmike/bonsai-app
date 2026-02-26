@@ -2,6 +2,16 @@ import { NextResponse } from "next/server";
 import { getProjects, createProject, updateProject, softDeleteProject } from "@/db/data/projects";
 // GitHub token stored in settings table
 import { execFileSync, execFile } from "node:child_process";
+import type { Project } from "@/types";
+
+// ── In-memory cache for GET /api/projects ────────────────────────────────
+// Projects rarely change; a 30s TTL eliminates the cold-start SQLite hit.
+let projectsCache: { data: Project[]; ts: number } | null = null;
+const PROJECTS_CACHE_TTL_MS = 30_000;
+
+function invalidateProjectsCache() {
+  projectsCache = null;
+}
 import { promisify } from "node:util";
 import path from "node:path";
 import fs from "node:fs";
@@ -146,6 +156,7 @@ export async function POST(req: Request) {
       githubOwner,
       githubRepo,
     });
+    invalidateProjectsCache();
     return NextResponse.json({ success: true, project });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -155,7 +166,12 @@ export async function POST(req: Request) {
 }
 
 export async function GET() {
+  const now = Date.now();
+  if (projectsCache && now - projectsCache.ts < PROJECTS_CACHE_TTL_MS) {
+    return NextResponse.json({ projects: projectsCache.data });
+  }
   const allProjects = await getProjects();
+  projectsCache = { data: allProjects, ts: now };
   return NextResponse.json({ projects: allProjects });
 }
 
@@ -179,6 +195,7 @@ export async function PATCH(req: Request) {
   }
 
   await updateProject(Number(id), updates);
+  invalidateProjectsCache();
   return NextResponse.json({ success: true });
 }
 
@@ -245,5 +262,6 @@ export async function DELETE(req: Request) {
   // Delete project messages
   db.delete(projectMessages).where(eq(projectMessages.projectId, projectId)).run();
   await softDeleteProject(projectId);
+  invalidateProjectsCache();
   return NextResponse.json({ success: true });
 }
