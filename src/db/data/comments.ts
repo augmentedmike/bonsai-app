@@ -53,8 +53,13 @@ export function enrichComments(
       .where(eq(settings.key, "user_avatar_url"))
       .get()?.value;
 
-  // Batch-fetch all personas referenced by agent comments
-  const personaIds = [...new Set(rows.filter((r) => r.authorType === "sim" && r.personaId).map((r) => r.personaId!))];
+  // Batch-fetch all personas referenced by agent/sim comments
+  // "agent" is an older/external author_type that maps to the same persona lookup as "sim"
+  const personaIds = [...new Set(
+    rows
+      .filter((r) => (r.authorType === "sim" || r.authorType === "agent") && r.personaId)
+      .map((r) => r.personaId!)
+  )];
   const personaMap = new Map<string, typeof personas.$inferSelect>();
   if (personaIds.length > 0) {
     const personaRows = db.select().from(personas).where(inArray(personas.id, personaIds)).all();
@@ -68,7 +73,8 @@ export function enrichComments(
 
     if (row.authorType === "human") {
       author = { name: userName, avatarUrl: userAvatar || undefined };
-    } else if (row.authorType === "sim" && row.personaId) {
+    } else if ((row.authorType === "sim" || row.authorType === "agent") && row.personaId) {
+      // "agent" is treated identically to "sim" — both reference a persona by personaId
       const persona = personaMap.get(row.personaId);
       if (persona) {
         author = {
@@ -79,6 +85,9 @@ export function enrichComments(
           role: persona.role || undefined,
         };
       }
+    } else if (row.authorType === "operator") {
+      // Operator comments come from AugmentedMike (the AI operator), not from a Sim persona
+      author = { name: "AugmentedMike", color: "#00E5FF", role: "operator" };
     }
 
     let attachments;
@@ -104,7 +113,7 @@ export function enrichComments(
 
 export function createComment(data: {
   ticketId: number;
-  authorType: "human" | "sim" | "system";
+  authorType: "human" | "sim" | "system" | "agent" | "operator";
   authorId?: number | null;
   personaId?: string | null;
   content: string;
@@ -135,7 +144,7 @@ export function createComment(data: {
  */
 export function createCommentAndBumpCount(data: {
   ticketId: number;
-  authorType: "human" | "sim" | "system";
+  authorType: "human" | "sim" | "system" | "agent" | "operator";
   authorId?: number | null;
   personaId?: string | null;
   content: string;

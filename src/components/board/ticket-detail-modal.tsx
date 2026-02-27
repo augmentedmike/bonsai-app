@@ -2302,7 +2302,7 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                          {comment.author?.name || (comment.authorType === "sim" ? "Sim" : "Human")}
+                          {comment.author?.name || (comment.authorType === "sim" || comment.authorType === "agent" ? "Sim" : comment.authorType === "operator" ? "AugmentedMike" : "Human")}
                         </span>
                         <span
                           className="text-[10px] px-1.5 py-0.5 rounded font-medium"
@@ -2311,7 +2311,7 @@ export function TicketDetailModal({ ticket, initialDocType, projectId, onClose, 
                             color: comment.authorType === "sim" ? "#a78bfa" : "#60a5fa",
                           }}
                         >
-                          {comment.authorType === "sim" && comment.author?.role ? comment.author.role : (comment.authorType === "sim" ? "Sim" : comment.authorType)}
+                          {(comment.authorType === "sim" || comment.authorType === "agent") && comment.author?.role ? comment.author.role : (comment.authorType === "sim" || comment.authorType === "agent" ? "sim" : comment.authorType)}
                         </span>
                         <span className="text-xs" style={{ color: "var(--text-muted)" }}>
                           {formatTime(comment.createdAt)}

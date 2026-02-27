@@ -1,5 +1,7 @@
 export type TicketType = "feature" | "bug" | "chore" | "content" | "story" | "planning" | "research";
 
+export type TicketOriginType = "issue" | "idea" | "blocker";
+
 export type TicketState =
   | "planning"
   | "building"
@@ -43,6 +45,8 @@ export interface Ticket {
   onHold?: boolean;
   holdReason?: string;
   holdAt?: string;
+  // Origin type — how the ticket was surfaced (agent auto-ticketing)
+  originType?: TicketOriginType;
   // Epic hierarchy
   isEpic?: boolean;
   epicId?: number;
@@ -183,7 +187,7 @@ export interface TicketAttachment {
 export interface Comment {
   id: number;
   ticketId: number;
-  authorType: "human" | "sim" | "system";
+  authorType: "human" | "sim" | "system" | "agent" | "operator";
   author?: {
     name: string;
     avatarUrl?: string;
@@ -229,7 +233,7 @@ export interface ExtractedItem {
 export interface ProjectMessage {
   id: number;
   projectId: number;
-  authorType: "human" | "sim" | "system";
+  authorType: "human" | "sim" | "system" | "agent" | "operator";
   author?: {
     name: string;
     avatarUrl?: string;

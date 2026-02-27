@@ -1,5 +1,5 @@
 import { db, asAsync, runAsync } from "./_driver";
-import { projects, tickets, comments, ticketAttachments, ticketAuditLog, personas, projectMessages, agentRuns, projectNotes, extractedItems } from "../schema";
+import { projects, tickets, comments, ticketAttachments, ticketAuditLog, ticketDocuments, personas, projectMessages, agentRuns, projectNotes, extractedItems } from "../schema";
 import { eq, and, or, isNull, sql } from "drizzle-orm";
 import type { Project } from "@/types";
 import { getSetting } from "./settings";
@@ -254,11 +254,15 @@ export function softDeleteProject(id: number): Promise<void> {
     const ticketIds = ticketRows.map((r) => r.id);
 
     if (ticketIds.length > 0) {
-      // Hard-delete all related data for these tickets
+      // Hard-delete all related data for these tickets in FK-safe order:
+      // comments → ticket_documents → attachments → audit_log → agent_runs → tickets
+      // (comments refs ticket_documents; ticket_documents refs personas — so docs must go after comments, before personas)
       for (const tid of ticketIds) {
         db.delete(comments).where(eq(comments.ticketId, tid)).run();
+        db.delete(ticketDocuments).where(eq(ticketDocuments.ticketId, tid)).run();
         db.delete(ticketAttachments).where(eq(ticketAttachments.ticketId, tid)).run();
         db.delete(ticketAuditLog).where(eq(ticketAuditLog.ticketId, tid)).run();
+        db.delete(agentRuns).where(eq(agentRuns.ticketId, tid)).run();
       }
       // Hard-delete the tickets themselves
       db.delete(tickets).where(eq(tickets.projectId, id)).run();

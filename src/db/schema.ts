@@ -138,6 +138,8 @@ export const tickets = sqliteTable("tickets", {
   onHold: integer("on_hold", { mode: "boolean" }).default(false),
   holdReason: text("hold_reason"),
   holdAt: text("hold_at"),
+  // Origin type — how the ticket was surfaced (agent auto-ticketing)
+  originType: text("origin_type", { enum: ["issue", "idea", "blocker"] }),
   // Epic hierarchy
   isEpic: integer("is_epic", { mode: "boolean" }).default(false),
   epicId: integer("epic_id"), // references tickets.id (self-ref handled at app layer)
@@ -148,7 +150,7 @@ export const tickets = sqliteTable("tickets", {
 export const comments = sqliteTable("comments", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   ticketId: integer("ticket_id").notNull().references(() => tickets.id),
-  authorType: text("author_type", { enum: ["human", "sim", "system"] }).notNull(),
+  authorType: text("author_type", { enum: ["human", "sim", "system", "agent", "operator"] }).notNull(),
   authorId: integer("author_id"), // user id if human
   personaId: text("persona_id").references(() => personas.id), // persona id if agent
   content: text("content").notNull(),
@@ -268,7 +270,7 @@ export const projectMessages = sqliteTable("project_messages", {
   projectId: integer("project_id")
     .notNull()
     .references(() => projects.id),
-  authorType: text("author_type", { enum: ["human", "sim", "system"] }).notNull(),
+  authorType: text("author_type", { enum: ["human", "sim", "system", "agent", "operator"] }).notNull(),
   authorId: integer("author_id"), // user id if human
   personaId: text("persona_id").references(() => personas.id), // persona id if agent
   content: text("content").notNull(),
