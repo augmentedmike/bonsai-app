@@ -61,23 +61,35 @@ function countRunningAgents(): number {
  */
 function reapStaleAgentRuns(): void {
   try {
-    const { db } = require("@/db/index") as typeof import("@/db/index");
-    const { agentRuns } = require("@/db/schema") as typeof import("@/db/schema");
-    const { isNull, lt, sql } = require("drizzle-orm") as typeof import("drizzle-orm");
-
-    const STALE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
-    const cutoff = new Date(Date.now() - STALE_TTL_MS).toISOString();
+    // Use better-sqlite3 directly — drizzle .where() chaining with OR is cumbersome
+    const Database = require("better-sqlite3");
+    const path = require("path");
+    const dbPath = path.join(process.cwd(), ".data",
+      process.env.BONSAI_ENV === "production" ? "bonsai.db" : "bonsai-dev.db");
+    const sqlite = new Database(dbPath);
     const now = new Date().toISOString();
 
-    // Close all runs older than TTL with no ended_at
-    const result = db
-      .update(agentRuns)
-      .set({ endedAt: now, errorMessage: "stale-run-reaped" })
-      .where(isNull(agentRuns.endedAt) && lt(agentRuns.startedAt, cutoff))
-      .run();
+    // 1. Long-running stale: ended_at IS NULL, started >2h ago (process died mid-run)
+    const r1 = sqlite.prepare(`
+      UPDATE agent_runs SET ended_at=?, status='abandoned', error_message='stale-run-reaped'
+      WHERE ended_at IS NULL
+        AND started_at < datetime('now', '-2 hours')
+    `).run(now);
 
-    if (result.changes > 0) {
-      console.log(`[dispatch/reaper] Closed ${result.changes} stale agent_run(s) older than 2h`);
+    // 2. Silent-death stale: never wrote a single report AND started >10min ago
+    //    These are runs that crashed at startup before sending any status update.
+    const r2 = sqlite.prepare(`
+      UPDATE agent_runs SET ended_at=?, status='abandoned', error_message='stale-no-report-reaped'
+      WHERE ended_at IS NULL
+        AND last_report_at IS NULL
+        AND started_at < datetime('now', '-10 minutes')
+    `).run(now);
+
+    sqlite.close();
+
+    const total = (r1.changes ?? 0) + (r2.changes ?? 0);
+    if (total > 0) {
+      console.log(`[dispatch/reaper] Closed ${r1.changes} long-stale + ${r2.changes} silent-death run(s)`);
     }
   } catch (e) {
     // Non-fatal — reaper failure should never block dispatch
