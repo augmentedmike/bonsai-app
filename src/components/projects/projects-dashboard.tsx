@@ -15,7 +15,6 @@ import {
 type SortKey = "name" | "tickets" | "activity";
 type SortDir = "asc" | "desc";
 type FocusKey = "focused" | "paused" | "normal";
-type TypeKey = "feature" | "chore" | "bug";
 
 interface PauseState {
   pausedSlugs: Set<string>;
@@ -51,7 +50,6 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
   const [projects, setProjects] = useState<Project[]>(initialProjects);
   const [search, setSearch] = useState("");
   const [focusFilter, setFocusFilter] = useState<Set<FocusKey>>(new Set());
-  const [typeFilter, setTypeFilter] = useState<Set<TypeKey>>(new Set());
   const [sortKey, setSortKey] = useState<SortKey>(() => {
     try { return (localStorage.getItem("bonsai-projects-sort-key") as SortKey) || "activity"; } catch { return "activity"; }
   });
@@ -104,15 +102,7 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
         return false;
       });
     }
-    // Type filter — OR logic; empty set = no filter
-    if (typeFilter.size > 0) {
-      list = list.filter((p) => {
-        if (typeFilter.has("feature") && (p.featureCount ?? 0) > 0) return true;
-        if (typeFilter.has("chore") && (p.choreCount ?? 0) > 0) return true;
-        if (typeFilter.has("bug") && (p.bugCount ?? 0) > 0) return true;
-        return false;
-      });
-    }
+
     return [...list].sort((a, b) => {
       let cmp = 0;
       if (sortKey === "name") cmp = a.name.localeCompare(b.name);
@@ -121,7 +111,7 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
       return sortDir === "asc" ? cmp : -cmp;
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projects, search, focusFilter.size, typeFilter.size, pauseState, sortKey, sortDir]);
+  }, [projects, search, focusFilter.size, pauseState, sortKey, sortDir]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -202,12 +192,7 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
     { key: "normal" as FocusKey, label: "Normal", count: projects.filter((p) => !pauseState?.pausedSlugs.has(p.slug) && pauseState?.focusedProject !== p.slug).length },
   ];
 
-  // Type filter options
-  const typeOptions = [
-    { key: "feature" as TypeKey, label: "Feature", count: projects.filter((p) => (p.featureCount ?? 0) > 0).length },
-    { key: "chore" as TypeKey, label: "Chore", count: projects.filter((p) => (p.choreCount ?? 0) > 0).length },
-    { key: "bug" as TypeKey, label: "Bug", count: projects.filter((p) => (p.bugCount ?? 0) > 0).length },
-  ];
+
 
   const SortArrow = ({ col }: { col: SortKey }) =>
     sortKey === col
@@ -281,13 +266,7 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
               onChange={setFocusFilter}
             />
 
-            {/* Type dropdown */}
-            <FilterDropdown
-              label="Type"
-              options={typeOptions}
-              selected={typeFilter}
-              onChange={setTypeFilter}
-            />
+
             <span className="ml-auto text-xs" style={{ color: "var(--text-muted)" }}>{filtered.length} of {projects.length}</span>
           </div>
 
