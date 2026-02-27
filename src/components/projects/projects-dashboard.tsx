@@ -72,6 +72,18 @@ export function ProjectsDashboard({ initialProjects, initialHiddenCount = 0 }: {
     return () => window.removeEventListener("open-operator-chat", onOpenChat);
   }, [markChatRead]);
 
+  // On mount: check if sidebar navigated here with the open-chat flag (came from another page)
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem("bonsai-open-chat") === "1") {
+        sessionStorage.removeItem("bonsai-open-chat");
+        setChatOpen(true);
+        markChatRead();
+      }
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Pause/focus/hold state
   const [pauseState, setPauseState] = useState<PauseState | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);

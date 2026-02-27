@@ -121,7 +121,14 @@ export function Sidebar({ userName }: { userName?: string }) {
 
   function openOperatorChat() {
     markChatRead();
-    window.dispatchEvent(new CustomEvent("open-operator-chat"));
+    if (pathname === "/") {
+      // Dashboard is mounted — listener will catch this immediately
+      window.dispatchEvent(new CustomEvent("open-operator-chat"));
+    } else {
+      // Not on dashboard — flag sessionStorage then navigate; dashboard reads it on mount
+      try { sessionStorage.setItem("bonsai-open-chat", "1"); } catch {}
+      router.push("/");
+    }
   }
 
   const displayName = user?.name || userName || "User";
