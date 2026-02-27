@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
@@ -170,6 +170,9 @@ function TreeItem({
   );
 }
 
+const FILE_LIST_POLL_MS = 5000;
+const FILE_CONTENT_POLL_MS = 5000;
+
 export function FileBrowser({ ticketId }: FileBrowserProps) {
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [rootType, setRootType] = useState<string>("");
@@ -183,30 +186,68 @@ export function FileBrowser({ ticketId }: FileBrowserProps) {
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<"raw" | "md">("md");
 
-  // Load file listing
-  useEffect(() => {
-    setLoading(true);
-    setError(null);
-    fetch(`/api/tickets/${ticketId}/files`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.error) {
-          setError(data.error);
-        } else {
-          setFiles(data.files || []);
-          setRootType(data.root || "project");
-          // Auto-expand src dir
-          const srcDir = (data.files || []).find((f: FileEntry) => f.isDir && f.path === "src");
-          if (srcDir) {
-            setExpandedDirs(new Set(["src"]));
-          }
+  // Keep refs for polling callbacks so they always see latest state
+  const selectedPathRef = useRef<string | null>(null);
+  selectedPathRef.current = selectedPath;
+  const filesRef = useRef<string>("");
+
+  // Fetch file listing — called on mount + by poll interval
+  const fetchFiles = useCallback(async (isInitial = false) => {
+    try {
+      const r = await fetch(`/api/tickets/${ticketId}/files`);
+      const data = await r.json();
+      if (data.error) {
+        if (isInitial) setError(data.error);
+        return;
+      }
+      const newFiles: FileEntry[] = data.files || [];
+      const newJson = JSON.stringify(newFiles);
+      // Only update state if file list actually changed (avoid unnecessary re-renders)
+      if (newJson !== filesRef.current) {
+        filesRef.current = newJson;
+        setFiles(newFiles);
+        setRootType(data.root || "project");
+        if (isInitial) {
+          // Auto-expand src dir on first load only
+          const srcDir = newFiles.find((f) => f.isDir && f.path === "src");
+          if (srcDir) setExpandedDirs(new Set(["src"]));
         }
-      })
-      .catch(() => setError("Failed to load files"))
-      .finally(() => setLoading(false));
+      }
+      if (isInitial) setError(null);
+    } catch {
+      if (isInitial) setError("Failed to load files");
+    } finally {
+      if (isInitial) setLoading(false);
+    }
   }, [ticketId]);
 
-  // Load file content
+  // Initial load + poll file list every 5s
+  useEffect(() => {
+    let cancelled = false;
+    fetchFiles(true);
+    const id = setInterval(() => { if (!cancelled) fetchFiles(false); }, FILE_LIST_POLL_MS);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [fetchFiles]);
+
+  // Fetch selected file content — called on selection change + by poll interval
+  const fetchContent = useCallback(async (path: string, isInitial = false) => {
+    try {
+      const r = await fetch(`/api/tickets/${ticketId}/files?path=${encodeURIComponent(path)}`);
+      const data = await r.json();
+      if (data.error) {
+        if (isInitial) { setContentError(data.error); setFileContent(null); }
+        return;
+      }
+      setFileContent((prev) => (prev === data.content ? prev : data.content));
+      if (isInitial) setContentError(null);
+    } catch {
+      if (isInitial) setContentError("Failed to load file");
+    } finally {
+      if (isInitial) setLoadingContent(false);
+    }
+  }, [ticketId]);
+
+  // Load + poll file content whenever selected path changes
   useEffect(() => {
     if (!selectedPath) {
       setFileContent(null);
@@ -216,19 +257,15 @@ export function FileBrowser({ ticketId }: FileBrowserProps) {
     setLoadingContent(true);
     setContentError(null);
     setViewMode(selectedPath.endsWith(".md") ? "md" : "raw");
-    fetch(`/api/tickets/${ticketId}/files?path=${encodeURIComponent(selectedPath)}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.error) {
-          setContentError(data.error);
-          setFileContent(null);
-        } else {
-          setFileContent(data.content);
-        }
-      })
-      .catch(() => setContentError("Failed to load file"))
-      .finally(() => setLoadingContent(false));
-  }, [ticketId, selectedPath]);
+    fetchContent(selectedPath, true);
+
+    let cancelled = false;
+    const id = setInterval(() => {
+      const cur = selectedPathRef.current;
+      if (!cancelled && cur) fetchContent(cur, false);
+    }, FILE_CONTENT_POLL_MS);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [ticketId, selectedPath, fetchContent]);
 
   const tree = useMemo(() => sortTree(buildTree(files)), [files]);
 
