@@ -45,6 +45,39 @@ export function ProjectChatPanel({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevMessageCountRef = useRef(0);
 
+  // ── Resizable width ──────────────────────────────────────────────────────
+  const [chatWidth, setChatWidth] = useState<number>(() => {
+    try { return parseInt(localStorage.getItem("bonsai-chat-width") ?? "380", 10) || 380; } catch { return 380; }
+  });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartX = useRef(0);
+  const dragStartWidth = useRef(0);
+
+  const onDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragStartX.current = e.clientX;
+    dragStartWidth.current = chatWidth;
+    setIsDragging(true);
+  }, [chatWidth]);
+
+  const latestWidth = useRef(chatWidth);
+  useEffect(() => { latestWidth.current = chatWidth; }, [chatWidth]);
+
+  useEffect(() => {
+    if (!isDragging) return;
+    function onMouseMove(e: MouseEvent) {
+      const newWidth = Math.min(680, Math.max(280, dragStartWidth.current + (dragStartX.current - e.clientX)));
+      setChatWidth(newWidth);
+    }
+    function onMouseUp() {
+      setIsDragging(false);
+      try { localStorage.setItem("bonsai-chat-width", String(latestWidth.current)); } catch {}
+    }
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => { window.removeEventListener("mousemove", onMouseMove); window.removeEventListener("mouseup", onMouseUp); };
+  }, [isDragging]);
+
   // Fetch messages callback
   const fetchMessages = useCallback(async () => {
     try {
@@ -163,17 +196,38 @@ export function ProjectChatPanel({
   return (
     <div
       style={{
-        width: open ? "380px" : "0px",
+        width: open ? `${chatWidth}px` : "0px",
         height: "100%",
         flexShrink: 0,
         overflow: "hidden",
-        transition: "width 220ms cubic-bezier(0.4, 0, 0.2, 1)",
+        transition: isDragging ? "none" : "width 220ms cubic-bezier(0.4, 0, 0.2, 1)",
         borderLeft: open ? "1px solid var(--border-medium)" : "none",
+        position: "relative",
+        userSelect: isDragging ? "none" : undefined,
       }}
     >
+      {/* Drag handle — left edge */}
+      {open && (
+        <div
+          onMouseDown={onDragStart}
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            width: 5,
+            height: "100%",
+            cursor: "col-resize",
+            zIndex: 10,
+            backgroundColor: isDragging ? "rgba(91,141,249,0.35)" : "transparent",
+            transition: "background-color 150ms",
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = "rgba(91,141,249,0.2)"; }}
+          onMouseLeave={(e) => { if (!isDragging) (e.currentTarget as HTMLDivElement).style.backgroundColor = "transparent"; }}
+        />
+      )}
     <div
       style={{
-        width: "380px",
+        width: `${chatWidth}px`,
         height: "100%",
         display: "flex",
         flexDirection: "column",
