@@ -1,12 +1,3 @@
-<p align="center">
-  <a href="https://usebonsai.org">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="./public/bonsai-os-logo-d.png">
-      <img alt="Bonsai" src="./public/bonsai-os-logo-l.png" height="128">
-    </picture>
-  </a>
-</p>
-
 <h1 align="center">Bonsai</h1>
 
 <p align="center">
@@ -14,10 +5,13 @@
 </p>
 
 <p align="center">
-  <a href="https://usebonsai.org"><strong>Website</strong></a> ·
-  <a href="https://miniclaw.bot"><strong>Mini Claw</strong></a> ·
-  <a href="https://github.com/augmentedmike/bonsai-app/issues"><strong>Issues</strong></a> ·
-  <a href="./docs/"><strong>Docs</strong></a>
+  <strong>Bonsai</strong>&ensp;<a href="https://usebonsai.org">www</a> · <a href="https://github.com/augmentedmike/bonsai-app">repo</a>
+  &emsp;
+  <strong>Mini Claw</strong>&ensp;<a href="https://miniclaw.bot">www</a> · <a href="https://github.com/augmentedmike/miniclaw">repo</a>
+  &emsp;
+  <a href="https://augmentedmike.com"><strong>Blog</strong></a>
+  &emsp;
+  <a href="https://github.com/augmentedmike/bonsai-app/issues"><strong>Issues</strong></a>
 </p>
 
 <p align="center">
@@ -34,6 +28,10 @@ Bonsai is a kanban board where AI agents — called Sims — do the actual work.
 Write requirements in plain English. Sims handle research, planning, implementation, and deployment end-to-end. Customize each Sim with a name, skills, personality, and role — then watch them collaborate through ticket threads, just like a real engineering team.
 
 A live activity dashboard tracks what every Sim is doing, time spent, and costs in real-time.
+
+<p align="center">
+  <img src="./public/design-concepts/comic-splash.jpg" alt="Bonsai — Assemble Your AI Squad" width="100%">
+</p>
 
 ## Key Features
 
