@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { Project } from "@/types";
 import { AddProjectModal } from "@/components/board/add-project-modal";
 import { ProjectChatPanel } from "@/components/board/project-chat-panel";
+import { FilterDropdown } from "./filter-dropdown";
 import {
   IconClose, IconChat, IconPlus, IconSearch, IconPencil,
   IconEye, IconEyeSlash, IconPlay, IconPause, IconCrosshair,
@@ -13,8 +14,8 @@ import {
 
 type SortKey = "name" | "tickets" | "activity";
 type SortDir = "asc" | "desc";
-type FocusFilter = "all" | "focused" | "paused" | "none";
-type TypeFilter = "all" | "feature" | "chore" | "bug";
+type FocusKey = "focused" | "paused" | "normal";
+type TypeKey = "feature" | "chore" | "bug";
 
 interface PauseState {
   pausedSlugs: Set<string>;
@@ -49,8 +50,8 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
   const router = useRouter();
   const [projects, setProjects] = useState<Project[]>(initialProjects);
   const [search, setSearch] = useState("");
-  const [focusFilter, setFocusFilter] = useState<FocusFilter>("all");
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [focusFilter, setFocusFilter] = useState<Set<FocusKey>>(new Set());
+  const [typeFilter, setTypeFilter] = useState<Set<TypeKey>>(new Set());
   const [sortKey, setSortKey] = useState<SortKey>(() => {
     try { return (localStorage.getItem("bonsai-projects-sort-key") as SortKey) || "activity"; } catch { return "activity"; }
   });
@@ -94,14 +95,24 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
     let list = projects.filter(
       (p) => p.name.toLowerCase().includes(q) || (p.description ?? "").toLowerCase().includes(q) || (p.techStack ?? "").toLowerCase().includes(q)
     );
-    // Focus filter
-    if (focusFilter === "focused") list = list.filter((p) => pauseState?.focusedProject === p.slug);
-    if (focusFilter === "paused") list = list.filter((p) => pauseState?.pausedSlugs.has(p.slug) ?? false);
-    if (focusFilter === "none") list = list.filter((p) => !pauseState?.pausedSlugs.has(p.slug) && pauseState?.focusedProject !== p.slug);
-    // Type filter
-    if (typeFilter === "feature") list = list.filter((p) => (p.featureCount ?? 0) > 0);
-    if (typeFilter === "chore") list = list.filter((p) => (p.choreCount ?? 0) > 0);
-    if (typeFilter === "bug") list = list.filter((p) => (p.bugCount ?? 0) > 0);
+    // Focus filter — OR logic across selected keys; empty set = no filter
+    if (focusFilter.size > 0) {
+      list = list.filter((p) => {
+        if (focusFilter.has("focused") && pauseState?.focusedProject === p.slug) return true;
+        if (focusFilter.has("paused") && (pauseState?.pausedSlugs.has(p.slug) ?? false)) return true;
+        if (focusFilter.has("normal") && !pauseState?.pausedSlugs.has(p.slug) && pauseState?.focusedProject !== p.slug) return true;
+        return false;
+      });
+    }
+    // Type filter — OR logic; empty set = no filter
+    if (typeFilter.size > 0) {
+      list = list.filter((p) => {
+        if (typeFilter.has("feature") && (p.featureCount ?? 0) > 0) return true;
+        if (typeFilter.has("chore") && (p.choreCount ?? 0) > 0) return true;
+        if (typeFilter.has("bug") && (p.bugCount ?? 0) > 0) return true;
+        return false;
+      });
+    }
     return [...list].sort((a, b) => {
       let cmp = 0;
       if (sortKey === "name") cmp = a.name.localeCompare(b.name);
@@ -109,7 +120,8 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
       else if (sortKey === "activity") cmp = (a.lastActivity ?? "").localeCompare(b.lastActivity ?? "");
       return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [projects, search, focusFilter, typeFilter, pauseState, sortKey, sortDir]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects, search, focusFilter.size, typeFilter.size, pauseState, sortKey, sortDir]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -183,20 +195,18 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
     finally { setActionLoading(null); }
   }
 
-  // Focus filter chips — depends on pauseState (loaded async; default to 0 counts until ready)
-  const focusChips: { key: FocusFilter; label: string; count: number }[] = [
-    { key: "all", label: "All", count: projects.length },
-    { key: "focused", label: "Focused", count: projects.filter((p) => pauseState?.focusedProject === p.slug).length },
-    { key: "paused", label: "Paused", count: projects.filter((p) => pauseState?.pausedSlugs.has(p.slug) ?? false).length },
-    { key: "none", label: "Normal", count: projects.filter((p) => !pauseState?.pausedSlugs.has(p.slug) && pauseState?.focusedProject !== p.slug).length },
+  // Focus filter options (no "all" — handled inside dropdown)
+  const focusOptions = [
+    { key: "focused" as FocusKey, label: "Focused", count: projects.filter((p) => pauseState?.focusedProject === p.slug).length },
+    { key: "paused" as FocusKey, label: "Paused", count: projects.filter((p) => pauseState?.pausedSlugs.has(p.slug) ?? false).length },
+    { key: "normal" as FocusKey, label: "Normal", count: projects.filter((p) => !pauseState?.pausedSlugs.has(p.slug) && pauseState?.focusedProject !== p.slug).length },
   ];
 
-  // Type filter chips
-  const typeChips: { key: TypeFilter; label: string; count: number }[] = [
-    { key: "all", label: "All", count: projects.length },
-    { key: "feature", label: "Feature", count: projects.filter((p) => (p.featureCount ?? 0) > 0).length },
-    { key: "chore", label: "Chore", count: projects.filter((p) => (p.choreCount ?? 0) > 0).length },
-    { key: "bug", label: "Bug", count: projects.filter((p) => (p.bugCount ?? 0) > 0).length },
+  // Type filter options
+  const typeOptions = [
+    { key: "feature" as TypeKey, label: "Feature", count: projects.filter((p) => (p.featureCount ?? 0) > 0).length },
+    { key: "chore" as TypeKey, label: "Chore", count: projects.filter((p) => (p.choreCount ?? 0) > 0).length },
+    { key: "bug" as TypeKey, label: "Bug", count: projects.filter((p) => (p.bugCount ?? 0) > 0).length },
   ];
 
   const SortArrow = ({ col }: { col: SortKey }) =>
@@ -263,55 +273,21 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search…" className="pl-8 pr-3 py-1.5 rounded-lg text-sm outline-none w-44" style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-medium)", color: "var(--text-primary)" }} />
             </div>
 
-            {/* Focus filter */}
-            <div className="flex items-center gap-1">
-              {focusChips.map((chip) => {
-                const active = focusFilter === chip.key;
-                return (
-                  <button
-                    key={chip.key}
-                    onClick={() => setFocusFilter(chip.key === focusFilter ? "all" : chip.key)}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all"
-                    style={{
-                      backgroundColor: active ? "rgba(91,141,249,0.18)" : "var(--bg-card)",
-                      color: active ? "var(--accent-blue)" : "var(--text-secondary)",
-                      border: `1px solid ${active ? "rgba(91,141,249,0.4)" : "var(--border-medium)"}`,
-                    }}
-                  >
-                    {chip.label}
-                    <span className="rounded-full px-1 tabular-nums" style={{ backgroundColor: active ? "rgba(91,141,249,0.2)" : "var(--bg-secondary)", color: active ? "var(--accent-blue)" : "var(--text-muted)", fontSize: 10 }}>{chip.count}</span>
-                  </button>
-                );
-              })}
-            </div>
+            {/* Queue / focus dropdown */}
+            <FilterDropdown
+              label="Queue"
+              options={focusOptions}
+              selected={focusFilter}
+              onChange={setFocusFilter}
+            />
 
-            {/* Divider */}
-            <div style={{ width: 1, height: 16, backgroundColor: "var(--border-subtle)" }} />
-
-            {/* Type filter */}
-            <div className="flex items-center gap-1">
-              {typeChips.map((chip) => {
-                const active = typeFilter === chip.key;
-                const accentColor = chip.key === "bug" ? "var(--accent-red)" : chip.key === "chore" ? "var(--accent-amber, #f59e0b)" : chip.key === "feature" ? "var(--accent-green, #10b981)" : "var(--accent-blue)";
-                const accentBg = chip.key === "bug" ? "rgba(239,68,68,0.15)" : chip.key === "chore" ? "rgba(245,158,11,0.15)" : chip.key === "feature" ? "rgba(16,185,129,0.15)" : "rgba(91,141,249,0.18)";
-                const accentBorder = chip.key === "bug" ? "rgba(239,68,68,0.35)" : chip.key === "chore" ? "rgba(245,158,11,0.35)" : chip.key === "feature" ? "rgba(16,185,129,0.35)" : "rgba(91,141,249,0.4)";
-                return (
-                  <button
-                    key={chip.key}
-                    onClick={() => setTypeFilter(chip.key === typeFilter ? "all" : chip.key)}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all"
-                    style={{
-                      backgroundColor: active ? accentBg : "var(--bg-card)",
-                      color: active ? accentColor : "var(--text-secondary)",
-                      border: `1px solid ${active ? accentBorder : "var(--border-medium)"}`,
-                    }}
-                  >
-                    {chip.label}
-                    <span className="rounded-full px-1 tabular-nums" style={{ backgroundColor: active ? accentBg : "var(--bg-secondary)", color: active ? accentColor : "var(--text-muted)", fontSize: 10 }}>{chip.count}</span>
-                  </button>
-                );
-              })}
-            </div>
+            {/* Type dropdown */}
+            <FilterDropdown
+              label="Type"
+              options={typeOptions}
+              selected={typeFilter}
+              onChange={setTypeFilter}
+            />
             <span className="ml-auto text-xs" style={{ color: "var(--text-muted)" }}>{filtered.length} of {projects.length}</span>
           </div>
 
