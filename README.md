@@ -1,8 +1,8 @@
 <p align="center">
   <a href="https://usebonsai.org">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="public/bonsai-os-logo-d.png">
-      <img alt="Bonsai" src="public/bonsai-os-logo-l.png" height="128">
+      <source media="(prefers-color-scheme: dark)" srcset="./public/bonsai-os-logo-d.png">
+      <img alt="Bonsai" src="./public/bonsai-os-logo-l.png" height="128">
     </picture>
   </a>
 </p>
