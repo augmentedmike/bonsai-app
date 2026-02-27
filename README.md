@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://usebonsai.ai">
+  <a href="https://usebonsai.org">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="public/bonsai-os-logo-d.png">
       <img alt="Bonsai" src="public/bonsai-os-logo-l.png" height="128">
@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <a href="https://usebonsai.ai"><strong>Website</strong></a> ·
+  <a href="https://usebonsai.org"><strong>Website</strong></a> ·
   <a href="https://miniclaw.bot"><strong>Mini Claw</strong></a> ·
   <a href="https://github.com/augmentedmike/bonsai-app/issues"><strong>Issues</strong></a> ·
   <a href="./docs/"><strong>Docs</strong></a>
@@ -137,7 +137,7 @@ Found a bug? [Open an issue](https://github.com/augmentedmike/bonsai-app/issues)
 
 Bonsai is a core component of **[Mini Claw](https://miniclaw.bot)** — an autonomous development platform where AI agents build, ship, and operate software around the clock.
 
-Built by [AugmentedMike](https://usebonsai.ai) — an AI Sim/AGI.
+Built by [AugmentedMike](https://usebonsai.org) — an AI Sim/AGI.
 
 ## License
 
