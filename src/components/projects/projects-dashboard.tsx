@@ -13,7 +13,8 @@ import {
 
 type SortKey = "name" | "tickets" | "activity";
 type SortDir = "asc" | "desc";
-type Filter = "all" | "building" | "planning" | "bugs" | "empty";
+type FocusFilter = "all" | "focused" | "paused" | "none";
+type TypeFilter = "all" | "feature" | "chore" | "bug";
 
 interface PauseState {
   pausedSlugs: Set<string>;
@@ -48,7 +49,8 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
   const router = useRouter();
   const [projects, setProjects] = useState<Project[]>(initialProjects);
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
+  const [focusFilter, setFocusFilter] = useState<FocusFilter>("all");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [sortKey, setSortKey] = useState<SortKey>(() => {
     try { return (localStorage.getItem("bonsai-projects-sort-key") as SortKey) || "activity"; } catch { return "activity"; }
   });
@@ -92,10 +94,14 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
     let list = projects.filter(
       (p) => p.name.toLowerCase().includes(q) || (p.description ?? "").toLowerCase().includes(q) || (p.techStack ?? "").toLowerCase().includes(q)
     );
-    if (filter === "building") list = list.filter((p) => (p.buildingCount ?? 0) > 0);
-    if (filter === "planning") list = list.filter((p) => (p.planningCount ?? 0) > 0);
-    if (filter === "bugs") list = list.filter((p) => ((p.bugCount ?? 0)) > 0);
-    if (filter === "empty") list = list.filter((p) => (p.ticketCount ?? 0) === 0);
+    // Focus filter
+    if (focusFilter === "focused") list = list.filter((p) => pauseState?.focusedProject === p.slug);
+    if (focusFilter === "paused") list = list.filter((p) => pauseState?.pausedSlugs.has(p.slug) ?? false);
+    if (focusFilter === "none") list = list.filter((p) => !pauseState?.pausedSlugs.has(p.slug) && pauseState?.focusedProject !== p.slug);
+    // Type filter
+    if (typeFilter === "feature") list = list.filter((p) => (p.featureCount ?? 0) > 0);
+    if (typeFilter === "chore") list = list.filter((p) => (p.choreCount ?? 0) > 0);
+    if (typeFilter === "bug") list = list.filter((p) => (p.bugCount ?? 0) > 0);
     return [...list].sort((a, b) => {
       let cmp = 0;
       if (sortKey === "name") cmp = a.name.localeCompare(b.name);
@@ -103,7 +109,7 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
       else if (sortKey === "activity") cmp = (a.lastActivity ?? "").localeCompare(b.lastActivity ?? "");
       return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [projects, search, filter, sortKey, sortDir]);
+  }, [projects, search, focusFilter, typeFilter, pauseState, sortKey, sortDir]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -177,12 +183,20 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
     finally { setActionLoading(null); }
   }
 
-  const filterChips: { key: Filter; label: string; count: number }[] = [
+  // Focus filter chips — depends on pauseState (loaded async; default to 0 counts until ready)
+  const focusChips: { key: FocusFilter; label: string; count: number }[] = [
     { key: "all", label: "All", count: projects.length },
-    { key: "building", label: "Building", count: projects.filter((p) => (p.buildingCount ?? 0) > 0).length },
-    { key: "planning", label: "Planning", count: projects.filter((p) => (p.planningCount ?? 0) > 0).length },
-    { key: "bugs", label: "Bugs", count: projects.filter((p) => ((p.bugCount ?? 0)) > 0).length },
-    { key: "empty", label: "Empty", count: projects.filter((p) => (p.ticketCount ?? 0) === 0).length },
+    { key: "focused", label: "Focused", count: projects.filter((p) => pauseState?.focusedProject === p.slug).length },
+    { key: "paused", label: "Paused", count: projects.filter((p) => pauseState?.pausedSlugs.has(p.slug) ?? false).length },
+    { key: "none", label: "Normal", count: projects.filter((p) => !pauseState?.pausedSlugs.has(p.slug) && pauseState?.focusedProject !== p.slug).length },
+  ];
+
+  // Type filter chips
+  const typeChips: { key: TypeFilter; label: string; count: number }[] = [
+    { key: "all", label: "All", count: projects.length },
+    { key: "feature", label: "Feature", count: projects.filter((p) => (p.featureCount ?? 0) > 0).length },
+    { key: "chore", label: "Chore", count: projects.filter((p) => (p.choreCount ?? 0) > 0).length },
+    { key: "bug", label: "Bug", count: projects.filter((p) => (p.bugCount ?? 0) > 0).length },
   ];
 
   const SortArrow = ({ col }: { col: SortKey }) =>
@@ -243,17 +257,57 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
         <div className="flex-1 overflow-y-auto px-7 pb-7">
           {/* Toolbar */}
           <div className="flex items-center gap-2.5 mb-3 flex-wrap">
+            {/* Search */}
             <div className="relative">
               <IconSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: "var(--text-muted)" }} />
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search…" className="pl-8 pr-3 py-1.5 rounded-lg text-sm outline-none w-44" style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-medium)", color: "var(--text-primary)" }} />
             </div>
+
+            {/* Focus filter */}
             <div className="flex items-center gap-1">
-              {filterChips.map((chip) => {
-                const active = filter === chip.key;
+              {focusChips.map((chip) => {
+                const active = focusFilter === chip.key;
                 return (
-                  <button key={chip.key} onClick={() => setFilter(chip.key)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all" style={{ backgroundColor: active ? "var(--accent-blue)" : "var(--bg-card)", color: active ? "#fff" : "var(--text-secondary)", border: `1px solid ${active ? "var(--accent-blue)" : "var(--border-medium)"}` }}>
+                  <button
+                    key={chip.key}
+                    onClick={() => setFocusFilter(chip.key === focusFilter ? "all" : chip.key)}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all"
+                    style={{
+                      backgroundColor: active ? "rgba(91,141,249,0.18)" : "var(--bg-card)",
+                      color: active ? "var(--accent-blue)" : "var(--text-secondary)",
+                      border: `1px solid ${active ? "rgba(91,141,249,0.4)" : "var(--border-medium)"}`,
+                    }}
+                  >
                     {chip.label}
-                    <span className="rounded-full px-1 tabular-nums" style={{ backgroundColor: active ? "rgba(255,255,255,0.2)" : "var(--bg-secondary)", color: active ? "#fff" : "var(--text-muted)", fontSize: 10 }}>{chip.count}</span>
+                    <span className="rounded-full px-1 tabular-nums" style={{ backgroundColor: active ? "rgba(91,141,249,0.2)" : "var(--bg-secondary)", color: active ? "var(--accent-blue)" : "var(--text-muted)", fontSize: 10 }}>{chip.count}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Divider */}
+            <div style={{ width: 1, height: 16, backgroundColor: "var(--border-subtle)" }} />
+
+            {/* Type filter */}
+            <div className="flex items-center gap-1">
+              {typeChips.map((chip) => {
+                const active = typeFilter === chip.key;
+                const accentColor = chip.key === "bug" ? "var(--accent-red)" : chip.key === "chore" ? "var(--accent-amber, #f59e0b)" : chip.key === "feature" ? "var(--accent-green, #10b981)" : "var(--accent-blue)";
+                const accentBg = chip.key === "bug" ? "rgba(239,68,68,0.15)" : chip.key === "chore" ? "rgba(245,158,11,0.15)" : chip.key === "feature" ? "rgba(16,185,129,0.15)" : "rgba(91,141,249,0.18)";
+                const accentBorder = chip.key === "bug" ? "rgba(239,68,68,0.35)" : chip.key === "chore" ? "rgba(245,158,11,0.35)" : chip.key === "feature" ? "rgba(16,185,129,0.35)" : "rgba(91,141,249,0.4)";
+                return (
+                  <button
+                    key={chip.key}
+                    onClick={() => setTypeFilter(chip.key === typeFilter ? "all" : chip.key)}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all"
+                    style={{
+                      backgroundColor: active ? accentBg : "var(--bg-card)",
+                      color: active ? accentColor : "var(--text-secondary)",
+                      border: `1px solid ${active ? accentBorder : "var(--border-medium)"}`,
+                    }}
+                  >
+                    {chip.label}
+                    <span className="rounded-full px-1 tabular-nums" style={{ backgroundColor: active ? accentBg : "var(--bg-secondary)", color: active ? accentColor : "var(--text-muted)", fontSize: 10 }}>{chip.count}</span>
                   </button>
                 );
               })}
@@ -267,14 +321,15 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                   {[
-                    { key: "name" as SortKey, label: "Project", w: "18%" },
-                    { key: null, label: "Description", w: "18%" },
+                    { key: null, label: "#", w: "3%" },
+                    { key: "name" as SortKey, label: "Project", w: "17%" },
+                    { key: null, label: "Description", w: "17%" },
                     { key: "tickets" as SortKey, label: "Planning · Building · Shipped", w: "16%" },
                     { key: null, label: "", w: "4%" },  // visibility icon col
                     { key: null, label: "Stack", w: "8%" },
                     { key: null, label: "Team", w: "8%" },
                     { key: "activity" as SortKey, label: "Last Active", w: "12%" },
-                    { key: null, label: "Actions", w: "16%" },
+                    { key: null, label: "Actions", w: "15%" },
                   ].map(({ key, label, w }) => (
                     <th key={label} onClick={key ? () => toggleSort(key) : undefined} className={key ? "cursor-pointer select-none" : ""} style={{ width: w, padding: "9px 14px", textAlign: "left", color: "var(--text-muted)", fontWeight: 500, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                       {label}{key && <SortArrow col={key} />}
@@ -285,12 +340,12 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
               <tbody>
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="py-14 text-center text-sm" style={{ color: "var(--text-muted)" }}>
+                    <td colSpan={9} className="py-14 text-center text-sm" style={{ color: "var(--text-muted)" }}>
                       {search ? "No projects match your search." : "No projects."}
                     </td>
                   </tr>
                 )}
-                {filtered.map((p) => {
+                {filtered.map((p, idx) => {
                   const isPaused = pauseState?.pausedSlugs.has(p.slug) ?? false;
                   const isFocused = pauseState?.focusedProject === p.slug;
                   const isRunning = pauseState?.activeSlugs.has(p.slug) ?? false;
@@ -304,6 +359,10 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
                       onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
                       onClick={() => router.push(`/p/${p.slug}`)}
                     >
+                      {/* # */}
+                      <td style={{ padding: "10px 14px", color: "var(--text-muted)", fontSize: 11, fontVariantNumeric: "tabular-nums" }} onClick={(e) => e.stopPropagation()}>
+                        {idx + 1}
+                      </td>
                       {/* Name */}
                       <td style={{ padding: "10px 14px" }} onClick={(e) => e.stopPropagation()}>
                         {editingId === p.id && editField === "name" ? (

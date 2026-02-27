@@ -30,6 +30,8 @@ function projectFromRow(
     buildingCount: statusCounts?.building ?? 0,
     shippedCount: statusCounts?.shipped ?? 0,
     bugCount: typeCounts?.bug ?? 0,
+    featureCount: typeCounts?.feature ?? 0,
+    choreCount: typeCounts?.chore ?? 0,
     activeWorkers: activeWorkers?.map((w) => ({
       id: w.id,
       name: w.name,
