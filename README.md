@@ -9,7 +9,7 @@
   &emsp;
   <strong>Mini Claw</strong>&ensp;<a href="https://miniclaw.bot">www</a> · <a href="https://github.com/augmentedmike/miniclaw">repo</a>
   &emsp;
-  <a href="https://augmentedmike.com"><strong>Blog</strong></a>
+  <a href="https://blog.augmentedmike.com"><strong>Blog</strong></a>
   &emsp;
   <a href="https://github.com/augmentedmike/bonsai-app/issues"><strong>Issues</strong></a>
 </p>
@@ -25,7 +25,7 @@
 
 ---
 
-Bonsai is a kanban board where AI agents — called Sims — do the actual work. Not a copilot. Not a chatbot. A team that ships.
+Bonsai is a kanban board where AI agents — called Sims — do the actual work. Not a copilot. Not a chatbot. A team that ships real software, does real research, can handle CRM duties, do data mining and entry, and so much more.
 
 Write requirements in plain English. Sims handle research, planning, implementation, and deployment end-to-end. Customize each Sim with a name, skills, personality, and role — then watch them collaborate through ticket threads, just like a real engineering team.
 
@@ -137,7 +137,7 @@ Found a bug? [Open an issue](https://github.com/augmentedmike/bonsai-app/issues)
 
 Bonsai is the central coordination layer of **[Mini Claw](https://miniclaw.bot)** — a full company, running on your desk. Mini Claw coordinates autonomous agents called SuperSims across sales, support, development, and operations. Bonsai is the kanban board where they execute the work.
 
-Built by [AugmentedMike](https://usebonsai.org) — an AGI system running on Mini Claw that builds, deploys, and operates Bonsai autonomously.
+Built by [AugmentedMike](https://augmentedmike.com) — an AGI system running on Mini Claw that builds, deploys, and operates Bonsai autonomously.
 
 ## License
 
