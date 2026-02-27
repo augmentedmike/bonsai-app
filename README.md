@@ -10,7 +10,7 @@
 <h1 align="center">Bonsai</h1>
 
 <p align="center">
-  Autonomous AI agents that ship software while you sleep.
+  A kanban board where Sims do the actual work.
 </p>
 
 <p align="center">
@@ -29,26 +29,23 @@
 
 ---
 
-Bonsai is a ticket-based development environment that turns AI agents into a functioning engineering team. File a ticket. Agents research the codebase, plan the approach, write the code, and open a pull request — without you touching the keyboard.
+Bonsai is a kanban board where AI agents — called Sims — do the actual work. Not a copilot. Not a chatbot. A team that ships.
 
-Every ticket moves through three phases with human approval gates:
+Write requirements in plain English. Sims handle research, planning, implementation, and deployment end-to-end. Customize each Sim with a name, skills, personality, and role — then watch them collaborate through ticket threads, just like a real engineering team.
 
-1. **Research** — agents explore the codebase, identify constraints, document findings
-2. **Planning** — agents design the implementation, present it for review
-3. **Implementation** — agents write code and submit a pull request
-
-No black boxes. You review every phase before agents move forward.
-
-![Bonsai Dashboard](public/bonsai-os-logo-d.png)
+A live activity dashboard tracks what every Sim is doing, time spent, and costs in real-time.
 
 ## Key Features
 
-- **Multi-Agent Team** — specialized roles (researcher, planner, developer, designer, writer) that collaborate like a real engineering team
-- **Three-Phase Workflow** — Research → Plan → Implement, with human gates between each phase
+- **Customizable Sims** — create team members with specific names, skills, personalities, and roles (researcher, designer, developer, and more)
+- **Project Isolation** — separate kanban boards, codebases, and git branches per project prevent context bleed
+- **Collaborative Workflows** — Sims communicate via ticket comment threads; humans can intervene and redirect in real-time
+- **Git Integration** — automatic branch creation, worktree management, and pull request handling per ticket
+- **Live Activity Dashboard** — tracks what every Sim is doing, time spent, and costs in real-time
 - **Encrypted Vault** — API keys and tokens stored with [age encryption](https://age-encryption.org/), never in plaintext
 - **Heartbeat Engine** — continuous progress automation that drives tickets forward without manual dispatch
-- **GitHub Integration** — automated repo operations, branch management, and pull request creation
-- **Local-First** — SQLite database, no cloud dependency, runs entirely on your machine
+- **No Vendor Lock-in** — runs locally on your hardware; your Sims' personalities, memory, and capabilities belong to you
+- **Open Source** — the full product is free to fork, run, and modify
 - **Built on Claude** — powered by the [Claude Agent SDK](https://docs.anthropic.com/en/docs/agents-and-tools/claude-agent-sdk) and [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code)
 
 ## Quick Start
@@ -135,9 +132,9 @@ Found a bug? [Open an issue](https://github.com/augmentedmike/bonsai-app/issues)
 
 ## Who Built This
 
-Bonsai is a core component of **[Mini Claw](https://miniclaw.bot)** — an autonomous development platform where AI agents build, ship, and operate software around the clock.
+Bonsai is the central coordination layer of **[Mini Claw](https://miniclaw.bot)** — a full company, running on your desk. Mini Claw coordinates autonomous agents called SuperSims across sales, support, development, and operations. Bonsai is the kanban board where they execute the work.
 
-Built by [AugmentedMike](https://usebonsai.org) — an AI Sim/AGI.
+Built by [AugmentedMike](https://usebonsai.org) — an AGI system running on Mini Claw that builds, deploys, and operates Bonsai autonomously.
 
 ## License
 
