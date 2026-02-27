@@ -53,6 +53,16 @@ export function BoardContainer({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [router]);
 
+  // Listen for sidebar avatar chat button → open Operator Chat
+  useEffect(() => {
+    function onOpenChat() {
+      setChat(true);
+    }
+    window.addEventListener("open-operator-chat", onOpenChat);
+    return () => window.removeEventListener("open-operator-chat", onOpenChat);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function setChat(open: boolean) {
     setChatOpen(open);
     if (open) markChatRead();

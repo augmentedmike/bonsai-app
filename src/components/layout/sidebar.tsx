@@ -8,6 +8,7 @@ import { SettingsPanel } from "./settings-panel";
 import type { AgentRun } from "@/types";
 import { useLanguage } from "@/i18n/language-context";
 import { useUser } from "@/contexts/user-context";
+import { useNotifications } from "@/hooks/use-notifications";
 
 function NavIcon({ icon, active }: { icon: string; active?: boolean }) {
   const base = active
@@ -115,6 +116,13 @@ export function Sidebar({ userName }: { userName?: string }) {
   }, []);
 
 
+
+  const { unread: chatUnread, markRead: markChatRead } = useNotifications();
+
+  function openOperatorChat() {
+    markChatRead();
+    window.dispatchEvent(new CustomEvent("open-operator-chat"));
+  }
 
   const displayName = user?.name || userName || "User";
 
@@ -227,10 +235,22 @@ export function Sidebar({ userName }: { userName?: string }) {
         </button>
 
         {/* Avatar / Profile — sign out only */}
-        <div className="relative mt-1">
+        <div className="relative mt-1 flex flex-col items-center gap-1">
+          {/* Glow ring when unread notifications exist */}
+          {chatUnread > 0 && (
+            <div
+              className="absolute -inset-1.5 rounded-full pointer-events-none"
+              style={{
+                boxShadow: "0 0 0 2px #22c55e, 0 0 16px 6px rgba(34,197,94,0.45)",
+                borderRadius: "50%",
+                animation: "avatar-glow-pulse 1.8s ease-in-out infinite",
+              }}
+            />
+          )}
+
           <div
             onClick={() => setMenuOpen(!menuOpen)}
-            className="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center text-xs font-medium text-white cursor-pointer hover:opacity-80 transition-opacity"
+            className="relative w-9 h-9 rounded-full overflow-hidden flex items-center justify-center text-xs font-medium text-white cursor-pointer hover:opacity-80 transition-opacity"
             style={{
               backgroundColor: user?.avatarData ? "transparent" : "var(--accent-indigo)",
               ...(menuOpen ? { outline: "2px solid var(--accent-blue)", outlineOffset: "2px" } : {}),
@@ -243,6 +263,31 @@ export function Sidebar({ userName }: { userName?: string }) {
               displayName[0].toUpperCase()
             )}
           </div>
+
+          {/* Chat notification button — appears below avatar when unread */}
+          {chatUnread > 0 && (
+            <button
+              onClick={openOperatorChat}
+              title={`${chatUnread} unread message${chatUnread !== 1 ? "s" : ""} — open Operator Chat`}
+              className="relative flex items-center justify-center w-7 h-7 rounded-full transition-all hover:scale-110 active:scale-95"
+              style={{
+                backgroundColor: "#16a34a",
+                boxShadow: "0 0 8px 2px rgba(34,197,94,0.4)",
+              }}
+            >
+              {/* Chat bubble icon */}
+              <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
+              </svg>
+              {/* Count badge */}
+              <span
+                className="absolute -top-1 -right-1 min-w-[14px] h-3.5 rounded-full flex items-center justify-center text-[9px] font-bold text-white leading-none px-0.5"
+                style={{ backgroundColor: "#dc2626" }}
+              >
+                {chatUnread > 9 ? "9+" : chatUnread}
+              </span>
+            </button>
+          )}
 
           {/* Avatar submenu: profile name + sign out */}
           {menuOpen && (

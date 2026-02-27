@@ -62,6 +62,16 @@ export function ProjectsDashboard({ initialProjects, initialHiddenCount = 0 }: {
   const { unread: chatUnread, markRead: markChatRead } = useNotifications();
   const [hiddenCount, setHiddenCount] = useState(initialHiddenCount);
 
+  // Listen for sidebar avatar chat button → open Operator Chat
+  useEffect(() => {
+    function onOpenChat() {
+      setChatOpen(true);
+      markChatRead();
+    }
+    window.addEventListener("open-operator-chat", onOpenChat);
+    return () => window.removeEventListener("open-operator-chat", onOpenChat);
+  }, [markChatRead]);
+
   // Pause/focus/hold state
   const [pauseState, setPauseState] = useState<PauseState | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
