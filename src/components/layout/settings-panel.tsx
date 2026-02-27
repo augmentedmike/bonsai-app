@@ -38,7 +38,6 @@ export function SettingsPanel({
     { id: "prompts", label: t.settings.prompts },
     { id: "roles", label: t.settings.roles },
     { id: "humans", label: "Humans" },
-    { id: "hidden-projects", label: "Hidden Projects" },
   ];
 
   useEffect(() => {

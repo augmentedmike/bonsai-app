@@ -15,6 +15,13 @@ function NavIcon({ icon, active }: { icon: string; active?: boolean }) {
     : "text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]";
 
   switch (icon) {
+    case "projects":
+      return (
+        <svg className={`w-5 h-5 ${base}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+          {/* Stacked folders */}
+          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v8.25m19.5 0v.75A2.25 2.25 0 0119.5 17.25h-15a2.25 2.25 0 01-2.25-2.25V7.5" />
+        </svg>
+      );
     case "ideas":
       return (
         <svg className={`w-5 h-5 ${base}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
@@ -143,6 +150,16 @@ export function Sidebar({ userName }: { userName?: string }) {
             <span style={{ color: "var(--text-primary)" }}>BONS</span>
             <span style={{ color: "var(--accent-pink)" }}>AI</span>
           </span>
+        </Link>
+
+        {/* Projects — links to / */}
+        <Link
+          href="/"
+          title="Projects"
+          className="group relative w-10 h-10 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5"
+          style={pathname === "/" ? { backgroundColor: "rgba(91, 141, 249, 0.1)" } : undefined}
+        >
+          <NavIcon icon="projects" active={pathname === "/"} />
         </Link>
 
         {/* Global activity — always visible */}
