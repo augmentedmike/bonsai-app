@@ -236,39 +236,38 @@ export function Sidebar({ userName }: { userName?: string }) {
 
         {/* Avatar / Profile — sign out only */}
         <div className="relative mt-1 flex flex-col items-center gap-1">
-          {/* Avatar wrapper — glow is scoped to this element only */}
-          <div className="relative">
-            {/* Glow ring: sized to avatar, never stretches */}
-            {chatUnread > 0 && (
-              <div
-                className="absolute pointer-events-none"
-                style={{
-                  inset: "-4px",
-                  borderRadius: "50%",
-                  boxShadow: "0 0 0 2px #22c55e, 0 0 18px 7px rgba(34,197,94,0.5)",
-                  animation: "avatar-glow-pulse 1.8s ease-in-out infinite",
-                }}
-              />
-            )}
-
+          {/* Glow ring — direct child of outer relative div, never inside the avatar subtree.
+              Sized to match w-9 h-9 (36×36px), centered via left-1/2 -translate-x-1/2.
+              box-shadow draws the ring + diffused glow; opacity is fully independent of avatar. */}
+          {chatUnread > 0 && (
             <div
-              onClick={() => setMenuOpen(!menuOpen)}
-              className="relative w-9 h-9 rounded-full overflow-hidden flex items-center justify-center text-xs font-medium text-white cursor-pointer hover:opacity-80 transition-opacity"
+              className="absolute pointer-events-none top-0 left-1/2 -translate-x-1/2 rounded-full"
               style={{
-                backgroundColor: user?.avatarData ? "transparent" : "var(--accent-indigo)",
-                ...(menuOpen ? { outline: "2px solid var(--accent-blue)", outlineOffset: "2px" } : {}),
+                width: 36,
+                height: 36,
+                boxShadow: "0 0 0 2.5px #22c55e, 0 0 20px 8px rgba(34,197,94,0.5)",
+                animation: "avatar-glow-pulse 1.8s ease-in-out infinite",
               }}
-              title={displayName}
-            >
-              {user?.avatarData ? (
-                <img src={user.avatarData} alt={displayName} className="w-full h-full object-cover" />
-              ) : (
-                displayName[0].toUpperCase()
-              )}
-            </div>
+            />
+          )}
+
+          <div
+            onClick={() => setMenuOpen(!menuOpen)}
+            className="relative w-9 h-9 rounded-full overflow-hidden flex items-center justify-center text-xs font-medium text-white cursor-pointer hover:opacity-80 transition-opacity"
+            style={{
+              backgroundColor: user?.avatarData ? "transparent" : "var(--accent-indigo)",
+              ...(menuOpen ? { outline: "2px solid var(--accent-blue)", outlineOffset: "2px" } : {}),
+            }}
+            title={displayName}
+          >
+            {user?.avatarData ? (
+              <img src={user.avatarData} alt={displayName} className="w-full h-full object-cover" />
+            ) : (
+              displayName[0].toUpperCase()
+            )}
           </div>
 
-          {/* Chat notification button — sits below avatar, outside the glow wrapper */}
+          {/* Chat notification button — sits below avatar */}
           {chatUnread > 0 && (
             <button
               onClick={openOperatorChat}
