@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useNotifications } from "@/hooks/use-notifications";
 import { useRouter } from "next/navigation";
 import type { Project } from "@/types";
 import { AddProjectModal } from "@/components/board/add-project-modal";
@@ -58,6 +59,7 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
   });
   const [showAdd, setShowAdd] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const { unread: chatUnread, markRead: markChatRead } = useNotifications();
 
   // Pause/focus/hold state
   const [pauseState, setPauseState] = useState<PauseState | null>(null);
@@ -210,17 +212,40 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
           <div className="flex items-center gap-2">
             {/* Chat toggle */}
             <button
-              onClick={() => setChatOpen((o) => !o)}
+              onClick={() => { setChatOpen((o) => { if (!o) markChatRead(); return !o; }); }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
               style={{
                 backgroundColor: chatOpen ? "rgba(91,141,249,0.15)" : "var(--bg-card)",
                 color: chatOpen ? "var(--accent-blue)" : "var(--text-secondary)",
                 border: `1px solid ${chatOpen ? "rgba(91,141,249,0.3)" : "var(--border-medium)"}`,
+                position: "relative",
               }}
             >
               <IconChat className="w-3.5 h-3.5" />
               Chat
+              {chatUnread > 0 && !chatOpen && (
+                <span
+                  style={{
+                    position: "absolute",
+                    top: -4,
+                    right: -4,
+                    width: 10,
+                    height: 10,
+                    borderRadius: "50%",
+                    backgroundColor: "#00E5FF",
+                    boxShadow: "0 0 6px 2px rgba(0,229,255,0.7)",
+                    animation: "notif-pulse 1.6s ease-in-out infinite",
+                    border: "1.5px solid var(--bg-primary)",
+                  }}
+                />
+              )}
             </button>
+            <style>{`
+              @keyframes notif-pulse {
+                0%, 100% { box-shadow: 0 0 4px 1px rgba(0,229,255,0.5); }
+                50% { box-shadow: 0 0 10px 4px rgba(0,229,255,0.9); }
+              }
+            `}</style>
             <button
               onClick={() => setShowAdd(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all hover:opacity-90"

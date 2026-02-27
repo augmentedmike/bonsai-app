@@ -73,6 +73,7 @@ export const projects = sqliteTable("projects", {
   buildCommand: text("build_command"),
   runCommand: text("run_command"),
   isDogfooding: integer("is_dogfooding", { mode: "boolean" }).default(false),
+  isHidden: integer("is_hidden", { mode: "boolean" }).default(false),
   createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`),
   deletedAt: text("deleted_at"),
 });
@@ -307,6 +308,18 @@ export const sessions = sqliteTable("sessions", {
 
 export type HumanRow = typeof humans.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
+
+// ── NOTIFICATIONS — human @mention alerts ────────────────────────────────────
+export const notifications = sqliteTable("notifications", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  humanId: integer("human_id").notNull().references(() => humans.id, { onDelete: "cascade" }),
+  projectMessageId: integer("project_message_id").references(() => projectMessages.id, { onDelete: "cascade" }),
+  type: text("type").notNull().default("mention"),
+  readAt: text("read_at"),
+  createdAt: text("created_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
+export type NotificationRow = typeof notifications.$inferSelect;
 
 export type PersonaRow = typeof personas.$inferSelect;
 export type ProjectRow = typeof projects.$inferSelect;

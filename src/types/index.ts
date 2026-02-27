@@ -164,6 +164,8 @@ export interface Project {
   localPath?: string;
   buildCommand?: string;
   runCommand?: string;
+  /** Whether the project is hidden from the main project list */
+  isHidden?: boolean;
 }
 
 export interface CommentAttachment {

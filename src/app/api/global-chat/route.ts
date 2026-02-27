@@ -7,7 +7,7 @@ import { createProject } from "@/db/data/projects";
 import { fireDispatch } from "@/lib/dispatch-agent";
 import { getCurrentHuman } from "@/lib/auth";
 import { db } from "@/db";
-import { agentRuns, comments, personas, projects } from "@/db/schema";
+import { agentRuns, comments, notifications, personas, projects } from "@/db/schema";
 import { eq, and, isNull, desc, inArray } from "drizzle-orm";
 
 const API_BASE = process.env.API_BASE || "http://localhost:3080";
@@ -167,6 +167,21 @@ export async function POST(req: Request) {
   });
 
   const trimmed = content.trim();
+
+  // Detect @human mentions and create notifications (excluding the sender)
+  const allHumans = await getHumans();
+  for (const h of allHumans) {
+    if (h.id === authorId) continue; // don't notify yourself
+    const pattern = new RegExp(`@${h.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+    if (pattern.test(trimmed)) {
+      db.insert(notifications).values({
+        humanId: h.id,
+        projectMessageId: msg.id,
+        type: "mention",
+      }).run();
+    }
+  }
+
   const allPersonas = await getGlobalPersonas();
   const sorted = [...allPersonas].sort((a, b) => b.name.length - a.name.length);
   const mentionedIds: string[] = [];

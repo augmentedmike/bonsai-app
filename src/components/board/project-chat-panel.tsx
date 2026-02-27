@@ -86,6 +86,13 @@ export function ProjectChatPanel({
   // Poll messages while open
   usePolling(fetchMessages, open ? 10_000 : null);
 
+  // Mark notifications as read when chat is opened
+  useEffect(() => {
+    if (open) {
+      fetch("/api/notifications", { method: "POST", credentials: "include" }).catch(() => {});
+    }
+  }, [open]);
+
   // Scroll to bottom when chat opens or messages first load
   useEffect(() => {
     if (open && messages.length > 0) {

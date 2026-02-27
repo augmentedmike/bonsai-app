@@ -3,10 +3,11 @@ import { getProjectMessages, createProjectMessage } from "@/db/data/project-mess
 import { getGlobalPersonas } from "@/db/data/personas";
 import { getProjectById } from "@/db/data/projects";
 import { createTicket, getTicketsByProject, updateTicket } from "@/db/data/tickets";
+import { getHumans } from "@/db/data/humans";
 import { fireDispatch } from "@/lib/dispatch-agent";
 import { getCurrentHuman } from "@/lib/auth";
 import { db } from "@/db";
-import { agentRuns, personas } from "@/db/schema";
+import { agentRuns, notifications, personas } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 
 const API_BASE = process.env.API_BASE || "http://localhost:3080";
@@ -84,9 +85,23 @@ export async function POST(
     attachments: attachments && attachments.length > 0 ? JSON.stringify(attachments) : null,
   });
 
+  // Detect @human mentions and create notifications (excluding the sender)
+  const trimmed = content.trim();
+  const allHumans = await getHumans();
+  for (const h of allHumans) {
+    if (h.id === authorId) continue;
+    const pattern = new RegExp(`@${h.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+    if (pattern.test(trimmed)) {
+      db.insert(notifications).values({
+        humanId: h.id,
+        projectMessageId: msg.id,
+        type: "mention",
+      }).run();
+    }
+  }
+
   // Extract @mentions from content
   const projectPersonas = await getGlobalPersonas();
-  const trimmed = content.trim();
 
   // Find mentioned personas (by name or role) — excludes @team (disabled) and humans
   const sorted = [...projectPersonas].sort((a, b) => b.name.length - a.name.length);

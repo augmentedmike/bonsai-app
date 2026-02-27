@@ -44,6 +44,7 @@ function projectFromRow(
     buildCommand: row.buildCommand ?? undefined,
     runCommand: row.runCommand ?? undefined,
     lastActivity: lastActivity ?? row.createdAt ?? undefined,
+    isHidden: row.isHidden ?? false,
   };
 }
 
@@ -205,11 +206,14 @@ export function getProjectBySlug(slug: string): Promise<Project | null> {
   return asAsync(projectFromRow(row, counts.get(row.id) ?? 0));
 }
 
-export function getProjects(): Promise<Project[]> {
+export function getProjects(opts?: { includeHidden?: boolean }): Promise<Project[]> {
+  const where = opts?.includeHidden
+    ? isNull(projects.deletedAt)
+    : and(isNull(projects.deletedAt), sql`(${projects.isHidden} = 0 OR ${projects.isHidden} IS NULL)`);
   const rows = db
     .select()
     .from(projects)
-    .where(isNull(projects.deletedAt))
+    .where(where)
     .all();
   const ids = rows.map((r) => r.id);
   const counts = getTicketCounts(ids);
@@ -218,6 +222,15 @@ export function getProjects(): Promise<Project[]> {
   const activity = getLastActivity(ids);
   const types = getTypeCounts(ids);
   return asAsync(rows.map((r) => projectFromRow(r, counts.get(r.id) ?? 0, statuses.get(r.id), workers.get(r.id), activity.get(r.id), types.get(r.id))));
+}
+
+export function getHiddenProjectCount(): number {
+  const result = db
+    .select({ count: sql<number>`count(*)` })
+    .from(projects)
+    .where(and(isNull(projects.deletedAt), sql`${projects.isHidden} = 1`))
+    .get();
+  return result?.count ?? 0;
 }
 
 export function createProject(data: {

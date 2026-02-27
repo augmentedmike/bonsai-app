@@ -405,6 +405,33 @@ if (existingTables.has("humans")) {
   }
 }
 
+// ── notifications table (self-healing migration) ──────────────────
+if (!existingTables.has("notifications")) {
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS "notifications" (
+      id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+      human_id INTEGER NOT NULL REFERENCES humans(id) ON DELETE CASCADE,
+      project_message_id INTEGER REFERENCES project_messages(id) ON DELETE CASCADE,
+      type TEXT NOT NULL DEFAULT 'mention',
+      read_at TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_notifications_human_id ON notifications (human_id, read_at);
+  `);
+  console.log("[db] Created notifications table");
+}
+
+// ── is_hidden column on projects (self-healing migration) ──────────────────
+{
+  const cols = new Set(
+    (sqlite.prepare("PRAGMA table_info(projects)").all() as { name: string }[]).map((c) => c.name)
+  );
+  if (!cols.has("is_hidden")) {
+    sqlite.exec(`ALTER TABLE projects ADD COLUMN is_hidden INTEGER DEFAULT 0`);
+    console.log("[db] Added is_hidden column to projects");
+  }
+}
+
 // ── Performance indexes (self-healing, idempotent) ──────────────────
 sqlite.exec(`
   CREATE INDEX IF NOT EXISTS idx_tickets_project_id ON tickets (project_id);
