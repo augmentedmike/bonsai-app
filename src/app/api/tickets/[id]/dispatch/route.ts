@@ -623,9 +623,14 @@ export async function POST(
   const isUnmentionedHumanComment = !team && !targetPersonaName && !targetPersonaId && !requestedRole && !!commentContent?.trim();
   if ((team || isUnmentionedHumanComment) && projectPersonas.length > 0) {
     const cwd = ensureWorktree(project, ticketSlug);
-    if (!fs.existsSync(cwd)) {
-      fs.mkdirSync(cwd, { recursive: true });
-      console.warn(`[dispatch] Created missing workspace: ${cwd}`);
+    // Pre-flight check: workspace must have a .git (worktree file or directory)
+    const cwdGit = path.join(cwd, ".git");
+    if (!fs.existsSync(cwdGit)) {
+      console.error(`[dispatch] ABORT: workspace ${cwd} has no .git — worktree provisioning failed`);
+      return NextResponse.json(
+        { error: `Workspace provisioning failed — ${cwd} has no .git. Check project local_path and worktree setup.` },
+        { status: 500 }
+      );
     }
 
     const dispatched: Array<{ id: string; name: string; role: string | null; color: string | null; avatarUrl: string | null }> = [];
@@ -798,10 +803,14 @@ export async function POST(
   // ── Normal Claude CLI agent path ───────────────────────────────────────
   const cwd = ensureWorktree(project, ticketSlug);
 
-  // Ensure workspace exists — create if missing so agent doesn't silently fail
-  if (!fs.existsSync(cwd)) {
-    fs.mkdirSync(cwd, { recursive: true });
-    console.warn(`[dispatch] Created missing workspace: ${cwd}`);
+  // Pre-flight check: workspace must have a .git (worktree file or directory)
+  const cwdGit = path.join(cwd, ".git");
+  if (!fs.existsSync(cwdGit)) {
+    console.error(`[dispatch] ABORT: workspace ${cwd} has no .git — worktree provisioning failed`);
+    return NextResponse.json(
+      { error: `Workspace provisioning failed — ${cwd} has no .git. Check project local_path and worktree setup.` },
+      { status: 500 }
+    );
   }
 
   // Create agent session (include personaId to prevent race conditions with parallel dispatches)
@@ -981,7 +990,7 @@ async function buildAgentSystemPrompt(
     `- If a Read/Glob/Grep call would target a path outside ${projectRoot}, DO NOT make that call. Stop.`,
     `- If a Bash command would access files outside ${projectRoot}, DO NOT run it.`,
     `- If you need to reference the Bonsai webapp code, you CANNOT — that is outside your project.`,
-    "- If your workspace is empty or has only a README, that is NORMAL — this is a new/greenfield project.",
+    "- If your workspace is empty or has only a README, this is ABNORMAL — report this as a provisioning failure immediately. Do NOT proceed as if this is a greenfield project.",
     "- There is other software on this machine (the Bonsai orchestration system, other apps). You are NOT allowed to read them.",
     "",
     "VIOLATION CONSEQUENCES:",
