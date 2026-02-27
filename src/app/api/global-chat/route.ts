@@ -169,11 +169,15 @@ export async function POST(req: Request) {
   const trimmed = content.trim();
 
   // Detect @human mentions and create notifications (excluding the sender)
+  // Matches both full name (@Ryan Bent) and first name (@Ryan)
   const allHumans = await getHumans();
   for (const h of allHumans) {
     if (h.id === authorId) continue; // don't notify yourself
-    const pattern = new RegExp(`@${h.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
-    if (pattern.test(trimmed)) {
+    const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const firstName = h.name.split(" ")[0];
+    const fullPattern = new RegExp(`@${escape(h.name)}\\b`, "i");
+    const firstPattern = new RegExp(`@${escape(firstName)}\\b`, "i");
+    if (fullPattern.test(trimmed) || firstPattern.test(trimmed)) {
       db.insert(notifications).values({
         humanId: h.id,
         projectMessageId: msg.id,
@@ -193,13 +197,19 @@ export async function POST(req: Request) {
     }
   }
 
-  // @operator mention → route to operator explicitly (@team is disabled)
   const isOperator = /@operator\b/i.test(trimmed);
-  // Check if any human name is mentioned (human-to-human messages should not dispatch)
-  const hasHumanMention = allHumans.some((h) => {
-    const pat = new RegExp(`@${h.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
-    return pat.test(trimmed);
-  });
+
+  // Collect all @words in the message, check if any are unrecognized (not a persona, not @operator)
+  // "Ryan", "Mike", first names, or any unknown word → treat as human/unknown → no fallback dispatch
+  const knownNames = new Set([
+    "operator",
+    "augmentedmike",
+    ...allPersonas.map((p) => p.name.toLowerCase()),
+    ...allPersonas.map((p) => p.role?.toLowerCase()).filter(Boolean),
+  ]);
+  const atWords = [...trimmed.matchAll(/@([\w\p{L}-]+)/giu)].map((m) => m[1].toLowerCase());
+  const hasUnrecognizedMention = atWords.some((w) => !knownNames.has(w));
+
   const inboxTicketId = await ensureGlobalInboxTicket(projectId);
 
   if (isOperator) {
@@ -211,7 +221,7 @@ export async function POST(req: Request) {
       silent: true,
     }, "bonsai-chat/operator");
   } else if (mentionedIds.length > 0) {
-    // Named persona @mention → dispatch to each persona
+    // Named AI persona @mention → dispatch to each persona
     for (const personaId of mentionedIds) {
       fireDispatch(API_BASE, inboxTicketId, {
         commentContent: trimmed,
@@ -220,8 +230,8 @@ export async function POST(req: Request) {
         silent: true,
       }, "bonsai-chat/@mention");
     }
-  } else if (!hasHumanMention) {
-    // No mention at all → @operator catches it
+  } else if (!hasUnrecognizedMention) {
+    // No @mention at all → @operator catch-all
     fireDispatch(API_BASE, inboxTicketId, {
       commentContent: trimmed,
       targetRole: "operator",
@@ -229,7 +239,7 @@ export async function POST(req: Request) {
       silent: true,
     }, "bonsai-chat/operator");
   }
-  // else: human-only @mention — notifications already created above, no agent dispatch
+  // else: unrecognized @word (first name, human name, unknown) → no dispatch
 
   return NextResponse.json({ ok: true, message: msg });
 }

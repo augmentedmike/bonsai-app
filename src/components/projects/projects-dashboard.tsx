@@ -46,7 +46,7 @@ function StatusBar({ planning, building, shipped }: { planning: number; building
 }
 
 // ── Main dashboard ─────────────────────────────────────────────────────────
-export function ProjectsDashboard({ initialProjects }: { initialProjects: Project[] }) {
+export function ProjectsDashboard({ initialProjects, initialHiddenCount = 0 }: { initialProjects: Project[]; initialHiddenCount?: number }) {
   const router = useRouter();
   const [projects, setProjects] = useState<Project[]>(initialProjects);
   const [search, setSearch] = useState("");
@@ -60,6 +60,7 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
   const [showAdd, setShowAdd] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const { unread: chatUnread, markRead: markChatRead } = useNotifications();
+  const [hiddenCount, setHiddenCount] = useState(initialHiddenCount);
 
   // Pause/focus/hold state
   const [pauseState, setPauseState] = useState<PauseState | null>(null);
@@ -147,6 +148,14 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
     if (!res.ok) { setDeletingId(null); return; }
     setProjects((prev) => prev.filter((p) => p.id !== id));
     setDeletingId(null); router.refresh();
+  }
+
+  async function handleHide(e: React.MouseEvent, p: Project) {
+    e.stopPropagation();
+    const res = await fetch(`/api/projects/${p.id}/hide`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ hidden: true }) });
+    if (!res.ok) return;
+    setProjects((prev) => prev.filter((proj) => proj.id !== p.id));
+    setHiddenCount((c) => c + 1);
   }
 
   async function handlePause(e: React.MouseEvent, p: Project) {
@@ -486,6 +495,12 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
                               style={{ color: "var(--text-muted)" }}>
                               <IconHand className="w-3.5 h-3.5" />
                             </button>
+                            {/* Hide */}
+                            <button onClick={(e) => handleHide(e, p)} title="Hide project"
+                              className="w-6 h-6 flex-shrink-0 rounded flex items-center justify-center transition-all hover:bg-white/10"
+                              style={{ color: "var(--text-muted)" }}>
+                              <IconEyeSlash className="w-3.5 h-3.5" />
+                            </button>
                             {/* GitHub — always reserve the slot to prevent layout shift */}
                             {p.githubOwner && p.githubRepo ? (
                               <a href={`https://github.com/${p.githubOwner}/${p.githubRepo}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="w-6 h-6 flex-shrink-0 rounded flex items-center justify-center hover:bg-white/10 transition-all" style={{ color: "var(--text-muted)" }} title="GitHub">
@@ -511,6 +526,20 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
               </tbody>
             </table>
           </div>
+
+          {/* Hidden projects footer */}
+          {hiddenCount > 0 && (
+            <div className="px-7 py-3 flex-shrink-0" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent("open-settings", { detail: { section: "hidden-projects" } }))}
+                className="flex items-center gap-1.5 text-xs transition-colors hover:opacity-80"
+                style={{ color: "var(--text-muted)" }}
+              >
+                <IconEyeSlash className="w-3.5 h-3.5" />
+                {hiddenCount} hidden project{hiddenCount !== 1 ? "s" : ""} — manage in Settings
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

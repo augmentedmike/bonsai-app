@@ -69,8 +69,20 @@ export function Sidebar({ userName }: { userName?: string }) {
   const { t } = useLanguage();
   const { user } = useUser();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialSection, setSettingsInitialSection] = useState<string | undefined>(undefined);
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeRunCount, setActiveRunCount] = useState(0);
+
+  // Listen for open-settings events dispatched from other components (e.g. projects dashboard footer)
+  useEffect(() => {
+    function onOpenSettings(e: Event) {
+      const detail = (e as CustomEvent<{ section?: string }>).detail;
+      setSettingsInitialSection(detail?.section);
+      setSettingsOpen(true);
+    }
+    window.addEventListener("open-settings", onOpenSettings);
+    return () => window.removeEventListener("open-settings", onOpenSettings);
+  }, []);
 
   const activeSlug = getSlugFromPath(pathname);
   const subPage = getSubPage(pathname);
@@ -232,7 +244,7 @@ export function Sidebar({ userName }: { userName?: string }) {
         </div>
       </div>
 
-      <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsPanel open={settingsOpen} onClose={() => { setSettingsOpen(false); setSettingsInitialSection(undefined); }} initialSection={settingsInitialSection} />
     </aside>
   );
 }

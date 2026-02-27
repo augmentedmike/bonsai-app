@@ -90,8 +90,11 @@ export async function POST(
   const allHumans = await getHumans();
   for (const h of allHumans) {
     if (h.id === authorId) continue;
-    const pattern = new RegExp(`@${h.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
-    if (pattern.test(trimmed)) {
+    const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const firstName = h.name.split(" ")[0];
+    const fullPattern = new RegExp(`@${escape(h.name)}\\b`, "i");
+    const firstPattern = new RegExp(`@${escape(firstName)}\\b`, "i");
+    if (fullPattern.test(trimmed) || firstPattern.test(trimmed)) {
       db.insert(notifications).values({
         humanId: h.id,
         projectMessageId: msg.id,
@@ -115,11 +118,16 @@ export async function POST(
   }
 
   const isOperator = /@operator\b/i.test(trimmed);
-  // Human-only @mention → notifications only, no agent dispatch
-  const hasHumanMention = allHumans.some((h) => {
-    const pat = new RegExp(`@${h.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
-    return pat.test(trimmed);
-  });
+
+  // Any @word not matching a known persona or @operator = unrecognized (human/unknown) → no fallback dispatch
+  const knownNames = new Set([
+    "operator",
+    "augmentedmike",
+    ...projectPersonas.map((p) => p.name.toLowerCase()),
+    ...projectPersonas.map((p) => p.role?.toLowerCase()).filter(Boolean),
+  ]);
+  const atWords = [...trimmed.matchAll(/@([\w\p{L}-]+)/giu)].map((m) => m[1].toLowerCase());
+  const hasUnrecognizedMention = atWords.some((w) => !knownNames.has(w));
 
   const inboxTicketId = await ensureInboxTicket(projectId);
 
@@ -141,8 +149,8 @@ export async function POST(
         silent: true,
       }, `project-chat/@mention`);
     }
-  } else if (!hasHumanMention) {
-    // Nothing mentioned → @operator catches it
+  } else if (!hasUnrecognizedMention) {
+    // No @mention at all → @operator catch-all
     fireDispatch(API_BASE, inboxTicketId, {
       commentContent: trimmed,
       targetRole: "operator",
@@ -150,7 +158,7 @@ export async function POST(
       silent: true,
     }, "project-chat/operator");
   }
-  // else: human-only @mention — notifications already sent, no agent dispatch
+  // else: unrecognized @word → human/unknown mention, no dispatch
 
   return NextResponse.json({ ok: true, message: msg });
 }

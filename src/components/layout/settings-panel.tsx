@@ -7,7 +7,7 @@ import { VoiceTextarea } from "@/components/voice-textarea";
 import { useLanguage } from "@/i18n/language-context";
 import type { Locale } from "@/i18n/translations";
 
-type Section = "preferences" | "api-keys" | "prompts" | "roles" | "humans";
+type Section = "preferences" | "api-keys" | "prompts" | "roles" | "humans" | "hidden-projects";
 
 interface SettingsData {
   name: string;
@@ -18,9 +18,11 @@ interface SettingsData {
 export function SettingsPanel({
   open,
   onClose,
+  initialSection,
 }: {
   open: boolean;
   onClose: () => void;
+  initialSection?: string;
 }) {
   const { t, locale, setLocale } = useLanguage();
   const [activeSection, setActiveSection] = useState<Section>("preferences");
@@ -36,11 +38,21 @@ export function SettingsPanel({
     { id: "prompts", label: t.settings.prompts },
     { id: "roles", label: t.settings.roles },
     { id: "humans", label: "Humans" },
+    { id: "hidden-projects", label: "Hidden Projects" },
   ];
 
   useEffect(() => {
     queueMicrotask(() => setMounted(true));
   }, []);
+
+  // Jump to a specific section when opened via external trigger (e.g. projects dashboard)
+  useEffect(() => {
+    if (open && initialSection) {
+      setActiveSection(initialSection as Section);
+    } else if (!open) {
+      setActiveSection("preferences");
+    }
+  }, [open, initialSection]);
 
   useEffect(() => {
     if (!open) return;
@@ -176,6 +188,8 @@ export function SettingsPanel({
             <RolesSection />
           ) : activeSection === "humans" ? (
             <HumansSection />
+          ) : activeSection === "hidden-projects" ? (
+            <HiddenProjectsSection />
           ) : (
             <PromptsSection />
           )}
@@ -1660,6 +1674,95 @@ function HumansSection() {
           </button>
         </form>
       </div>
+    </div>
+  );
+}
+
+// ── Hidden Projects Section ────────────────────────────────────────────────
+function HiddenProjectsSection() {
+  const [projects, setProjects] = useState<{ id: string; name: string; slug: string; description?: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [unhiding, setUnhiding] = useState<string | null>(null);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/projects?includeHidden=true");
+      if (res.ok) {
+        const data = await res.json();
+        setProjects((data.projects ?? []).filter((p: { isHidden?: boolean }) => p.isHidden));
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function handleUnhide(id: string) {
+    setUnhiding(id);
+    try {
+      await fetch(`/api/projects/${id}/hide`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hidden: false }),
+      });
+      setProjects((prev) => prev.filter((p) => p.id !== id));
+    } finally {
+      setUnhiding(null);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div>
+        <h3 className="text-base font-semibold mb-1" style={{ color: "var(--text-primary)" }}>
+          Hidden Projects
+        </h3>
+        <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+          Hidden projects are excluded from the main list. Unhide to restore them.
+        </p>
+      </div>
+
+      {loading ? (
+        <p className="text-sm" style={{ color: "var(--text-muted)" }}>Loading…</p>
+      ) : projects.length === 0 ? (
+        <div
+          className="rounded-lg px-4 py-6 text-center text-sm"
+          style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-medium)", color: "var(--text-muted)" }}
+        >
+          No hidden projects.
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {projects.map((p) => (
+            <div
+              key={p.id}
+              className="flex items-center justify-between rounded-lg px-4 py-3"
+              style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-medium)" }}
+            >
+              <div className="flex flex-col gap-0.5 min-w-0">
+                <span className="text-sm font-medium truncate" style={{ color: "var(--text-primary)" }}>{p.name}</span>
+                {p.description && (
+                  <span className="text-xs truncate" style={{ color: "var(--text-muted)" }}>{p.description}</span>
+                )}
+              </div>
+              <button
+                onClick={() => handleUnhide(p.id)}
+                disabled={unhiding === p.id}
+                className="ml-4 flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-40"
+                style={{ backgroundColor: "rgba(91,141,249,0.12)", color: "var(--accent-blue)", border: "1px solid rgba(91,141,249,0.25)" }}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.964-7.178z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                {unhiding === p.id ? "Unhiding…" : "Unhide"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
