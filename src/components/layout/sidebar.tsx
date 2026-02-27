@@ -190,21 +190,31 @@ export function Sidebar({ userName }: { userName?: string }) {
           <NavIcon icon="team" active={subPage === "team" || pathname === "/team"} />
         </Link>
 
-        {/* Project-scoped nav items */}
-        {activeSlug && projectNavItems.map((item) => {
-          const isActive = item.match(subPage);
-          return (
-            <button
-              key={item.icon}
-              onClick={() => navTo(item.subPath)}
-              className="group relative w-10 h-10 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5"
-              style={isActive ? { backgroundColor: "rgba(91, 141, 249, 0.1)" } : undefined}
-              title={item.label}
-            >
-              <NavIcon icon={item.icon} active={isActive} />
-            </button>
-          );
-        })}
+        {/* Project-scoped nav items — toolbar group */}
+        {activeSlug && (
+          <div
+            className="flex flex-col items-center gap-1 w-full px-1 py-1.5 rounded-lg mt-1"
+            style={{
+              backgroundColor: "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(255,255,255,0.07)",
+            }}
+          >
+            {projectNavItems.map((item) => {
+              const isActive = item.match(subPage);
+              return (
+                <button
+                  key={item.icon}
+                  onClick={() => navTo(item.subPath)}
+                  className="group relative w-10 h-10 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5"
+                  style={isActive ? { backgroundColor: "rgba(91, 141, 249, 0.1)" } : undefined}
+                  title={item.label}
+                >
+                  <NavIcon icon={item.icon} active={isActive} />
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Avatar — bottom of nav list */}
         <div className="relative mt-2">
