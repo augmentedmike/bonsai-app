@@ -15,6 +15,8 @@
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/status-ALPHA-orange?style=for-the-badge" alt="Alpha Status">
+  <br>
   <a href="https://github.com/augmentedmike/bonsai-app/stargazers"><img src="https://img.shields.io/github/stars/augmentedmike/bonsai-app" alt="GitHub Stars"></a>
   <a href="https://github.com/augmentedmike/bonsai-app/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License"></a>
   <a href="https://github.com/augmentedmike/bonsai-app/pulse"><img src="https://img.shields.io/github/commit-activity/m/augmentedmike/bonsai-app" alt="Commits per month"></a>
@@ -28,6 +30,9 @@ Bonsai is a kanban board where AI agents — called Sims — do the actual work.
 Write requirements in plain English. Sims handle research, planning, implementation, and deployment end-to-end. Customize each Sim with a name, skills, personality, and role — then watch them collaborate through ticket threads, just like a real engineering team.
 
 A live activity dashboard tracks what every Sim is doing, time spent, and costs in real-time.
+
+> [!WARNING]
+> **Bonsai is alpha software.** It mostly works and it's getting better every day — but there are bugs, rough edges, and features still in progress. We're building Bonsai with Bonsai, and we'd love for you to do the same. Every fork starts with its own project in your board when you install. File issues, submit PRs, or just kick the tires — early adopters shape the product.
 
 <p align="center">
   <img src="./public/design-concepts/comic-splash.jpg" alt="Bonsai — Assemble Your AI Squad" width="100%">
