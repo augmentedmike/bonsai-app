@@ -182,12 +182,12 @@ export function Sidebar({ userName }: { userName?: string }) {
 
         {/* Global team — always visible */}
         <Link
-          href={activeSlug ? `/p/${activeSlug}/team` : "/workers"}
+          href={activeSlug ? `/p/${activeSlug}/team` : "/team"}
           title="Team"
           className="group relative w-10 h-10 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5"
-          style={(subPage === "team" || pathname === "/workers") ? { backgroundColor: "rgba(91, 141, 249, 0.1)" } : undefined}
+          style={(subPage === "team" || pathname === "/team") ? { backgroundColor: "rgba(91, 141, 249, 0.1)" } : undefined}
         >
-          <NavIcon icon="team" active={subPage === "team" || pathname === "/workers"} />
+          <NavIcon icon="team" active={subPage === "team" || pathname === "/team"} />
         </Link>
 
         {/* Project-scoped nav items */}
