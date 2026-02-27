@@ -195,9 +195,23 @@ export async function POST(req: Request) {
 
   // @operator mention → route to operator explicitly (@team is disabled)
   const isOperator = /@operator\b/i.test(trimmed);
+  // Check if any human name is mentioned (human-to-human messages should not dispatch)
+  const hasHumanMention = allHumans.some((h) => {
+    const pat = new RegExp(`@${h.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+    return pat.test(trimmed);
+  });
   const inboxTicketId = await ensureGlobalInboxTicket(projectId);
 
-  if (!isOperator && mentionedIds.length > 0) {
+  if (isOperator) {
+    // Explicit @operator → always dispatch to operator
+    fireDispatch(API_BASE, inboxTicketId, {
+      commentContent: trimmed,
+      targetRole: "operator",
+      conversational: true,
+      silent: true,
+    }, "bonsai-chat/operator");
+  } else if (mentionedIds.length > 0) {
+    // Named persona @mention → dispatch to each persona
     for (const personaId of mentionedIds) {
       fireDispatch(API_BASE, inboxTicketId, {
         commentContent: trimmed,
@@ -206,9 +220,8 @@ export async function POST(req: Request) {
         silent: true,
       }, "bonsai-chat/@mention");
     }
-  } else {
-    // No persona mention (or explicit @operator) — @operator owns it
-    // Human mentions (@Mike, @Ryan) are stored only, no dispatch
+  } else if (!hasHumanMention) {
+    // No mention at all → @operator catches it
     fireDispatch(API_BASE, inboxTicketId, {
       commentContent: trimmed,
       targetRole: "operator",
@@ -216,6 +229,7 @@ export async function POST(req: Request) {
       silent: true,
     }, "bonsai-chat/operator");
   }
+  // else: human-only @mention — notifications already created above, no agent dispatch
 
   return NextResponse.json({ ok: true, message: msg });
 }

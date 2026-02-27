@@ -114,14 +114,25 @@ export async function POST(
     }
   }
 
-  // @operator mention → always route to operator (same as no-mention fallback)
   const isOperator = /@operator\b/i.test(trimmed);
+  // Human-only @mention → notifications only, no agent dispatch
+  const hasHumanMention = allHumans.some((h) => {
+    const pat = new RegExp(`@${h.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+    return pat.test(trimmed);
+  });
 
-  // Dispatch via inbox ticket — route to mentioned personas, or @operator by default
-  // @team is disabled — human mentions (@Mike, @Ryan) are stored only, no dispatch
   const inboxTicketId = await ensureInboxTicket(projectId);
 
-  if (!isOperator && mentionedIds.length > 0) {
+  if (isOperator) {
+    // Explicit @operator → always dispatch to operator
+    fireDispatch(API_BASE, inboxTicketId, {
+      commentContent: trimmed,
+      targetRole: "operator",
+      conversational: true,
+      silent: true,
+    }, "project-chat/operator");
+  } else if (mentionedIds.length > 0) {
+    // Named AI persona → dispatch to each
     for (const personaId of mentionedIds) {
       fireDispatch(API_BASE, inboxTicketId, {
         commentContent: trimmed,
@@ -130,8 +141,8 @@ export async function POST(
         silent: true,
       }, `project-chat/@mention`);
     }
-  } else {
-    // No persona mention (or explicit @operator) — route to @operator
+  } else if (!hasHumanMention) {
+    // Nothing mentioned → @operator catches it
     fireDispatch(API_BASE, inboxTicketId, {
       commentContent: trimmed,
       targetRole: "operator",
@@ -139,6 +150,7 @@ export async function POST(
       silent: true,
     }, "project-chat/operator");
   }
+  // else: human-only @mention — notifications already sent, no agent dispatch
 
   return NextResponse.json({ ok: true, message: msg });
 }
