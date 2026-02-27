@@ -22,20 +22,20 @@
 
 <p align="center">
   <a href="https://github.com/augmentedmike/bonsai-app/stargazers"><img src="https://img.shields.io/github/stars/augmentedmike/bonsai-app" alt="GitHub Stars"></a>
-  <a href="https://github.com/augmentedmike/bonsai-app/blob/main/LICENSE"><img src="https://img.shields.io/github/license/augmentedmike/bonsai-app" alt="License"></a>
+  <a href="https://github.com/augmentedmike/bonsai-app/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License"></a>
   <a href="https://github.com/augmentedmike/bonsai-app/pulse"><img src="https://img.shields.io/github/commit-activity/m/augmentedmike/bonsai-app" alt="Commits per month"></a>
   <a href="https://github.com/augmentedmike/bonsai-app/issues"><img src="https://img.shields.io/github/issues/augmentedmike/bonsai-app" alt="Open issues"></a>
 </p>
 
 ---
 
-Bonsai is a ticket-based development environment that turns AI agents into a functioning engineering team. File a ticket. Agents research the codebase, plan the approach, write the code, run the tests, and open a pull request — without you touching the keyboard.
+Bonsai is a ticket-based development environment that turns AI agents into a functioning engineering team. File a ticket. Agents research the codebase, plan the approach, write the code, and open a pull request — without you touching the keyboard.
 
 Every ticket moves through three phases with human approval gates:
 
 1. **Research** — agents explore the codebase, identify constraints, document findings
 2. **Planning** — agents design the implementation, present it for review
-3. **Implementation** — agents write code, run tests, submit a pull request
+3. **Implementation** — agents write code and submit a pull request
 
 No black boxes. You review every phase before agents move forward.
 
@@ -80,37 +80,6 @@ Open [http://localhost:3080](http://localhost:3080) and you're in.
 
 For the full setup walkthrough, see [DEVELOPER_SETUP.md](./DEVELOPER_SETUP.md).
 
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Framework | Next.js 16, React 19, TypeScript 5 |
-| Database | SQLite via better-sqlite3, Drizzle ORM |
-| AI Runtime | Anthropic Claude SDK, Claude Agent SDK |
-| Security | age-encryption for credential vault |
-| Styling | Tailwind CSS 4 |
-| Testing | Vitest |
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────┐
-│                  Bonsai Web UI                   │
-│              Next.js 16 (App Router)             │
-├─────────────┬──────────────┬────────────────────┤
-│  Ticket UI  │  Board View  │  Onboarding Wizard │
-├─────────────┴──────────────┴────────────────────┤
-│                   API Layer                      │
-│         /api/tickets  /api/settings  etc.        │
-├─────────────────────────────────────────────────┤
-│               Agent Runtime                      │
-│    Claude Agent SDK  ·  Multi-Persona Dispatch   │
-├─────────────────────────────────────────────────┤
-│              Data & Security                     │
-│   SQLite (Drizzle ORM)  ·  age-encrypted vault   │
-└─────────────────────────────────────────────────┘
-```
-
 <details>
 <summary><strong>Project Structure</strong></summary>
 
@@ -141,8 +110,6 @@ For deep-dive architecture docs, see [ARCHITECTURE_GUIDE.md](./ARCHITECTURE_GUID
 npm run dev              # Start dev server (port 3080)
 npm run build            # Production build
 npm run lint             # ESLint
-npm run test             # Vitest
-npm run test:coverage    # Coverage report
 npm run type-check       # TypeScript checks
 npm run db:push          # Apply schema changes
 npm run db:seed          # Seed sample data
@@ -156,7 +123,7 @@ Contributions welcome — bug fixes, features, docs. See [CONTRIBUTING.md](./CON
 1. Fork the repo
 2. Create a feature branch (`git checkout -b feature/your-feature`)
 3. Make your changes
-4. Run tests (`npm run test`) and lint (`npm run lint`)
+4. Run lint (`npm run lint`)
 5. Open a pull request
 
 Found a bug? [Open an issue](https://github.com/augmentedmike/bonsai-app/issues).
@@ -170,8 +137,8 @@ Found a bug? [Open an issue](https://github.com/augmentedmike/bonsai-app/issues)
 
 Bonsai is a core component of **[Mini Claw](https://miniclaw.bot)** — an autonomous development platform where AI agents build, ship, and operate software around the clock.
 
-Built by [Mike O'Neal](https://usebonsai.ai).
+Built by [AugmentedMike](https://usebonsai.ai) — an AI Sim/AGI.
 
 ## License
 
-MIT — see [LICENSE](./LICENSE) for details.
+Apache 2.0 — see [LICENSE](./LICENSE) for details.
