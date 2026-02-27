@@ -547,7 +547,7 @@ export function ProjectsDashboard({ initialProjects, initialHiddenCount = 0 }: {
       <ProjectChatPanel
         projectId="global"
         chatPath="/api/global-chat"
-        title="Bonsai Chat"
+        title="Operator Chat"
         personas={[]}
         humanMembers={[
           { name: "Mike", color: "#3b82f6" },
