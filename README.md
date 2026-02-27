@@ -1,263 +1,144 @@
-# Bonsai Developer OS
+<p align="center">
+  <a href="https://usebonsai.org">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="public/bonsai-os-logo-d.png">
+      <img alt="Bonsai" src="public/bonsai-os-logo-l.png" height="128">
+    </picture>
+  </a>
+</p>
 
-An AI-powered development environment that automates software engineering workflows through autonomous agent teams.
+<h1 align="center">Bonsai</h1>
+
+<p align="center">
+  Autonomous AI agents that ship software while you sleep.
+</p>
+
+<p align="center">
+  <a href="https://usebonsai.org"><strong>Website</strong></a> ·
+  <a href="https://miniclaw.bot"><strong>Mini Claw</strong></a> ·
+  <a href="https://github.com/augmentedmike/bonsai-app/issues"><strong>Issues</strong></a> ·
+  <a href="./docs/"><strong>Docs</strong></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/augmentedmike/bonsai-app/stargazers"><img src="https://img.shields.io/github/stars/augmentedmike/bonsai-app" alt="GitHub Stars"></a>
+  <a href="https://github.com/augmentedmike/bonsai-app/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License"></a>
+  <a href="https://github.com/augmentedmike/bonsai-app/pulse"><img src="https://img.shields.io/github/commit-activity/m/augmentedmike/bonsai-app" alt="Commits per month"></a>
+  <a href="https://github.com/augmentedmike/bonsai-app/issues"><img src="https://img.shields.io/github/issues/augmentedmike/bonsai-app" alt="Open issues"></a>
+</p>
 
 ---
 
-## What is Bonsai?
+Bonsai is a ticket-based development environment that turns AI agents into a functioning engineering team. File a ticket. Agents research the codebase, plan the approach, write the code, and open a pull request — without you touching the keyboard.
 
-Bonsai Developer OS is a ticket-based development assistant that uses AI agents to help teams build software faster. It orchestrates autonomous agents through a three-phase workflow:
+Every ticket moves through three phases with human approval gates:
 
-1. **Research Phase** - Agents explore the codebase and gather context
-2. **Planning Phase** - Agents create detailed implementation plans
-3. **Implementation Phase** - Agents write code, run tests, and create pull requests
+1. **Research** — agents explore the codebase, identify constraints, document findings
+2. **Planning** — agents design the implementation, present it for review
+3. **Implementation** — agents write code and submit a pull request
 
-Each ticket is handled by AI personas with distinct roles (researcher, planner, developer, etc.), working collaboratively like a real development team. Bonsai integrates with GitHub for automated workflows and uses an encrypted vault for secure credential storage.
+No black boxes. You review every phase before agents move forward.
 
-**Key capabilities:**
-- 🤖 **Autonomous execution** via Claude Agent SDK
-- 📋 **Three-phase ticket workflow** with human approval gates
-- 🔐 **Encrypted credential vault** using age-encryption
-- 💾 **SQLite-based project state** for reliable persistence
-- 🔄 **Heartbeat-based automation** for continuous progress
-- 👥 **Multi-persona agent teams** with specialized skills
-- 🔗 **GitHub integration** for repository operations
+![Bonsai Dashboard](public/bonsai-os-logo-d.png)
 
----
+## Key Features
+
+- **Multi-Agent Team** — specialized roles (researcher, planner, developer, designer, writer) that collaborate like a real engineering team
+- **Three-Phase Workflow** — Research → Plan → Implement, with human gates between each phase
+- **Encrypted Vault** — API keys and tokens stored with [age encryption](https://age-encryption.org/), never in plaintext
+- **Heartbeat Engine** — continuous progress automation that drives tickets forward without manual dispatch
+- **GitHub Integration** — automated repo operations, branch management, and pull request creation
+- **Local-First** — SQLite database, no cloud dependency, runs entirely on your machine
+- **Built on Claude** — powered by the [Claude Agent SDK](https://docs.anthropic.com/en/docs/agents-and-tools/claude-agent-sdk) and [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code)
 
 ## Quick Start
 
-**Prerequisites:** Node.js 22.x+, Claude CLI, Anthropic API key
+> **Prerequisites:** Node.js 22+, [Claude CLI](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code), and an Anthropic API key or Claude Max subscription.
 
 ```bash
-# Clone and navigate to webapp
-git clone <repository-url>
-cd development/bonsai/webapp
+git clone https://github.com/augmentedmike/bonsai-app.git
+cd bonsai-app
 
-# Build agent package (required dependency)
-cd ../agent && npm install && npm run build && npm link
+# Build the agent package
+cd agent && npm install && npm run build && npm link && cd ..
 
-# Setup webapp
-cd ../webapp
-npm install
-npm link @bonsai/agent
+# Install dependencies
+npm install && npm link @bonsai/agent
 
 # Configure environment
 cp .env.development .env.local
-# Edit .env.local - add your ANTHROPIC_API_KEY
+# Edit .env.local — add your ANTHROPIC_API_KEY
 
-# Initialize database
-npm run db:push
-npm run db:reset-test
+# Initialize the database
+npm run db:push && npm run db:seed
 
-# Start development server
+# Start
 npm run dev
 ```
 
-**For detailed setup instructions**, see [DEVELOPER_SETUP.md](./DEVELOPER_SETUP.md) (recommended for first-time setup).
+Open [http://localhost:3080](http://localhost:3080) and you're in.
 
----
+For the full setup walkthrough, see [DEVELOPER_SETUP.md](./DEVELOPER_SETUP.md).
 
-## Documentation
-
-### Getting Started
-- **[DEVELOPER_SETUP.md](./DEVELOPER_SETUP.md)** - Complete first-time setup guide with troubleshooting
-- **[ARCHITECTURE_GUIDE.md](./ARCHITECTURE_GUIDE.md)** - System architecture and design overview
-- **[CONTRIBUTING.md](./CONTRIBUTING.md)** - Development workflow and coding guidelines
-- **[TROUBLESHOOTING.md](./TROUBLESHOOTING.md)** - Common issues and solutions
-
-### Architecture Documentation
-The `docs/` directory contains detailed technical specifications:
-
-- **[docs/02-technical-architecture.md](./docs/02-technical-architecture.md)** - System design rationale
-- **[docs/12-technology-stack.md](./docs/12-technology-stack.md)** - Technology decisions and tradeoffs
-- **[docs/13-agent-runtime.md](./docs/13-agent-runtime.md)** - How agents execute and communicate
-- **[docs/15-agent-teams.md](./docs/15-agent-teams.md)** - Multi-agent coordination patterns
-- **[docs/05-onboarding-wizard.md](./docs/05-onboarding-wizard.md)** - User onboarding flow (end-users)
-
-Browse `docs/` for 15+ additional architecture documents covering every aspect of the system.
-
----
-
-## Technology Stack
-
-### Core Framework
-- **Next.js 16** (App Router) - Full-stack React framework
-- **React 19** - UI library with React Compiler for optimizations
-- **TypeScript 5** - Type-safe development with strict mode
-
-### Data & State
-- **Drizzle ORM** - Type-safe SQL query builder
-- **better-sqlite3** - Fast, embedded SQLite database
-- **SQLite** - Local-first database for projects, tickets, and state
-
-### AI & Agents
-- **Anthropic Claude SDK** - Claude API integration
-- **Claude Agent SDK** - Agent execution runtime
-- **Claude CLI** - Command-line interface for agent dispatch
-
-### Security
-- **age-encryption** - Public-key cryptography for credential vault
-- **Encrypted vault** - Secure storage for API keys and tokens
-
-### Styling & UI
-- **Tailwind CSS 4** - Utility-first CSS framework
-- **Geist Font** - Typography optimized for code and interfaces
-
-For detailed technology decisions and rationale, see [docs/12-technology-stack.md](./docs/12-technology-stack.md).
-
----
-
-## Project Structure
+<details>
+<summary><strong>Project Structure</strong></summary>
 
 ```
-webapp/
+bonsai-app/
 ├── src/
-│   ├── app/              # Next.js App Router pages and API routes
-│   │   ├── api/          # Backend API endpoints
-│   │   │   ├── tickets/  # Ticket management and agent dispatch
-│   │   │   └── settings/ # API key and vault management
-│   │   ├── onboard/      # User onboarding wizard
-│   │   └── tickets/      # Ticket UI pages
+│   ├── app/              # Next.js pages and API routes
+│   │   ├── api/          # Backend endpoints
+│   │   ├── board/        # Kanban board view
+│   │   ├── activity/     # Activity feed
+│   │   └── onboard/      # First-run onboarding
 │   ├── components/       # React components
-│   ├── db/               # Database schema, migrations, seed data
-│   │   ├── schema.ts     # Drizzle ORM schema definitions
-│   │   ├── index.ts      # Database connection
-│   │   └── seed.ts       # Sample data for development
-│   └── lib/              # Shared utilities
-│       ├── vault.ts      # Encrypted credential storage
-│       └── prompt-builder.ts # Agent prompt construction
-├── scripts/              # Automation scripts
-│   └── heartbeat-dispatch.ts # Automated three-phase workflow
-└── public/               # Static assets
-
-agent/                    # Separate package (@bonsai/agent)
-├── src/
-│   └── roles/            # Agent role definitions
-│       ├── researcher.ts # Research phase agent
-│       ├── planner.ts    # Planning phase agent
-│       └── developer.ts  # Implementation phase agent
-└── dist/                 # Compiled TypeScript
-
-docs/                     # Architecture documentation (15+ docs)
+│   ├── db/               # Schema, queries, seeds
+│   └── lib/              # Core utilities (dispatch, vault, prompts)
+├── scripts/              # Automation (heartbeat, dispatch)
+├── prompts/              # Agent role definitions and templates
+├── agent/                # @bonsai/agent package
+└── docs/                 # Architecture docs
 ```
 
----
+</details>
 
-## Development Commands
+For deep-dive architecture docs, see [ARCHITECTURE_GUIDE.md](./ARCHITECTURE_GUIDE.md) and the [docs/](./docs/) directory.
+
+## Development
 
 ```bash
-# Development server with hot reload
-npm run dev
-
-# Type checking
-npm run type-check
-
-# Linting
-npm run lint
-
-# Database operations
-npm run db:push        # Apply schema changes
-npm run db:seed        # Add sample data
-npm run db:reset-test  # Full reset with comprehensive test data
-
-# Build for production
-npm run build
-
-# Start production server
-npm start
+npm run dev              # Start dev server (port 3080)
+npm run build            # Production build
+npm run lint             # ESLint
+npm run type-check       # TypeScript checks
+npm run db:push          # Apply schema changes
+npm run db:seed          # Seed sample data
+npm run db:studio        # Drizzle Studio (database UI)
 ```
-
----
-
-## Database Management
-
-Bonsai uses SQLite with environment-based file selection:
-
-- **Development:** `bonsai-dev.db` (when `BONSAI_ENV=dev`)
-- **Production:** `bonsai.db` (when `BONSAI_ENV=production`)
-
-**Inspect database:**
-```bash
-# Web UI (Drizzle Studio)
-npx drizzle-kit studio
-
-# CLI
-sqlite3 bonsai-dev.db
-.tables
-SELECT * FROM tickets;
-```
-
----
-
-## Agent Execution
-
-Agents run as detached processes using the Claude CLI:
-
-1. **Dispatch** - User triggers agent via UI or API
-2. **Session creation** - Directory created at `~/.bonsai/sessions/{ticketId}-agent-{timestamp}/`
-3. **Execution** - Agent runs autonomously with phase-specific tool restrictions
-4. **Progress updates** - Agent posts updates via webhook to `/api/tickets/[id]/report`
-5. **Completion** - Final output posted to `/api/tickets/[id]/agent-complete`
-
-**Watch agent progress:**
-```bash
-# List session directories
-ls -la ~/.bonsai/sessions/
-
-# Read agent output
-cat ~/.bonsai/sessions/tkt_*-agent-*/output.md
-
-# Check error logs
-cat ~/.bonsai/sessions/tkt_*-agent-*/stderr.log
-```
-
----
 
 ## Contributing
 
-We welcome contributions! Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for:
+Contributions welcome — bug fixes, features, docs. See [CONTRIBUTING.md](./CONTRIBUTING.md) for code style, testing, and architecture patterns.
 
-- Development workflow
-- How to add features (with file locations)
-- Testing strategy
-- Code style and patterns
-- Pull request guidelines
+1. Fork the repo
+2. Create a feature branch (`git checkout -b feature/your-feature`)
+3. Make your changes
+4. Run lint (`npm run lint`)
+5. Open a pull request
 
-**Found a bug or have a question?**
-- File an issue: [GitHub Issues](https://github.com/coderaugment/bonsai-app/issues)
-- Check existing documentation: `docs/` directory
-- Review troubleshooting guide: [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)
+Found a bug? [Open an issue](https://github.com/augmentedmike/bonsai-app/issues).
 
----
+## Community & Support
 
-## Contributors
+- [GitHub Issues](https://github.com/augmentedmike/bonsai-app/issues) — bug reports and feature requests
+- [GitHub Discussions](https://github.com/augmentedmike/bonsai-app/discussions) — questions, ideas, and show & tell
 
-<div align="center">
-  <img src="public/mike-portrait.png" alt="Mike O'Neal" width="200" style="border-radius: 10px;" />
-  <br />
-  <strong>Mike O'Neal</strong>
-  <br />
-  Creator & Lead Developer
-</div>
+## Who Built This
 
----
+Bonsai is a core component of **[Mini Claw](https://miniclaw.bot)** — an autonomous development platform where AI agents build, ship, and operate software around the clock.
+
+Built by [AugmentedMike](https://usebonsai.org) — an AI Sim/AGI.
 
 ## License
 
-[License information here]
-
----
-
-## Links
-
-- **Documentation:** [docs/](./docs/)
-- **Claude CLI:** https://claude.ai/cli
-- **Anthropic Console:** https://console.anthropic.com/
-- **Repository:** https://github.com/coderaugment/bonsai-app
-
----
-
-**Last updated:** February 2026
-
-If you find errors or outdated information, please update this document and submit a pull request. Documentation is most valuable when it's accurate and current.
+Apache 2.0 — see [LICENSE](./LICENSE) for details.
