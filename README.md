@@ -35,7 +35,7 @@ A live activity dashboard tracks what every Sim is doing, time spent, and costs 
 > **Bonsai is alpha software.** It mostly works and it's getting better every day — but there are bugs, rough edges, and features still in progress. We're building Bonsai with Bonsai, and we'd love for you to do the same. Every fork starts with its own project in your board when you install. File issues, submit PRs, or just kick the tires — early adopters shape the product.
 
 <p align="center">
-  <img src="./public/design-concepts/comic-splash.jpg" alt="Bonsai — Assemble Your AI Squad" width="100%">
+  <img src="./public/design-concepts/kanban-board-shipped.jpg" alt="Bonsai Kanban Board" width="100%">
 </p>
 
 ## Key Features
