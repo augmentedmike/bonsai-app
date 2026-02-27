@@ -16,6 +16,7 @@ import { logAuditEvent } from "@/db/data/audit";
 import { insertAgentRun, getLastCompletedRunForPhase } from "@/db/data/agent-runs";
 import { getRecentProjectMessagesFormatted } from "@/db/data/project-messages";
 import { isPaused, pauseRemainingMs, projectPauseKey } from "@/lib/credit-pause";
+import { syncBranchWithMain, isBranchSyncedWithMain } from "@/lib/branch-sync";
 import { getOAuthTokenForDispatch } from "@/app/api/auth/reauth/route";
 import { getMaxAgents, getDailyBudget } from "@/app/api/settings/resources/route";
 import { getTodaySpendUsd } from "@/db/data/agent-runs";
@@ -121,15 +122,22 @@ function resolveProjectRoot(project: { githubRepo: string | null; slug: string; 
   return path.join(PROJECTS_DIR, project.githubRepo || project.slug);
 }
 
+type WorktreeResult = {
+  path: string;
+  syncStatus?: "up-to-date" | "synced" | "conflict" | "error";
+  conflictFiles?: string[];
+  syncError?: string;
+};
+
 function ensureWorktree(
   project: { githubRepo: string | null; slug: string; localPath: string | null },
   ticketSlug: string
-): string {
+): WorktreeResult {
   const mainRepo = resolveMainRepo(project);
-  if (!fs.existsSync(mainRepo)) return mainRepo;
+  if (!fs.existsSync(mainRepo)) return { path: mainRepo };
 
   const gitDir = path.join(mainRepo, ".git");
-  if (!fs.existsSync(gitDir)) return mainRepo;
+  if (!fs.existsSync(gitDir)) return { path: mainRepo };
 
   // Worktrees live at {projectRoot}/worktrees/{ticketSlug}
   const projectRoot = resolveProjectRoot(project);
@@ -137,7 +145,20 @@ function ensureWorktree(
   const worktreePath = path.join(worktreesDir, ticketSlug);
   const branchName = `ticket/${ticketSlug}`;
 
-  if (fs.existsSync(worktreePath)) return worktreePath;
+  if (fs.existsSync(worktreePath)) {
+    // Worktree exists — sync branch with latest main before agent starts
+    const syncResult = syncBranchWithMain(mainRepo, branchName, worktreePath);
+    if (syncResult.status === "synced") {
+      console.log(`[dispatch] Synced ${branchName} with main (${syncResult.mergeCommit.slice(0, 8)})`);
+    } else if (syncResult.status === "conflict") {
+      console.warn(`[dispatch] Conflict syncing ${branchName} with main: ${syncResult.files.join(", ")}`);
+      return { path: worktreePath, syncStatus: "conflict", conflictFiles: syncResult.files };
+    } else if (syncResult.status === "error") {
+      console.warn(`[dispatch] Sync error for ${branchName}: ${syncResult.message.slice(0, 200)}`);
+      return { path: worktreePath, syncStatus: "error", syncError: syncResult.message };
+    }
+    return { path: worktreePath, syncStatus: syncResult.status };
+  }
 
   // Create worktrees directory if needed
   fs.mkdirSync(worktreesDir, { recursive: true });
@@ -152,13 +173,28 @@ function ensureWorktree(
       execFileSync("git", ["branch", branchName], opts);
     }
 
+    // Sync existing branch with main before creating the worktree
+    // (only relevant if the branch already existed from a prior dispatch)
+    let syncInfo: WorktreeResult["syncStatus"] = "up-to-date";
+    let conflictFiles: string[] | undefined;
+    const syncResult = syncBranchWithMain(mainRepo, branchName);
+    if (syncResult.status === "synced") {
+      console.log(`[dispatch] Pre-worktree sync: ${branchName} merged with main (${syncResult.mergeCommit.slice(0, 8)})`);
+      syncInfo = "synced";
+    } else if (syncResult.status === "conflict") {
+      console.warn(`[dispatch] Conflict syncing ${branchName} with main before worktree creation: ${syncResult.files.join(", ")}`);
+      syncInfo = "conflict";
+      conflictFiles = syncResult.files;
+      // Conflict detected — still create worktree so the ticket can be flagged
+    }
+
     execFileSync("git", ["worktree", "add", worktreePath, branchName], opts);
     console.log(`[dispatch] Created worktree at ${worktreePath}`);
-    return worktreePath;
+    return { path: worktreePath, syncStatus: syncInfo, conflictFiles };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[dispatch] Worktree creation failed: ${msg.slice(0, 200)}`);
-    return mainRepo;
+    return { path: mainRepo };
   }
 }
 
@@ -634,7 +670,21 @@ export async function POST(
   // Also treat non-mentioned human comments as team dispatch so all personas see them.
   const isUnmentionedHumanComment = !team && !targetPersonaName && !targetPersonaId && !requestedRole && !!commentContent?.trim();
   if ((team || isUnmentionedHumanComment) && projectPersonas.length > 0) {
-    const cwd = ensureWorktree(project, ticketSlug);
+    const worktreeResult = ensureWorktree(project, ticketSlug);
+    const cwd = worktreeResult.path;
+
+    // If branch has conflicts with main, block the ticket for human review
+    if (worktreeResult.syncStatus === "conflict") {
+      const conflictMsg = `Branch has merge conflicts with main: ${worktreeResult.conflictFiles?.join(", ") || "unknown files"}. Needs human review.`;
+      console.warn(`[dispatch] Blocking ticket ${ticketId}: ${conflictMsg}`);
+      await updateTicket(ticketId, {
+        blocked: true,
+        blockedReason: conflictMsg,
+        blockedAt: new Date().toISOString(),
+      });
+      return NextResponse.json({ error: conflictMsg, blocked: true }, { status: 409 });
+    }
+
     // Pre-flight check: workspace must have a .git (worktree file or directory)
     const cwdGit = path.join(cwd, ".git");
     if (!fs.existsSync(cwdGit)) {
@@ -813,7 +863,20 @@ export async function POST(
   }
 
   // ── Normal Claude CLI agent path ───────────────────────────────────────
-  const cwd = ensureWorktree(project, ticketSlug);
+  const worktreeResult = ensureWorktree(project, ticketSlug);
+  const cwd = worktreeResult.path;
+
+  // If branch has conflicts with main, block the ticket for human review
+  if (worktreeResult.syncStatus === "conflict") {
+    const conflictMsg = `Branch has merge conflicts with main: ${worktreeResult.conflictFiles?.join(", ") || "unknown files"}. Needs human review.`;
+    console.warn(`[dispatch] Blocking ticket ${ticketId}: ${conflictMsg}`);
+    await updateTicket(ticketId, {
+      blocked: true,
+      blockedReason: conflictMsg,
+      blockedAt: new Date().toISOString(),
+    });
+    return NextResponse.json({ error: conflictMsg, blocked: true }, { status: 409 });
+  }
 
   // Pre-flight check: workspace must have a .git (worktree file or directory)
   const cwdGit = path.join(cwd, ".git");
@@ -902,7 +965,7 @@ async function buildAgentSystemPrompt(
   sessionDir: string,
   teamMembers: (typeof personas.$inferSelect)[] = []
 ): Promise<string> {
-  const workspace = ensureWorktree(project, formatTicketSlug(ticket.id));
+  const workspace = ensureWorktree(project, formatTicketSlug(ticket.id)).path;
   // EPIC FEATURES DISABLED
   // const createSubTicketScript = path.join(sessionDir, "create-sub-ticket.sh");
   // const setEpicScript = path.join(sessionDir, "set-epic.sh");

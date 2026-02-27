@@ -4,6 +4,7 @@ import { getTicketById, getProjectById, updateTicket, logAuditEvent } from "@/db
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import fs from "node:fs";
+import { syncBranchWithMain, isBranchSyncedWithMain } from "@/lib/branch-sync";
 
 const HOME = process.env.HOME || "~";
 const PROJECTS_DIR = path.join(HOME, "development", "bonsai", "projects");
@@ -57,6 +58,28 @@ export async function POST(
   const log: string[] = [];
 
   try {
+    // ── Sync branch with main before merge ──────────────────────
+    // Ensure the branch has the latest main changes to minimize conflicts
+    try {
+      execFileSync("git", ["rev-parse", "--verify", branchName], gitOpts(mainRepo));
+      // Branch exists — check if it needs sync
+      if (!isBranchSyncedWithMain(mainRepo, branchName)) {
+        const worktreeForSync = fs.existsSync(worktreePath) ? worktreePath : undefined;
+        const syncResult = syncBranchWithMain(mainRepo, branchName, worktreeForSync);
+        if (syncResult.status === "synced") {
+          log.push(`Synced ${branchName} with main before merge.`);
+        } else if (syncResult.status === "conflict") {
+          log.push(`Conflict detected syncing with main: ${syncResult.files.join(", ")}. Proceeding with merge (may fail).`);
+        } else if (syncResult.status === "error") {
+          log.push(`Sync warning: ${syncResult.message}. Proceeding with merge anyway.`);
+        }
+      } else {
+        log.push("Branch already up-to-date with main.");
+      }
+    } catch {
+      // Branch doesn't exist or other error — proceed with normal merge flow
+    }
+
     // Check if this worktree has been corrupted
     const worktreeGitPath = path.join(worktreePath, ".git");
     const worktreeExists = fs.existsSync(worktreePath);
