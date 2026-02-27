@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAttachmentsByTicket, createAttachment } from "@/db/data/attachments";
 import { updateTicket } from "@/db/data/tickets";
+import { getTicketById } from "@/db/data/tickets";
+import { canPerformAction, stateMachineError } from "@/lib/ticket-state-machine";
 
 // GET /api/tickets/[id]/attachments - List all attachments for a ticket
 export async function GET(
@@ -40,6 +42,18 @@ export async function POST(
         { error: "Missing required fields: filename, mimeType, data, createdByType" },
         { status: 400 }
       );
+    }
+
+    // State machine: agents can only upload to active tickets
+    if (createdByType === "agent") {
+      const ticket = await getTicketById(ticketId);
+      if (!ticket) {
+        return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
+      }
+      const actionCheck = canPerformAction(ticket.state, "upload-attachment", "agent");
+      if (!actionCheck.allowed) {
+        return NextResponse.json(stateMachineError(actionCheck, ticketId), { status: 422 });
+      }
     }
 
     // Insert attachment

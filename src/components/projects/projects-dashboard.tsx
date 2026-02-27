@@ -493,8 +493,12 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
       <ProjectChatPanel
         projectId="global"
         chatPath="/api/global-chat"
-        title="Operator Chat"
+        title="Bonsai Chat"
         personas={[]}
+        humanMembers={[
+          { name: "Mike", color: "#3b82f6" },
+          { name: "Ryan", color: "#10b981" },
+        ]}
         open={chatOpen}
         onClose={() => setChatOpen(false)}
       />

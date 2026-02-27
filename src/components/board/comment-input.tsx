@@ -11,7 +11,8 @@ import { PreviewClipOverlay } from "./preview-clip-overlay";
 type MentionItem =
   | { kind: "persona"; persona: Persona }
   | { kind: "board"; name: string; label: string; color: string; icon: string }
-  | { kind: "team" };
+  | { kind: "human"; name: string; color?: string }
+  | { kind: "operator" };
 
 const BOARD_STATES = [
   { name: "planning", label: "Planning", color: "var(--column-planning)", icon: "📋" },
@@ -22,14 +23,20 @@ const BOARD_STATES = [
 
 // Role slugs are derived dynamically from personasList — no hardcoded list needed
 
+interface HumanMember {
+  name: string;
+  color?: string;
+}
+
 interface CommentInputProps {
   personasList: Persona[];
+  humanMembers?: HumanMember[];
   placeholder?: string;
   onPost: (text: string, attachments: CommentAttachment[]) => Promise<void>;
   enableVoice?: boolean;
 }
 
-export function CommentInput({ personasList, placeholder, onPost, enableVoice = false }: CommentInputProps) {
+export function CommentInput({ personasList, humanMembers = [], placeholder, onPost, enableVoice = false }: CommentInputProps) {
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<CommentAttachment[]>([]);
   const [posting, setPosting] = useState(false);
@@ -53,11 +60,14 @@ export function CommentInput({ personasList, placeholder, onPost, enableVoice = 
     onTranscript: useCallback((t: string) => setText((prev) => prev ? prev + " " + t : t), []),
   });
 
-  // @mention autocomplete: personas + team + role slugs
+  // @mention autocomplete: operator + humans + personas + role slugs (no @team)
   const filteredMentions: MentionItem[] = mentionQuery !== null
     ? (() => {
         const q = mentionQuery.toLowerCase();
-        const teamMatch: MentionItem[] = "team".startsWith(q) ? [{ kind: "team" }] : [];
+        const operatorMatch: MentionItem[] = "operator".startsWith(q) ? [{ kind: "operator" }] : [];
+        const humanMatches: MentionItem[] = humanMembers
+          .filter((h) => h.name.toLowerCase().startsWith(q))
+          .map((h) => ({ kind: "human", name: h.name, color: h.color }));
         const byName = personasList.filter((p) => p.name.toLowerCase().startsWith(q));
         const uniqueRoles = [...new Set(personasList.map((p) => p.role).filter(Boolean))] as string[];
         const byRole = uniqueRoles
@@ -65,7 +75,7 @@ export function CommentInput({ personasList, placeholder, onPost, enableVoice = 
           .flatMap((r) => personasList.filter((p) => p.role === r))
           .filter((p) => !byName.some((n) => n.id === p.id));
         const personaMatches: MentionItem[] = [...byName, ...byRole].map((p) => ({ kind: "persona", persona: p }));
-        return [...teamMatch, ...personaMatches].slice(0, 8);
+        return [...operatorMatch, ...humanMatches, ...personaMatches].slice(0, 8);
       })()
     : [];
 
@@ -109,7 +119,7 @@ export function CommentInput({ personasList, placeholder, onPost, enableVoice = 
     const query = isHash ? hashQuery : mentionQuery;
     const before = text.slice(0, start);
     const after = text.slice(start + 1 + (query?.length || 0));
-    const mentionName = item.kind === "team" ? "team" : item.kind === "persona" ? item.persona.name : item.name;
+    const mentionName = item.kind === "operator" ? "operator" : item.kind === "human" ? item.name : item.kind === "persona" ? item.persona.name : item.name;
     const prefix = isHash ? "#" : "@";
     const inserted = `${before}${prefix}${mentionName} ${after}`;
     setText(inserted);
@@ -244,23 +254,36 @@ export function CommentInput({ personasList, placeholder, onPost, enableVoice = 
             >
               {filteredMentions.map((item, i) => (
                 <div
-                  key={item.kind === "team" ? "team" : item.kind === "persona" ? item.persona.id : item.name}
+                  key={item.kind === "operator" ? "operator" : item.kind === "human" ? `human-${item.name}` : item.kind === "persona" ? item.persona.id : item.name}
                   className="flex items-center gap-2.5 px-3 py-2 cursor-pointer transition-colors"
                   style={{ backgroundColor: i === mentionIndex ? "rgba(255,255,255,0.08)" : "transparent" }}
                   onMouseEnter={() => setMentionIndex(i)}
                   onMouseDown={(e) => { e.preventDefault(); insertMention(item); }}
                 >
-                  {item.kind === "team" ? (
+                  {item.kind === "operator" ? (
                     <>
                       <div
-                        className="w-6 h-6 rounded-full flex items-center justify-center text-xs flex-shrink-0"
-                        style={{ backgroundColor: "rgba(16, 185, 129, 0.2)" }}
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold flex-shrink-0"
+                        style={{ backgroundColor: "rgba(0, 229, 255, 0.15)", color: "#00E5FF" }}
                       >
-                        👥
+                        ⚡
                       </div>
-                      <span className="text-sm" style={{ color: "#10b981" }}>team</span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: "rgba(16, 185, 129, 0.15)", color: "#10b981" }}>
-                        all agents
+                      <span className="text-sm font-medium" style={{ color: "#00E5FF" }}>operator</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: "rgba(0, 229, 255, 0.15)", color: "#00E5FF" }}>
+                        AugmentedMike
+                      </span>
+                    </>
+                  ) : item.kind === "human" ? (
+                    <>
+                      <div
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold text-white flex-shrink-0"
+                        style={{ backgroundColor: item.color || "#3b82f6" }}
+                      >
+                        {item.name[0]?.toUpperCase()}
+                      </div>
+                      <span className="text-sm" style={{ color: "var(--text-primary)" }}>{item.name}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: "rgba(59, 130, 246, 0.15)", color: "#60a5fa" }}>
+                        human
                       </span>
                     </>
                   ) : item.kind === "persona" ? (

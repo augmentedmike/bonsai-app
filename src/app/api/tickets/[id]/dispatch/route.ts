@@ -5,6 +5,7 @@ import { spawn, execFileSync } from "node:child_process";
 import path from "node:path";
 import fs from "node:fs";
 import { getTicketById, updateTicket } from "@/db/data/tickets";
+import { canPerformAction, stateMachineError } from "@/lib/ticket-state-machine";
 import { createAgentComment, getRecentCommentsEnriched } from "@/db/data/comments";
 import { getAttachmentsByTag } from "@/db/data/attachments";
 import { getProjectById } from "@/db/data/projects";
@@ -49,6 +50,38 @@ function countRunningAgents(): number {
     return result.trim().split("\n").filter(Boolean).length;
   } catch {
     return 0; // pgrep returns exit 1 when no matches
+  }
+}
+
+/**
+ * Reap stale agent_runs: any run with ended_at IS NULL whose start time
+ * is older than the TTL is considered orphaned (process died without cleanup).
+ * Also syncs DB state against live process count — if DB says N agents running
+ * but pgrep finds fewer, close the excess old rows.
+ */
+function reapStaleAgentRuns(): void {
+  try {
+    const { db } = require("@/db/index") as typeof import("@/db/index");
+    const { agentRuns } = require("@/db/schema") as typeof import("@/db/schema");
+    const { isNull, lt, sql } = require("drizzle-orm") as typeof import("drizzle-orm");
+
+    const STALE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+    const cutoff = new Date(Date.now() - STALE_TTL_MS).toISOString();
+    const now = new Date().toISOString();
+
+    // Close all runs older than TTL with no ended_at
+    const result = db
+      .update(agentRuns)
+      .set({ endedAt: now, errorMessage: "stale-run-reaped" })
+      .where(isNull(agentRuns.endedAt) && lt(agentRuns.startedAt, cutoff))
+      .run();
+
+    if (result.changes > 0) {
+      console.log(`[dispatch/reaper] Closed ${result.changes} stale agent_run(s) older than 2h`);
+    }
+  } catch (e) {
+    // Non-fatal — reaper failure should never block dispatch
+    console.error("[dispatch/reaper] Error:", e);
   }
 }
 
@@ -225,7 +258,7 @@ async function spawnAgent(
     `#!/bin/bash`,
     `# Unified Bonsai CLI wrapper`,
     `cd ${shellEscape(webappDir)} && \\`,
-    `BONSAI_ENV=${process.env.BONSAI_ENV || "dev"} BONSAI_PERSONA_ID="${personaId}" BONSAI_API_BASE="${API_BASE}" BONSAI_DB_DIR="${webappDir}" NODE_PATH=./node_modules \\`,
+    `BONSAI_ENV=${process.env.BONSAI_ENV || "dev"} BONSAI_PERSONA_ID="${personaId}" BONSAI_API_BASE="${API_BASE}" BONSAI_DB_DIR="${path.join(webappDir, ".data")}" NODE_PATH=./node_modules \\`,
     `exec npx tsx ${BONSAI_CLI} "$@"`,
   ].join("\n"));
   fs.chmodSync(bonsaiCliWrapper, 0o755);
@@ -492,6 +525,9 @@ export async function POST(
     getDailyBudget(),
     getTodaySpendUsd(),
   ]);
+  // Reap orphaned runs before checking capacity — prevents stale DB rows from
+  // blocking dispatch when the agent process already died without cleanup.
+  reapStaleAgentRuns();
   const runningAgents = countRunningAgents();
   if (runningAgents >= maxAgents) {
     console.log(`[dispatch] Rejecting — ${runningAgents}/${maxAgents} agents running`);
@@ -540,6 +576,17 @@ export async function POST(
       skipped: true,
       reason: "on_hold",
       holdReason: ticket.holdReason,
+    });
+  }
+
+  // ── State machine gate — refuse dispatch to shipped/blocked tickets ──────
+  const dispatchCheck = canPerformAction(ticket.state, "dispatch", "agent");
+  if (!dispatchCheck.allowed) {
+    console.log(`[dispatch] State machine blocked — ticket ${ticketId} in "${ticket.state}": ${dispatchCheck.reason}`);
+    return NextResponse.json({
+      skipped: true,
+      reason: "state_machine_violation",
+      ...stateMachineError(dispatchCheck, ticketId),
     });
   }
 

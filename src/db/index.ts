@@ -336,6 +336,10 @@ if (!existingTables.has("project_messages")) {
     sqlite.exec(`ALTER TABLE tickets ADD COLUMN epic_id INTEGER`);
     console.log("[db] Added epic columns to tickets");
   }
+  if (!cols.has("origin_type")) {
+    sqlite.exec(`ALTER TABLE tickets ADD COLUMN origin_type TEXT`);
+    console.log("[db] Added origin_type column to tickets");
+  }
 }
 
 // ── tag column on ticket_attachments (self-healing migration) ──────────────────

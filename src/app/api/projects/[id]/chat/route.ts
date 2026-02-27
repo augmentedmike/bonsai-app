@@ -88,7 +88,7 @@ export async function POST(
   const projectPersonas = await getGlobalPersonas();
   const trimmed = content.trim();
 
-  // Find mentioned personas (by name or role)
+  // Find mentioned personas (by name or role) — excludes @team (disabled) and humans
   const sorted = [...projectPersonas].sort((a, b) => b.name.length - a.name.length);
   const mentionedIds: string[] = [];
 
@@ -99,20 +99,14 @@ export async function POST(
     }
   }
 
-  // Check for @team mention
-  const isTeam = /@team\b/i.test(trimmed);
+  // @operator mention → always route to operator (same as no-mention fallback)
+  const isOperator = /@operator\b/i.test(trimmed);
 
-  // Dispatch via inbox ticket — route to mentioned personas, or researcher by default
+  // Dispatch via inbox ticket — route to mentioned personas, or @operator by default
+  // @team is disabled — human mentions (@Mike, @Ryan) are stored only, no dispatch
   const inboxTicketId = await ensureInboxTicket(projectId);
 
-  if (isTeam) {
-    fireDispatch(API_BASE, inboxTicketId, {
-      commentContent: trimmed,
-      team: true,
-      silent: true,
-      conversational: true,
-    }, "project-chat/@team");
-  } else if (mentionedIds.length > 0) {
+  if (!isOperator && mentionedIds.length > 0) {
     for (const personaId of mentionedIds) {
       fireDispatch(API_BASE, inboxTicketId, {
         commentContent: trimmed,
@@ -122,7 +116,7 @@ export async function POST(
       }, `project-chat/@mention`);
     }
   } else {
-    // No @mention — route to @operator
+    // No persona mention (or explicit @operator) — route to @operator
     fireDispatch(API_BASE, inboxTicketId, {
       commentContent: trimmed,
       targetRole: "operator",

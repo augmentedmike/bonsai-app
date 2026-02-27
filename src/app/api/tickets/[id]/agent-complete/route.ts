@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getTicketById } from "@/db/data/tickets";
+import { canPerformAction, stateMachineError } from "@/lib/ticket-state-machine";
 import { createCommentAndBumpCount } from "@/db/data/comments";
 import { createAgentProjectMessage } from "@/db/data/project-messages";
 import { getPersonaRaw, getGlobalPersonas, getAllPersonasRaw } from "@/db/data/personas";
@@ -36,6 +37,16 @@ export async function POST(
     ? await getPersonaRaw(personaId)
     : null;
   const agentName = completingPersona?.name ?? "Sim";
+
+  // ── State machine: validate agent-complete is allowed ──
+  // (skip for inbox tickets — those are project-chat entries, not work tickets)
+  const isInboxCheck = ticket.title === "[Inbox]";
+  if (!isInboxCheck) {
+    const actionCheck = canPerformAction(ticket.state, "agent-complete", "agent");
+    if (!actionCheck.allowed) {
+      return NextResponse.json(stateMachineError(actionCheck, ticketId), { status: 422 });
+    }
+  }
 
   // ── Inbox ticket → write to project_messages instead ───
   const isInbox = ticket.title === "[Inbox]";

@@ -63,14 +63,6 @@ function getSubPage(pathname: string): string | undefined {
   return match ? match[1] : undefined;
 }
 
-interface WorkerSummary {
-  name: string;
-  role: string;
-  isActive: boolean;
-  avatarData?: string | null;
-  color?: string;
-}
-
 export function Sidebar({ userName }: { userName?: string }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -79,7 +71,6 @@ export function Sidebar({ userName }: { userName?: string }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeRunCount, setActiveRunCount] = useState(0);
-  const [workers, setWorkers] = useState<WorkerSummary[]>([]);
 
   const activeSlug = getSlugFromPath(pathname);
   const subPage = getSubPage(pathname);
@@ -104,30 +95,7 @@ export function Sidebar({ userName }: { userName?: string }) {
     return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
-  // Poll worker list for team avatar strip
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchWorkers() {
-      try {
-        const res = await fetch("/api/workers");
-        if (!cancelled && res.ok) {
-          const data = await res.json();
-          if (data?.workers) {
-            setWorkers(data.workers.map((w: WorkerSummary) => ({
-              name: w.name,
-              role: w.role,
-              isActive: w.isActive,
-              avatarData: w.avatarData,
-              color: w.color,
-            })));
-          }
-        }
-      } catch {}
-    }
-    fetchWorkers();
-    const interval = setInterval(fetchWorkers, 5000);
-    return () => { cancelled = true; clearInterval(interval); };
-  }, []);
+
 
   const displayName = user?.name || userName || "User";
 
@@ -141,7 +109,6 @@ export function Sidebar({ userName }: { userName?: string }) {
   const projectNavItems = [
     { icon: "board", label: t.nav.board, subPath: "board", match: (s: string | undefined) => s === "board" || s === undefined },
     { icon: "activity", label: t.nav.activity, subPath: "activity", match: (s: string | undefined) => s === "activity" },
-    { icon: "team", label: t.nav.team, subPath: "team", match: (s: string | undefined) => s === "team" },
     { icon: "settings", label: t.nav.settings, subPath: "settings", match: (s: string | undefined) => s === "settings" },
   ];
 
@@ -183,69 +150,15 @@ export function Sidebar({ userName }: { userName?: string }) {
           )}
         </Link>
 
-        {/* Team avatar strip — always visible */}
-        {workers.length > 0 && (
-          <>
-            <div
-              className="w-6 my-1"
-              style={{ borderTop: "1px solid var(--border-subtle)" }}
-            />
-            {workers.map((worker) => {
-              const initials = worker.name
-                .split(" ")
-                .map((n) => n[0])
-                .join("")
-                .slice(0, 2)
-                .toUpperCase();
-              // Derive a stable bg color from role if no explicit color
-              const roleColors: Record<string, string> = {
-                operator: "#5b8df9",
-                researcher: "#8b5cf6",
-                developer: "#10b981",
-                designer: "#f59e0b",
-              };
-              const bg = worker.color || roleColors[worker.role] || "#6b7280";
-              const href = activeSlug ? `/p/${activeSlug}/team` : undefined;
-              const label = `${worker.name} · ${worker.role}${worker.isActive ? " (active)" : ""}`;
-
-              const avatarEl = (
-                <div
-                  className="relative"
-                  key={worker.name}
-                  title={label}
-                >
-                  <div
-                    className="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center text-[11px] font-semibold text-white transition-opacity hover:opacity-80 cursor-pointer"
-                    style={{ backgroundColor: worker.avatarData ? "transparent" : bg }}
-                    onClick={() => href && router.push(href)}
-                  >
-                    {worker.avatarData ? (
-                      <img src={worker.avatarData} alt={worker.name} className="w-full h-full object-cover" />
-                    ) : (
-                      initials
-                    )}
-                  </div>
-                  {/* Active indicator */}
-                  {worker.isActive && (
-                    <span
-                      className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2"
-                      style={{
-                        backgroundColor: "#22c55e",
-                        borderColor: "var(--bg-sidebar)",
-                      }}
-                    />
-                  )}
-                </div>
-              );
-
-              return avatarEl;
-            })}
-            <div
-              className="w-6 my-1"
-              style={{ borderTop: "1px solid var(--border-subtle)" }}
-            />
-          </>
-        )}
+        {/* Global team — always visible */}
+        <Link
+          href={activeSlug ? `/p/${activeSlug}/team` : "/workers"}
+          title="Team"
+          className="group relative w-10 h-10 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5"
+          style={(subPage === "team" || pathname === "/workers") ? { backgroundColor: "rgba(91, 141, 249, 0.1)" } : undefined}
+        >
+          <NavIcon icon="team" active={subPage === "team" || pathname === "/workers"} />
+        </Link>
 
         {/* Project-scoped nav items */}
         {activeSlug && projectNavItems.map((item) => {

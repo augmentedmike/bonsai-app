@@ -7,8 +7,8 @@ import { createProject } from "@/db/data/projects";
 import { fireDispatch } from "@/lib/dispatch-agent";
 import { getCurrentHuman } from "@/lib/auth";
 import { db } from "@/db";
-import { agentRuns, personas, projects } from "@/db/schema";
-import { eq, and, isNull } from "drizzle-orm";
+import { agentRuns, comments, personas, projects } from "@/db/schema";
+import { eq, and, isNull, desc, inArray } from "drizzle-orm";
 
 const API_BASE = process.env.API_BASE || "http://localhost:3080";
 const GLOBAL_SLUG = "__global__";
@@ -71,6 +71,10 @@ export async function GET(req: Request) {
 
   const inbox = await getTicketsByProject(projectId, "[Global Inbox]");
   const activeAgents: Array<{ id: string; name: string; color: string; avatarUrl?: string }> = [];
+
+  // Sim responses from the operator land in ticket comments, not project_messages.
+  // Fetch them and merge into the chat stream so they appear in the UI.
+  let simMessages: typeof messages = [];
   if (inbox) {
     const runs = db
       .select({
@@ -91,12 +95,54 @@ export async function GET(req: Request) {
         avatarUrl: r.personaAvatar && r.personaId ? `/api/personas/${r.personaId}/avatar` : undefined,
       });
     }
+
+    // Fetch sim comments from the inbox ticket (operator replies)
+    const inboxComments = db
+      .select()
+      .from(comments)
+      .where(and(eq(comments.ticketId, inbox.id), eq(comments.authorType, "sim")))
+      .orderBy(desc(comments.createdAt))
+      .limit(limit)
+      .all();
+
+    if (inboxComments.length > 0) {
+      const personaIds = [...new Set(inboxComments.filter((c) => c.personaId).map((c) => c.personaId!))];
+      const personaRows = personaIds.length > 0
+        ? db.select().from(personas).where(inArray(personas.id, personaIds)).all()
+        : [];
+      const personaMap = new Map(personaRows.map((p) => [p.id, p]));
+
+      simMessages = inboxComments.map((c) => {
+        const persona = c.personaId ? personaMap.get(c.personaId) : null;
+        return {
+          id: `c-${c.id}` as unknown as number,
+          projectId,
+          authorType: "sim" as const,
+          author: persona
+            ? {
+                name: persona.name,
+                avatarUrl: persona.avatar ? `/api/personas/${persona.id}/avatar` : undefined,
+                color: persona.color,
+                role: persona.role || undefined,
+              }
+            : { name: "Sim" },
+          content: c.content,
+          attachments: undefined,
+          createdAt: c.createdAt,
+        };
+      });
+    }
   }
+
+  // Merge human messages + sim responses, sorted oldest-first
+  const allMessages = [...messages, ...simMessages].sort((a, b) =>
+    (a.createdAt ?? "").localeCompare(b.createdAt ?? "")
+  );
 
   const humanList = await getHumans();
   const humans = humanList.map((h) => ({ id: h.id, name: h.name }));
 
-  return NextResponse.json({ messages, activeAgents, humans });
+  return NextResponse.json({ messages: allMessages, activeAgents, humans });
 }
 
 /** POST — save message and dispatch to @mentioned persona, or @operator by default */
@@ -132,17 +178,11 @@ export async function POST(req: Request) {
     }
   }
 
-  const isTeam = /@team\b/i.test(trimmed);
+  // @operator mention → route to operator explicitly (@team is disabled)
+  const isOperator = /@operator\b/i.test(trimmed);
   const inboxTicketId = await ensureGlobalInboxTicket(projectId);
 
-  if (isTeam) {
-    fireDispatch(API_BASE, inboxTicketId, {
-      commentContent: trimmed,
-      team: true,
-      silent: true,
-      conversational: true,
-    }, "bonsai-chat/@team");
-  } else if (mentionedIds.length > 0) {
+  if (!isOperator && mentionedIds.length > 0) {
     for (const personaId of mentionedIds) {
       fireDispatch(API_BASE, inboxTicketId, {
         commentContent: trimmed,
@@ -152,7 +192,8 @@ export async function POST(req: Request) {
       }, "bonsai-chat/@mention");
     }
   } else {
-    // No @mention — @operator owns it
+    // No persona mention (or explicit @operator) — @operator owns it
+    // Human mentions (@Mike, @Ryan) are stored only, no dispatch
     fireDispatch(API_BASE, inboxTicketId, {
       commentContent: trimmed,
       targetRole: "operator",
