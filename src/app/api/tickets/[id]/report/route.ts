@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getTicketById, createAgentComment, updateTicket, getPersonaRaw, logAuditEvent, touchAgentRunReport } from "@/db/data";
+import { canPerformAction, stateMachineError } from "@/lib/ticket-state-machine";
 
 // Called by agents mid-run to post progress updates to the ticket thread.
 // Lighter than agent-complete — just posts a comment, no document logic.
@@ -18,6 +19,12 @@ export async function POST(
   const ticket = await getTicketById(ticketId);
   if (!ticket) {
     return NextResponse.json({ error: "ticket not found" }, { status: 404 });
+  }
+
+  // State machine: agents can only report on active tickets
+  const actionCheck = canPerformAction(ticket.state, "report", "agent");
+  if (!actionCheck.allowed) {
+    return NextResponse.json(stateMachineError(actionCheck, ticketId), { status: 422 });
   }
 
   // Post agent comment (this function already bumps comment count)

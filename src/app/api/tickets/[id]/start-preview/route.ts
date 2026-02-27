@@ -135,7 +135,7 @@ export async function POST(
   const envVars = {
     ...process.env,
     PORT: String(port),
-    BONSAI_DB_DIR: process.cwd(),
+    BONSAI_DB_DIR: path.join(process.cwd(), ".data"),
     BONSAI_ENV: process.env.BONSAI_ENV || "dev",
   };
 

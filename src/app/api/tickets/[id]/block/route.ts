@@ -4,6 +4,7 @@ import { createSystemCommentAndBumpCount } from "@/db/data/comments";
 import { logAuditEvent } from "@/db/data/audit";
 import { getSetting } from "@/db/data/settings";
 import { fireDispatch } from "@/lib/dispatch-agent";
+import { canPerformAction, stateMachineError } from "@/lib/ticket-state-machine";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -20,7 +21,14 @@ export async function POST(req: Request, context: RouteContext) {
   }
 
   const body = await req.json().catch(() => ({}));
+  const actorType = (body.actorType as "agent" | "human" | "operator" | "system") ?? "agent";
   const reason = body.reason || "Blocked — needs human intervention";
+
+  // State machine: validate block action is permitted in current state
+  const actionCheck = canPerformAction(ticket.state, "block-ticket", actorType);
+  if (!actionCheck.allowed) {
+    return NextResponse.json(stateMachineError(actionCheck, ticketId), { status: 422 });
+  }
   const now = new Date().toISOString();
 
   await updateTicket(ticketId, {

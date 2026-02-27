@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getProjects, createProject, updateProject, softDeleteProject } from "@/db/data/projects";
+import { getProjects, getHiddenProjectCount, createProject, updateProject, softDeleteProject } from "@/db/data/projects";
 // GitHub token stored in settings table
 import { execFileSync, execFile } from "node:child_process";
 import type { Project } from "@/types";
@@ -165,14 +165,17 @@ export async function POST(req: Request) {
   }
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const includeHidden = url.searchParams.get("includeHidden") === "true";
+
   const now = Date.now();
-  if (projectsCache && now - projectsCache.ts < PROJECTS_CACHE_TTL_MS) {
-    return NextResponse.json({ projects: projectsCache.data });
+  if (!includeHidden && projectsCache && now - projectsCache.ts < PROJECTS_CACHE_TTL_MS) {
+    return NextResponse.json({ projects: projectsCache.data, hiddenCount: getHiddenProjectCount() });
   }
-  const allProjects = await getProjects();
-  projectsCache = { data: allProjects, ts: now };
-  return NextResponse.json({ projects: allProjects });
+  const allProjects = await getProjects({ includeHidden });
+  if (!includeHidden) projectsCache = { data: allProjects, ts: now };
+  return NextResponse.json({ projects: allProjects, hiddenCount: getHiddenProjectCount() });
 }
 
 export async function PATCH(req: Request) {
@@ -239,7 +242,7 @@ export async function DELETE(req: Request) {
 
   // Delete associated resources to prevent orphans (order matters for FK constraints)
   const { db } = await import("@/db/index");
-  const { personas, tickets, comments, ticketAttachments, agentRuns, projectMessages } = await import("@/db/schema");
+  const { personas, tickets, comments, ticketAttachments, ticketDocuments, agentRuns, projectMessages } = await import("@/db/schema");
   const { eq, inArray, sql } = await import("drizzle-orm");
 
   const projectId = Number(id);
@@ -249,11 +252,12 @@ export async function DELETE(req: Request) {
   const ticketIds = ticketRows.map((r) => r.id);
 
   if (ticketIds.length > 0) {
-    // Delete child records that reference tickets (deepest first)
+    // Delete child records in FK-safe order:
+    // comments (refs ticket_documents) → ticket_documents (refs personas) → attachments → audit_log → agent_runs → tickets
     db.delete(comments).where(inArray(comments.ticketId, ticketIds)).run();
+    db.delete(ticketDocuments).where(inArray(ticketDocuments.ticketId, ticketIds)).run();
     db.delete(ticketAttachments).where(inArray(ticketAttachments.ticketId, ticketIds)).run();
     db.delete(agentRuns).where(inArray(agentRuns.ticketId, ticketIds)).run();
-    // Audit log has no FK constraint but clean it up too
     db.run(sql`DELETE FROM ticket_audit_log WHERE ticket_id IN (${sql.join(ticketIds.map(id => sql`${id}`), sql`, `)})`);
     // Now safe to delete tickets
     db.delete(tickets).where(eq(tickets.projectId, projectId)).run();

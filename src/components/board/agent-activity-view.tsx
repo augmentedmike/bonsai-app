@@ -233,7 +233,7 @@ function ActiveAgentCard({ run, projectSlug }: { run: AgentRun; projectSlug?: st
   }, [run.startedAt]);
 
   const slug = run.projectSlug || projectSlug;
-  const ticketHref = slug ? `/p/${slug}/board` : undefined;
+  const ticketHref = slug ? `/p/${slug}/board?ticket=${run.ticketId}` : undefined;
 
   return (
     <div className="rounded-lg p-4"
@@ -319,7 +319,7 @@ type FilterTab = "all" | "completed" | "failed" | "timeout" | "abandoned";
 
 function HistoryRow({ run, projectSlug }: { run: AgentRun; projectSlug?: string }) {
   const slug = run.projectSlug || projectSlug;
-  const ticketHref = slug ? `/p/${slug}/board` : undefined;
+  const ticketHref = slug ? `/p/${slug}/board?ticket=${run.ticketId}` : undefined;
 
   return (
     <div className="grid gap-3 px-4 py-2.5 items-center text-sm transition-colors hover:bg-white/[0.02]"

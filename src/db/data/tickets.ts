@@ -138,6 +138,7 @@ export function getTickets(projectId?: number): Promise<Ticket[]> {
       onHold: r.onHold ?? false,
       holdReason: r.holdReason ?? undefined,
       holdAt: r.holdAt ?? undefined,
+      originType: r.originType ?? undefined,
       isEpic: r.isEpic ?? false,
       epicId: r.epicId ?? undefined,
       epicTitle: r.epicId ? epicTitleMap.get(r.epicId) : undefined,
@@ -178,6 +179,8 @@ export function createTicket(data: {
   hasAttachments?: boolean;
   isEpic?: boolean;
   epicId?: number | null;
+  assigneeId?: string | null;
+  originType?: "issue" | "idea" | "blocker" | null;
 }) {
   const row = db
     .insert(tickets)
@@ -193,6 +196,8 @@ export function createTicket(data: {
       hasAttachments: data.hasAttachments ?? false,
       isEpic: data.isEpic ?? false,
       epicId: data.epicId ?? null,
+      assigneeId: data.assigneeId ?? null,
+      originType: data.originType ?? null,
     })
     .returning()
     .get();

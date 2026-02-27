@@ -1,5 +1,5 @@
 import { db, asAsync, runAsync } from "./_driver";
-import { projects, tickets, comments, ticketAttachments, ticketAuditLog, personas, projectMessages, agentRuns, projectNotes, extractedItems } from "../schema";
+import { projects, tickets, comments, ticketAttachments, ticketAuditLog, ticketDocuments, personas, projectMessages, agentRuns, projectNotes, extractedItems } from "../schema";
 import { eq, and, or, isNull, sql } from "drizzle-orm";
 import type { Project } from "@/types";
 import { getSetting } from "./settings";
@@ -30,6 +30,8 @@ function projectFromRow(
     buildingCount: statusCounts?.building ?? 0,
     shippedCount: statusCounts?.shipped ?? 0,
     bugCount: typeCounts?.bug ?? 0,
+    featureCount: typeCounts?.feature ?? 0,
+    choreCount: typeCounts?.chore ?? 0,
     activeWorkers: activeWorkers?.map((w) => ({
       id: w.id,
       name: w.name,
@@ -42,6 +44,7 @@ function projectFromRow(
     buildCommand: row.buildCommand ?? undefined,
     runCommand: row.runCommand ?? undefined,
     lastActivity: lastActivity ?? row.createdAt ?? undefined,
+    isHidden: row.isHidden ?? false,
   };
 }
 
@@ -203,11 +206,14 @@ export function getProjectBySlug(slug: string): Promise<Project | null> {
   return asAsync(projectFromRow(row, counts.get(row.id) ?? 0));
 }
 
-export function getProjects(): Promise<Project[]> {
+export function getProjects(opts?: { includeHidden?: boolean }): Promise<Project[]> {
+  const where = opts?.includeHidden
+    ? isNull(projects.deletedAt)
+    : and(isNull(projects.deletedAt), sql`(${projects.isHidden} = 0 OR ${projects.isHidden} IS NULL)`);
   const rows = db
     .select()
     .from(projects)
-    .where(isNull(projects.deletedAt))
+    .where(where)
     .all();
   const ids = rows.map((r) => r.id);
   const counts = getTicketCounts(ids);
@@ -216,6 +222,15 @@ export function getProjects(): Promise<Project[]> {
   const activity = getLastActivity(ids);
   const types = getTypeCounts(ids);
   return asAsync(rows.map((r) => projectFromRow(r, counts.get(r.id) ?? 0, statuses.get(r.id), workers.get(r.id), activity.get(r.id), types.get(r.id))));
+}
+
+export function getHiddenProjectCount(): number {
+  const result = db
+    .select({ count: sql<number>`count(*)` })
+    .from(projects)
+    .where(and(isNull(projects.deletedAt), sql`${projects.isHidden} = 1`))
+    .get();
+  return result?.count ?? 0;
 }
 
 export function createProject(data: {
@@ -254,11 +269,15 @@ export function softDeleteProject(id: number): Promise<void> {
     const ticketIds = ticketRows.map((r) => r.id);
 
     if (ticketIds.length > 0) {
-      // Hard-delete all related data for these tickets
+      // Hard-delete all related data for these tickets in FK-safe order:
+      // comments → ticket_documents → attachments → audit_log → agent_runs → tickets
+      // (comments refs ticket_documents; ticket_documents refs personas — so docs must go after comments, before personas)
       for (const tid of ticketIds) {
         db.delete(comments).where(eq(comments.ticketId, tid)).run();
+        db.delete(ticketDocuments).where(eq(ticketDocuments.ticketId, tid)).run();
         db.delete(ticketAttachments).where(eq(ticketAttachments.ticketId, tid)).run();
         db.delete(ticketAuditLog).where(eq(ticketAuditLog.ticketId, tid)).run();
+        db.delete(agentRuns).where(eq(agentRuns.ticketId, tid)).run();
       }
       // Hard-delete the tickets themselves
       db.delete(tickets).where(eq(tickets.projectId, id)).run();

@@ -88,7 +88,7 @@ export function getProjectMessages(projectId: number, limit: number = 100) {
 /** Create a project message */
 export function createProjectMessage(data: {
   projectId: number;
-  authorType: "human" | "sim" | "system";
+  authorType: "human" | "sim" | "system" | "agent" | "operator";
   authorId?: number | null;
   personaId?: string | null;
   content: string;

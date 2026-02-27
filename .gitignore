@@ -71,3 +71,4 @@ scripts/seed-augmentedmike.ts
 # Machine-specific PM2 config (hardcoded local paths)
 ecosystem.config.cjs
 worktrees/
+.next-dev

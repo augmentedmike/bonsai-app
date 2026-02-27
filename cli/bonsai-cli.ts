@@ -9,6 +9,7 @@ import { tickets, projects, comments, ticketAttachments } from "../src/db/schema
 import { eq, and, isNull, desc } from "drizzle-orm";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { canTransition, canPerformAction, describeWorkflow } from "../src/lib/ticket-state-machine.js";
 
 const command = process.argv[2];
 const args = process.argv.slice(3);
@@ -20,7 +21,7 @@ Bonsai CLI — database and workflow utilities
 Usage: bonsai-cli <command> [args]
 
 Commands:
-  create-ticket <project-slug> <title> --type <feature|bug|chore> [--description <text>] [--acceptance-criteria <text>]
+  create-ticket <project-slug> <title> --type <feature|bug|chore> [--origin <issue|idea|blocker>] [--description <text>] [--context <text>] [--acceptance-criteria <text>] [--assignee <persona-id>] [--priority <0-1000>]
                                               Create a new ticket
   get-comments <project-slug> <ticket-id> [--head N | --tail N]
                                               Get all comments for a ticket
@@ -37,6 +38,7 @@ Commands:
 
 Examples:
   bonsai-cli create-ticket my-project "Add login feature" --type feature --description "Implement user login" --acceptance-criteria "User can log in with email/password"
+  bonsai-cli create-ticket my-project "Fix auth timeout" --type bug --origin issue --context "Observed in prod: sessions expire after 5 min" --assignee g-developer --priority 800
   bonsai-cli get-comments digitalworker-ai-demo 41 --tail 5
   bonsai-cli get-persona p8
   bonsai-cli write-artifact 41 research-doc /tmp/research.md
@@ -121,7 +123,15 @@ function getComments(projectSlug: string, ticketId: string, limit?: {type: 'head
 // ───────────────────────────────────────────────────────────────────────────
 // create-ticket <project-slug> <title> --type <type> [--description <text>] [--acceptance-criteria <text>]
 // ───────────────────────────────────────────────────────────────────────────
-async function createTicketCmd(projectSlug: string, title: string, options: { type?: string; description?: string; acceptanceCriteria?: string }) {
+async function createTicketCmd(projectSlug: string, title: string, options: {
+  type?: string;
+  description?: string;
+  acceptanceCriteria?: string;
+  origin?: string;
+  context?: string;
+  assignee?: string;
+  priority?: number;
+}) {
   // Verify project exists
   const project = db.select().from(projects).where(and(
     eq(projects.slug, projectSlug),
@@ -140,6 +150,25 @@ async function createTicketCmd(projectSlug: string, title: string, options: { ty
     process.exit(1);
   }
 
+  // Validate origin type if provided
+  const validOrigins = ["issue", "idea", "blocker"];
+  if (options.origin && !validOrigins.includes(options.origin)) {
+    console.error(`Error: --origin must be one of: ${validOrigins.join(", ")}`);
+    process.exit(1);
+  }
+
+  // Build description: context + description combined
+  let finalDescription = "";
+  if (options.context && options.description) {
+    finalDescription = `**Context:** ${options.context}\n\n---\n\n${options.description}`;
+  } else if (options.context) {
+    finalDescription = `**Context:** ${options.context}`;
+  } else if (options.description) {
+    finalDescription = options.description;
+  }
+
+  const personaId = process.env.BONSAI_PERSONA_ID;
+
   // Create ticket via API
   try {
     const apiBase = process.env.BONSAI_API_BASE || "http://localhost:3080";
@@ -150,10 +179,13 @@ async function createTicketCmd(projectSlug: string, title: string, options: { ty
         projectId: project.id,
         title: title,
         type: options.type,
-        description: options.description || "",
+        description: finalDescription || "",
         acceptanceCriteria: options.acceptanceCriteria || "",
-        state: "planning",
-        priority: 0,
+        priority: options.priority ?? 500,
+        originType: options.origin || undefined,
+        assigneeId: options.assignee || undefined,
+        createdByType: personaId ? "sim" : "human",
+        createdById: personaId || undefined,
       }),
     });
 
@@ -163,11 +195,16 @@ async function createTicketCmd(projectSlug: string, title: string, options: { ty
       process.exit(1);
     }
 
-    const ticket = await res.json();
+    const result = await res.json();
+    const ticket = result.ticket || result;
     console.log(`✓ Created ticket #${ticket.id}: ${ticket.title}`);
     console.log(`  Type: ${ticket.type}`);
+    if (options.origin) console.log(`  Origin: ${options.origin}`);
     console.log(`  State: ${ticket.state}`);
+    console.log(`  Priority: ${options.priority ?? 500}`);
     console.log(`  Project: ${project.name} (${project.slug})`);
+    if (options.assignee) console.log(`  Assignee: ${options.assignee}`);
+    if (options.context) console.log(`  Context: ${options.context.substring(0, 100)}${options.context.length > 100 ? '...' : ''}`);
     if (options.description) console.log(`  Description: ${options.description.substring(0, 100)}${options.description.length > 100 ? '...' : ''}`);
     if (options.acceptanceCriteria) console.log(`  Acceptance criteria: ${options.acceptanceCriteria.substring(0, 100)}${options.acceptanceCriteria.length > 100 ? '...' : ''}`);
   } catch (err: any) {
@@ -558,16 +595,24 @@ async function updateTicketCmd(ticketId: string, flags: string[]) {
   }
 
   try {
+    // Always identify as agent when called from CLI (human uses the board UI)
+    const body = { ...updates, actorType: "agent" };
+
     const response = await fetch(`${apiBase}/api/tickets`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(updates),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
-      console.error(`Error: ${response.status} ${response.statusText}`);
-      console.error(data.error || "Failed to update ticket");
+      if (data.error === "state_machine_violation") {
+        console.error(`\n[state-machine] ${data.message}`);
+        console.error(`\n${data.workflow}`);
+      } else {
+        console.error(`Error: ${response.status} ${response.statusText}`);
+        console.error(data.error || "Failed to update ticket");
+      }
       process.exit(1);
     }
 
@@ -697,6 +742,65 @@ async function uploadAttachment(ticketId: string, filePath: string, displayName?
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// State Machine Helpers
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Fetch the current state of a ticket from the local DB (fast, no HTTP).
+ * Returns null if ticket not found.
+ */
+function getTicketState(ticketId: number): string | null {
+  try {
+    const row = db.select({ state: tickets.state }).from(tickets).where(eq(tickets.id, ticketId)).get();
+    return row?.state ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Guard an agent CLI action against the state machine.
+ * Prints a clear error and exits with code 1 if the action is not permitted.
+ */
+function assertActionAllowed(
+  ticketId: number,
+  action: Parameters<typeof canPerformAction>[1],
+  actorType: "agent" | "human" | "operator" = "agent"
+) {
+  const state = getTicketState(ticketId);
+  if (!state) return; // can't validate without state; let API handle it
+
+  const check = canPerformAction(state, action, actorType);
+  if (!check.allowed) {
+    console.error(`\n[state-machine] Action "${action}" is NOT allowed on ticket #${ticketId} (current state: "${state}")\n`);
+    console.error(`Reason: ${check.reason}\n`);
+    console.error(describeWorkflow());
+    process.exit(1);
+  }
+}
+
+/**
+ * Guard a state transition against the state machine.
+ * Prints a clear error and exits with code 1 if the transition is not permitted.
+ */
+function assertTransitionAllowed(
+  ticketId: number,
+  toState: string,
+  actorType: "agent" | "human" | "operator" = "agent"
+) {
+  const fromState = getTicketState(ticketId);
+  if (!fromState) return; // can't validate; let API handle it
+
+  const check = canTransition(fromState, toState, actorType);
+  if (!check.allowed) {
+    console.error(`\n[state-machine] Transition "${fromState}" → "${toState}" is NOT allowed for ticket #${ticketId}\n`);
+    console.error(`Reason: ${check.reason}\n`);
+    console.error(describeWorkflow());
+    process.exit(1);
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // Main
 // ───────────────────────────────────────────────────────────────────────────
 async function main() {
@@ -710,7 +814,15 @@ async function main() {
       }
       const projectSlug = args[0];
       const title = args[1];
-      const options: { type?: string; description?: string; acceptanceCriteria?: string } = {};
+      const options: {
+        type?: string;
+        description?: string;
+        acceptanceCriteria?: string;
+        origin?: string;
+        context?: string;
+        assignee?: string;
+        priority?: number;
+      } = {};
 
       // Parse flags
       for (let i = 2; i < args.length; i++) {
@@ -722,6 +834,18 @@ async function main() {
           i++;
         } else if (args[i] === '--acceptance-criteria' && args[i + 1]) {
           options.acceptanceCriteria = args[i + 1];
+          i++;
+        } else if (args[i] === '--origin' && args[i + 1]) {
+          options.origin = args[i + 1];
+          i++;
+        } else if (args[i] === '--context' && args[i + 1]) {
+          options.context = args[i + 1];
+          i++;
+        } else if (args[i] === '--assignee' && args[i + 1]) {
+          options.assignee = args[i + 1];
+          i++;
+        } else if (args[i] === '--priority' && args[i + 1]) {
+          options.priority = Number(args[i + 1]);
           i++;
         }
       }
@@ -765,6 +889,7 @@ async function main() {
         console.error("Error: write-artifact requires <ticket-id> <type> <file>");
         usage();
       }
+      assertActionAllowed(Number(args[0]), "write-artifact");
       await writeArtifact(args[0], args[1], args[2]);
       break;
 
@@ -793,6 +918,7 @@ async function main() {
         console.error("Error: report requires <ticket-id> <message>");
         usage();
       }
+      assertActionAllowed(Number(args[0]), "report");
       await reportProgress(args[0], args.slice(1).join(' '));
       break;
 
@@ -801,22 +927,30 @@ async function main() {
         console.error("Error: check-criteria requires <ticket-id> <index>");
         usage();
       }
+      assertActionAllowed(Number(args[0]), "check-criteria");
       await checkCriteria(args[0], args[1]);
       break;
 
-    case "update-ticket":
+    case "update-ticket": {
       if (args.length < 2) {
         console.error("Error: update-ticket requires <ticket-id> --field <value>");
         usage();
       }
+      // Pre-flight state machine check if --state flag is present
+      const stateIdx = args.indexOf("--state");
+      if (stateIdx >= 0 && args[stateIdx + 1]) {
+        assertTransitionAllowed(Number(args[0]), args[stateIdx + 1]);
+      }
       await updateTicketCmd(args[0], args.slice(1));
       break;
+    }
 
     case "upload-attachment": {
       if (args.length < 2) {
         console.error("Error: upload-attachment requires <ticket-id> <file> [name] [--tag <tag>]");
         usage();
       }
+      assertActionAllowed(Number(args[0]), "upload-attachment");
       const tagIdx = args.indexOf("--tag");
       const uploadTag = tagIdx >= 0 ? args[tagIdx + 1] : undefined;
       const uploadArgs = tagIdx >= 0 ? args.slice(0, tagIdx) : args;

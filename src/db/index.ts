@@ -336,6 +336,10 @@ if (!existingTables.has("project_messages")) {
     sqlite.exec(`ALTER TABLE tickets ADD COLUMN epic_id INTEGER`);
     console.log("[db] Added epic columns to tickets");
   }
+  if (!cols.has("origin_type")) {
+    sqlite.exec(`ALTER TABLE tickets ADD COLUMN origin_type TEXT`);
+    console.log("[db] Added origin_type column to tickets");
+  }
 }
 
 // ── tag column on ticket_attachments (self-healing migration) ──────────────────
@@ -398,6 +402,33 @@ if (existingTables.has("humans")) {
   if (!humanCols.has("avatar_data")) {
     sqlite.exec(`ALTER TABLE humans ADD COLUMN avatar_data TEXT;`);
     console.log("[db] Added avatar_data column to humans table");
+  }
+}
+
+// ── notifications table (self-healing migration) ──────────────────
+if (!existingTables.has("notifications")) {
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS "notifications" (
+      id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+      human_id INTEGER NOT NULL REFERENCES humans(id) ON DELETE CASCADE,
+      project_message_id INTEGER REFERENCES project_messages(id) ON DELETE CASCADE,
+      type TEXT NOT NULL DEFAULT 'mention',
+      read_at TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_notifications_human_id ON notifications (human_id, read_at);
+  `);
+  console.log("[db] Created notifications table");
+}
+
+// ── is_hidden column on projects (self-healing migration) ──────────────────
+{
+  const cols = new Set(
+    (sqlite.prepare("PRAGMA table_info(projects)").all() as { name: string }[]).map((c) => c.name)
+  );
+  if (!cols.has("is_hidden")) {
+    sqlite.exec(`ALTER TABLE projects ADD COLUMN is_hidden INTEGER DEFAULT 0`);
+    console.log("[db] Added is_hidden column to projects");
   }
 }
 

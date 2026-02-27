@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
-import { getWorkerActivity } from "@/db/data";
+import { getWorkerActivity, getWorkersSummary } from "@/db/data";
 
 // Returns global team with activity data across all projects.
-export async function GET() {
-  const workers = await getWorkerActivity();
+// ?slim=true returns only name/role/isActive/color/avatarData — no comment queries.
+export async function GET(req: Request) {
+  const slim = new URL(req.url).searchParams.get("slim") === "true";
 
+  if (slim) {
+    const workers = await getWorkersSummary();
+    return NextResponse.json({ workers });
+  }
+
+  const workers = await getWorkerActivity();
   return NextResponse.json({ workers });
 }

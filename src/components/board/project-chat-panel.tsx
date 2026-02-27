@@ -6,9 +6,15 @@ import { CommentInput } from "./comment-input";
 import { usePolling } from "@/hooks/use-polling";
 import { useUser } from "@/contexts/user-context";
 
+interface HumanMember {
+  name: string;
+  color?: string;
+}
+
 interface ProjectChatPanelProps {
   projectId: string;
   personas: Persona[];
+  humanMembers?: HumanMember[];
   open: boolean;
   onClose: () => void;
   initialMentionPersonaId?: string | null;
@@ -21,6 +27,7 @@ interface ProjectChatPanelProps {
 export function ProjectChatPanel({
   projectId,
   personas,
+  humanMembers = [],
   open,
   onClose,
   initialMentionPersonaId: _initialMentionPersonaId,
@@ -37,6 +44,39 @@ export function ProjectChatPanel({
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const prevMessageCountRef = useRef(0);
+
+  // ── Resizable width ──────────────────────────────────────────────────────
+  const [chatWidth, setChatWidth] = useState<number>(() => {
+    try { return parseInt(localStorage.getItem("bonsai-chat-width") ?? "380", 10) || 380; } catch { return 380; }
+  });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartX = useRef(0);
+  const dragStartWidth = useRef(0);
+
+  const onDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragStartX.current = e.clientX;
+    dragStartWidth.current = chatWidth;
+    setIsDragging(true);
+  }, [chatWidth]);
+
+  const latestWidth = useRef(chatWidth);
+  useEffect(() => { latestWidth.current = chatWidth; }, [chatWidth]);
+
+  useEffect(() => {
+    if (!isDragging) return;
+    function onMouseMove(e: MouseEvent) {
+      const newWidth = Math.min(680, Math.max(280, dragStartWidth.current + (dragStartX.current - e.clientX)));
+      setChatWidth(newWidth);
+    }
+    function onMouseUp() {
+      setIsDragging(false);
+      try { localStorage.setItem("bonsai-chat-width", String(latestWidth.current)); } catch {}
+    }
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => { window.removeEventListener("mousemove", onMouseMove); window.removeEventListener("mouseup", onMouseUp); };
+  }, [isDragging]);
 
   // Fetch messages callback
   const fetchMessages = useCallback(async () => {
@@ -78,6 +118,13 @@ export function ProjectChatPanel({
 
   // Poll messages while open
   usePolling(fetchMessages, open ? 10_000 : null);
+
+  // Mark notifications as read when chat is opened
+  useEffect(() => {
+    if (open) {
+      fetch("/api/notifications", { method: "POST", credentials: "include" }).catch(() => {});
+    }
+  }, [open]);
 
   // Scroll to bottom when chat opens or messages first load
   useEffect(() => {
@@ -149,17 +196,38 @@ export function ProjectChatPanel({
   return (
     <div
       style={{
-        width: open ? "380px" : "0px",
+        width: open ? `${chatWidth}px` : "0px",
         height: "100%",
         flexShrink: 0,
         overflow: "hidden",
-        transition: "width 220ms cubic-bezier(0.4, 0, 0.2, 1)",
+        transition: isDragging ? "none" : "width 220ms cubic-bezier(0.4, 0, 0.2, 1)",
         borderLeft: open ? "1px solid var(--border-medium)" : "none",
+        position: "relative",
+        userSelect: isDragging ? "none" : undefined,
       }}
     >
+      {/* Drag handle — left edge */}
+      {open && (
+        <div
+          onMouseDown={onDragStart}
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            width: 5,
+            height: "100%",
+            cursor: "col-resize",
+            zIndex: 10,
+            backgroundColor: isDragging ? "rgba(91,141,249,0.35)" : "transparent",
+            transition: "background-color 150ms",
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = "rgba(91,141,249,0.2)"; }}
+          onMouseLeave={(e) => { if (!isDragging) (e.currentTarget as HTMLDivElement).style.backgroundColor = "transparent"; }}
+        />
+      )}
     <div
       style={{
-        width: "380px",
+        width: `${chatWidth}px`,
         height: "100%",
         display: "flex",
         flexDirection: "column",
@@ -243,9 +311,9 @@ export function ProjectChatPanel({
                   d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z"
                 />
               </svg>
-              <span className="text-sm">Start a conversation with your team</span>
+              <span className="text-sm">Start a conversation in Operator Chat</span>
               <span className="text-xs">
-                Use @name to mention a team member
+                @ to mention anyone in the channel
               </span>
             </div>
           ) : (
@@ -303,7 +371,8 @@ export function ProjectChatPanel({
         {/* Input */}
         <CommentInput
           personasList={personas}
-          placeholder="Message your team... @ to mention"
+          humanMembers={humanMembers}
+          placeholder="Message the channel... @ to mention"
           onPost={handlePost}
           enableVoice={true}
         />

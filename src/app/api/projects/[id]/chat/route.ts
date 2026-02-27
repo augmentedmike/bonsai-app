@@ -3,10 +3,11 @@ import { getProjectMessages, createProjectMessage } from "@/db/data/project-mess
 import { getGlobalPersonas } from "@/db/data/personas";
 import { getProjectById } from "@/db/data/projects";
 import { createTicket, getTicketsByProject, updateTicket } from "@/db/data/tickets";
+import { getHumans } from "@/db/data/humans";
 import { fireDispatch } from "@/lib/dispatch-agent";
 import { getCurrentHuman } from "@/lib/auth";
 import { db } from "@/db";
-import { agentRuns, personas } from "@/db/schema";
+import { agentRuns, notifications, personas } from "@/db/schema";
 import { eq, and, isNull } from "drizzle-orm";
 
 const API_BASE = process.env.API_BASE || "http://localhost:3080";
@@ -84,11 +85,28 @@ export async function POST(
     attachments: attachments && attachments.length > 0 ? JSON.stringify(attachments) : null,
   });
 
+  // Detect @human mentions and create notifications (excluding the sender)
+  const trimmed = content.trim();
+  const allHumans = await getHumans();
+  for (const h of allHumans) {
+    if (h.id === authorId) continue;
+    const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const firstName = h.name.split(" ")[0];
+    const fullPattern = new RegExp(`@${escape(h.name)}\\b`, "i");
+    const firstPattern = new RegExp(`@${escape(firstName)}\\b`, "i");
+    if (fullPattern.test(trimmed) || firstPattern.test(trimmed)) {
+      db.insert(notifications).values({
+        humanId: h.id,
+        projectMessageId: msg.id,
+        type: "mention",
+      }).run();
+    }
+  }
+
   // Extract @mentions from content
   const projectPersonas = await getGlobalPersonas();
-  const trimmed = content.trim();
 
-  // Find mentioned personas (by name or role)
+  // Find mentioned personas (by name or role) — excludes @team (disabled) and humans
   const sorted = [...projectPersonas].sort((a, b) => b.name.length - a.name.length);
   const mentionedIds: string[] = [];
 
@@ -99,20 +117,30 @@ export async function POST(
     }
   }
 
-  // Check for @team mention
-  const isTeam = /@team\b/i.test(trimmed);
+  const isOperator = /@operator\b/i.test(trimmed);
 
-  // Dispatch via inbox ticket — route to mentioned personas, or researcher by default
+  // Any @word not matching a known persona or @operator = unrecognized (human/unknown) → no fallback dispatch
+  const knownNames = new Set([
+    "operator",
+    "augmentedmike",
+    ...projectPersonas.map((p) => p.name.toLowerCase()),
+    ...projectPersonas.map((p) => p.role?.toLowerCase()).filter(Boolean),
+  ]);
+  const atWords = [...trimmed.matchAll(/@([\w\p{L}-]+)/giu)].map((m) => m[1].toLowerCase());
+  const hasUnrecognizedMention = atWords.some((w) => !knownNames.has(w));
+
   const inboxTicketId = await ensureInboxTicket(projectId);
 
-  if (isTeam) {
+  if (isOperator) {
+    // Explicit @operator → always dispatch to operator
     fireDispatch(API_BASE, inboxTicketId, {
       commentContent: trimmed,
-      team: true,
-      silent: true,
+      targetRole: "operator",
       conversational: true,
-    }, "project-chat/@team");
+      silent: true,
+    }, "project-chat/operator");
   } else if (mentionedIds.length > 0) {
+    // Named AI persona → dispatch to each
     for (const personaId of mentionedIds) {
       fireDispatch(API_BASE, inboxTicketId, {
         commentContent: trimmed,
@@ -121,8 +149,8 @@ export async function POST(
         silent: true,
       }, `project-chat/@mention`);
     }
-  } else {
-    // No @mention — route to @operator
+  } else if (!hasUnrecognizedMention) {
+    // No @mention at all → @operator catch-all
     fireDispatch(API_BASE, inboxTicketId, {
       commentContent: trimmed,
       targetRole: "operator",
@@ -130,6 +158,7 @@ export async function POST(
       silent: true,
     }, "project-chat/operator");
   }
+  // else: unrecognized @word → human/unknown mention, no dispatch
 
   return NextResponse.json({ ok: true, message: msg });
 }

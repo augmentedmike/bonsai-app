@@ -356,7 +356,11 @@ function resolveProjectRoot(project: ProjectRow): string {
 }
 
 function resolveMainRepo(project: ProjectRow): string {
-  if (project.local_path) return path.join(project.local_path, "repo");
+  if (project.local_path) {
+    // If local_path itself is a git repo, use it directly (no /repo suffix needed)
+    if (fs.existsSync(path.join(project.local_path, ".git"))) return project.local_path;
+    return path.join(project.local_path, "repo");
+  }
   const home = process.env.HOME || "~";
   if (project.github_repo === "bonsai-app") {
     return path.join(home, "development", "bonsai", "webapp");
@@ -635,6 +639,13 @@ async function runAgentPhase(
   const workspacePath = ensureWorktree(project, ticket.id);
 
   if (!workspacePath) {
+    return null;
+  }
+
+  // Pre-flight check: validate workspace has a git repo (not an empty dir)
+  const wsGit = path.join(workspacePath, ".git");
+  if (!fs.existsSync(wsGit)) {
+    log(`  ERROR: workspace ${workspacePath} has no .git — provisioning failed, aborting dispatch`);
     return null;
   }
 
@@ -978,6 +989,14 @@ async function dispatch(maxTickets: number) {
       const workspacePath = ensureWorktree(project, ticket.id);
       if (!workspacePath) {
         log(`  SKIP: ${ticket.id} — could not create workspace`);
+        skipped++;
+        continue;
+      }
+
+      // Pre-flight check: validate workspace has a git repo (not an empty dir)
+      const wsGit = path.join(workspacePath, ".git");
+      if (!fs.existsSync(wsGit)) {
+        log(`  SKIP: ${ticket.id} — workspace ${workspacePath} has no .git (provisioning failed)`);
         skipped++;
         continue;
       }

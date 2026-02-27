@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getTickets, getTicketById, createTicket, updateTicket, softDeleteTicket, getSetting, createSystemCommentAndBumpCount, logAuditEvent } from "@/db/data";
 import { fireDispatch } from "@/lib/dispatch-agent";
 import { formatTicketSlug } from "@/types";
+import { canTransition, stateMachineError } from "@/lib/ticket-state-machine";
 import { geminiRequest, extractText } from "@/lib/gemini";
 
 export async function GET(req: Request) {
@@ -91,11 +92,26 @@ export async function PATCH(req: Request) {
 }
 
 export async function PUT(req: Request) {
-  const { ticketId, title, description, acceptanceCriteria, type, state, isEpic, epicId } = await req.json();
+  const { ticketId, title, description, acceptanceCriteria, type, state, isEpic, epicId, actorType: rawActorType } = await req.json();
   const numTicketId = Number(ticketId);
+  const actorType = (rawActorType as "agent" | "human" | "operator" | "system") ?? "agent";
+
   if (!numTicketId) {
     return NextResponse.json({ error: "ticketId required" }, { status: 400 });
   }
+
+  // State machine: validate transition when state is being changed
+  if (state !== undefined) {
+    const currentTicket = await getTicketById(numTicketId);
+    const currentState = currentTicket?.state;
+    if (currentState && currentState !== state) {
+      const check = canTransition(currentState, state, actorType);
+      if (!check.allowed) {
+        return NextResponse.json(stateMachineError(check, numTicketId), { status: 422 });
+      }
+    }
+  }
+
   const updates: Record<string, unknown> = {};
   if (title !== undefined) updates.title = title?.trim() || undefined;
   if (description !== undefined) updates.description = description?.trim() || null;
@@ -141,11 +157,17 @@ export async function DELETE(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const { title, type, description, acceptanceCriteria, projectId, epicId, isEpic } =
+  const { title, type, description, acceptanceCriteria, projectId, epicId, isEpic, assigneeId, originType, priority, createdByType, createdById } =
     await req.json();
 
   if (!title?.trim()) {
     return NextResponse.json({ error: "Title is required" }, { status: 400 });
+  }
+
+  // Validate originType if provided
+  const validOriginTypes = ["issue", "idea", "blocker"];
+  if (originType && !validOriginTypes.includes(originType)) {
+    return NextResponse.json({ error: `originType must be one of: ${validOriginTypes.join(", ")}` }, { status: 400 });
   }
 
   const activeProjectId = await getSetting("active_project_id");
@@ -173,24 +195,28 @@ export async function POST(req: Request) {
     state: "planning",
     description: description?.trim() || null,
     acceptanceCriteria: finalCriteria,
-    priority: 500,
+    priority: priority ?? 500,
     projectId: projectId || Number(activeProjectId) || 1,
     commentCount: 0,
     hasAttachments: false,
     isEpic: isEpic ?? false,
     epicId: epicId ? Number(epicId) : null,
+    assigneeId: assigneeId || null,
+    originType: originType || null,
   });
 
   const id = ticket.id; // auto-generated integer
 
+  // Use agent identity for audit trail if provided
+  const isAgent = createdByType === "sim" || createdByType === "agent";
   await logAuditEvent({
     ticketId: id,
     event: "ticket_created",
-    actorType: "human",
-    actorId: null,
-    actorName: userName ?? "User",
-    detail: `Created ticket "${title.trim()}"`,
-    metadata: { type: type || "feature", state: "planning", epicId: epicId || null },
+    actorType: isAgent ? "sim" : "human",
+    actorId: isAgent ? (createdById || null) : null,
+    actorName: isAgent ? (createdById || "Agent") : (userName ?? "User"),
+    detail: `Created ticket "${title.trim()}"${originType ? ` [${originType}]` : ""}`,
+    metadata: { type: type || "feature", state: "planning", epicId: epicId || null, originType: originType || null },
   });
 
   const origin = new URL(req.url).origin;

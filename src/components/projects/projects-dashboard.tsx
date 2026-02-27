@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useNotifications } from "@/hooks/use-notifications";
 import { useRouter } from "next/navigation";
 import type { Project } from "@/types";
 import { AddProjectModal } from "@/components/board/add-project-modal";
 import { ProjectChatPanel } from "@/components/board/project-chat-panel";
+import { FilterDropdown } from "./filter-dropdown";
 import {
   IconClose, IconChat, IconPlus, IconSearch, IconPencil,
   IconEye, IconEyeSlash, IconPlay, IconPause, IconCrosshair,
@@ -13,7 +15,7 @@ import {
 
 type SortKey = "name" | "tickets" | "activity";
 type SortDir = "asc" | "desc";
-type Filter = "all" | "building" | "planning" | "bugs" | "empty";
+type FocusKey = "focused" | "paused" | "normal";
 
 interface PauseState {
   pausedSlugs: Set<string>;
@@ -44,11 +46,11 @@ function StatusBar({ planning, building, shipped }: { planning: number; building
 }
 
 // ── Main dashboard ─────────────────────────────────────────────────────────
-export function ProjectsDashboard({ initialProjects }: { initialProjects: Project[] }) {
+export function ProjectsDashboard({ initialProjects, initialHiddenCount = 0 }: { initialProjects: Project[]; initialHiddenCount?: number }) {
   const router = useRouter();
   const [projects, setProjects] = useState<Project[]>(initialProjects);
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
+  const [focusFilter, setFocusFilter] = useState<Set<FocusKey>>(new Set());
   const [sortKey, setSortKey] = useState<SortKey>(() => {
     try { return (localStorage.getItem("bonsai-projects-sort-key") as SortKey) || "activity"; } catch { return "activity"; }
   });
@@ -57,6 +59,30 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
   });
   const [showAdd, setShowAdd] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const { unread: chatUnread, markRead: markChatRead } = useNotifications();
+  const [hiddenCount, setHiddenCount] = useState(initialHiddenCount);
+
+  // Listen for sidebar avatar chat button → open Operator Chat
+  useEffect(() => {
+    function onOpenChat() {
+      setChatOpen(true);
+      markChatRead();
+    }
+    window.addEventListener("open-operator-chat", onOpenChat);
+    return () => window.removeEventListener("open-operator-chat", onOpenChat);
+  }, [markChatRead]);
+
+  // On mount: check if sidebar navigated here with the open-chat flag (came from another page)
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem("bonsai-open-chat") === "1") {
+        sessionStorage.removeItem("bonsai-open-chat");
+        setChatOpen(true);
+        markChatRead();
+      }
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Pause/focus/hold state
   const [pauseState, setPauseState] = useState<PauseState | null>(null);
@@ -92,10 +118,16 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
     let list = projects.filter(
       (p) => p.name.toLowerCase().includes(q) || (p.description ?? "").toLowerCase().includes(q) || (p.techStack ?? "").toLowerCase().includes(q)
     );
-    if (filter === "building") list = list.filter((p) => (p.buildingCount ?? 0) > 0);
-    if (filter === "planning") list = list.filter((p) => (p.planningCount ?? 0) > 0);
-    if (filter === "bugs") list = list.filter((p) => ((p.bugCount ?? 0)) > 0);
-    if (filter === "empty") list = list.filter((p) => (p.ticketCount ?? 0) === 0);
+    // Focus filter — OR logic across selected keys; empty set = no filter
+    if (focusFilter.size > 0) {
+      list = list.filter((p) => {
+        if (focusFilter.has("focused") && pauseState?.focusedProject === p.slug) return true;
+        if (focusFilter.has("paused") && (pauseState?.pausedSlugs.has(p.slug) ?? false)) return true;
+        if (focusFilter.has("normal") && !pauseState?.pausedSlugs.has(p.slug) && pauseState?.focusedProject !== p.slug) return true;
+        return false;
+      });
+    }
+
     return [...list].sort((a, b) => {
       let cmp = 0;
       if (sortKey === "name") cmp = a.name.localeCompare(b.name);
@@ -103,7 +135,8 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
       else if (sortKey === "activity") cmp = (a.lastActivity ?? "").localeCompare(b.lastActivity ?? "");
       return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [projects, search, filter, sortKey, sortDir]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects, search, focusFilter.size, pauseState, sortKey, sortDir]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -137,6 +170,14 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
     if (!res.ok) { setDeletingId(null); return; }
     setProjects((prev) => prev.filter((p) => p.id !== id));
     setDeletingId(null); router.refresh();
+  }
+
+  async function handleHide(e: React.MouseEvent, p: Project) {
+    e.stopPropagation();
+    const res = await fetch(`/api/projects/${p.id}/hide`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ hidden: true }) });
+    if (!res.ok) return;
+    setProjects((prev) => prev.filter((proj) => proj.id !== p.id));
+    setHiddenCount((c) => c + 1);
   }
 
   async function handlePause(e: React.MouseEvent, p: Project) {
@@ -177,13 +218,14 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
     finally { setActionLoading(null); }
   }
 
-  const filterChips: { key: Filter; label: string; count: number }[] = [
-    { key: "all", label: "All", count: projects.length },
-    { key: "building", label: "Building", count: projects.filter((p) => (p.buildingCount ?? 0) > 0).length },
-    { key: "planning", label: "Planning", count: projects.filter((p) => (p.planningCount ?? 0) > 0).length },
-    { key: "bugs", label: "Bugs", count: projects.filter((p) => ((p.bugCount ?? 0)) > 0).length },
-    { key: "empty", label: "Empty", count: projects.filter((p) => (p.ticketCount ?? 0) === 0).length },
+  // Focus filter options (no "all" — handled inside dropdown)
+  const focusOptions = [
+    { key: "focused" as FocusKey, label: "Focused", count: projects.filter((p) => pauseState?.focusedProject === p.slug).length },
+    { key: "paused" as FocusKey, label: "Paused", count: projects.filter((p) => pauseState?.pausedSlugs.has(p.slug) ?? false).length },
+    { key: "normal" as FocusKey, label: "Normal", count: projects.filter((p) => !pauseState?.pausedSlugs.has(p.slug) && pauseState?.focusedProject !== p.slug).length },
   ];
+
+
 
   const SortArrow = ({ col }: { col: SortKey }) =>
     sortKey === col
@@ -201,17 +243,40 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
           <div className="flex items-center gap-2">
             {/* Chat toggle */}
             <button
-              onClick={() => setChatOpen((o) => !o)}
+              onClick={() => { setChatOpen((o) => { if (!o) markChatRead(); return !o; }); }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
               style={{
                 backgroundColor: chatOpen ? "rgba(91,141,249,0.15)" : "var(--bg-card)",
                 color: chatOpen ? "var(--accent-blue)" : "var(--text-secondary)",
                 border: `1px solid ${chatOpen ? "rgba(91,141,249,0.3)" : "var(--border-medium)"}`,
+                position: "relative",
               }}
             >
               <IconChat className="w-3.5 h-3.5" />
               Chat
+              {chatUnread > 0 && !chatOpen && (
+                <span
+                  style={{
+                    position: "absolute",
+                    top: -4,
+                    right: -4,
+                    width: 10,
+                    height: 10,
+                    borderRadius: "50%",
+                    backgroundColor: "#00E5FF",
+                    boxShadow: "0 0 6px 2px rgba(0,229,255,0.7)",
+                    animation: "notif-pulse 1.6s ease-in-out infinite",
+                    border: "1.5px solid var(--bg-primary)",
+                  }}
+                />
+              )}
             </button>
+            <style>{`
+              @keyframes notif-pulse {
+                0%, 100% { box-shadow: 0 0 4px 1px rgba(0,229,255,0.5); }
+                50% { box-shadow: 0 0 10px 4px rgba(0,229,255,0.9); }
+              }
+            `}</style>
             <button
               onClick={() => setShowAdd(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all hover:opacity-90"
@@ -243,21 +308,21 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
         <div className="flex-1 overflow-y-auto px-7 pb-7">
           {/* Toolbar */}
           <div className="flex items-center gap-2.5 mb-3 flex-wrap">
+            {/* Search */}
             <div className="relative">
               <IconSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: "var(--text-muted)" }} />
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search…" className="pl-8 pr-3 py-1.5 rounded-lg text-sm outline-none w-44" style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-medium)", color: "var(--text-primary)" }} />
             </div>
-            <div className="flex items-center gap-1">
-              {filterChips.map((chip) => {
-                const active = filter === chip.key;
-                return (
-                  <button key={chip.key} onClick={() => setFilter(chip.key)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all" style={{ backgroundColor: active ? "var(--accent-blue)" : "var(--bg-card)", color: active ? "#fff" : "var(--text-secondary)", border: `1px solid ${active ? "var(--accent-blue)" : "var(--border-medium)"}` }}>
-                    {chip.label}
-                    <span className="rounded-full px-1 tabular-nums" style={{ backgroundColor: active ? "rgba(255,255,255,0.2)" : "var(--bg-secondary)", color: active ? "#fff" : "var(--text-muted)", fontSize: 10 }}>{chip.count}</span>
-                  </button>
-                );
-              })}
-            </div>
+
+            {/* Queue / focus dropdown */}
+            <FilterDropdown
+              label="Queue"
+              options={focusOptions}
+              selected={focusFilter}
+              onChange={setFocusFilter}
+            />
+
+
             <span className="ml-auto text-xs" style={{ color: "var(--text-muted)" }}>{filtered.length} of {projects.length}</span>
           </div>
 
@@ -267,14 +332,15 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
               <thead>
                 <tr style={{ borderBottom: "1px solid var(--border-subtle)" }}>
                   {[
-                    { key: "name" as SortKey, label: "Project", w: "18%" },
-                    { key: null, label: "Description", w: "18%" },
+                    { key: null, label: "#", w: "3%" },
+                    { key: "name" as SortKey, label: "Project", w: "17%" },
+                    { key: null, label: "Description", w: "17%" },
                     { key: "tickets" as SortKey, label: "Planning · Building · Shipped", w: "16%" },
                     { key: null, label: "", w: "4%" },  // visibility icon col
                     { key: null, label: "Stack", w: "8%" },
                     { key: null, label: "Team", w: "8%" },
                     { key: "activity" as SortKey, label: "Last Active", w: "12%" },
-                    { key: null, label: "Actions", w: "16%" },
+                    { key: null, label: "Actions", w: "15%" },
                   ].map(({ key, label, w }) => (
                     <th key={label} onClick={key ? () => toggleSort(key) : undefined} className={key ? "cursor-pointer select-none" : ""} style={{ width: w, padding: "9px 14px", textAlign: "left", color: "var(--text-muted)", fontWeight: 500, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                       {label}{key && <SortArrow col={key} />}
@@ -285,12 +351,12 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
               <tbody>
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="py-14 text-center text-sm" style={{ color: "var(--text-muted)" }}>
+                    <td colSpan={9} className="py-14 text-center text-sm" style={{ color: "var(--text-muted)" }}>
                       {search ? "No projects match your search." : "No projects."}
                     </td>
                   </tr>
                 )}
-                {filtered.map((p) => {
+                {filtered.map((p, idx) => {
                   const isPaused = pauseState?.pausedSlugs.has(p.slug) ?? false;
                   const isFocused = pauseState?.focusedProject === p.slug;
                   const isRunning = pauseState?.activeSlugs.has(p.slug) ?? false;
@@ -304,6 +370,10 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
                       onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "")}
                       onClick={() => router.push(`/p/${p.slug}`)}
                     >
+                      {/* # */}
+                      <td style={{ padding: "10px 14px", color: "var(--text-muted)", fontSize: 11, fontVariantNumeric: "tabular-nums" }} onClick={(e) => e.stopPropagation()}>
+                        {idx + 1}
+                      </td>
                       {/* Name */}
                       <td style={{ padding: "10px 14px" }} onClick={(e) => e.stopPropagation()}>
                         {editingId === p.id && editField === "name" ? (
@@ -447,6 +517,12 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
                               style={{ color: "var(--text-muted)" }}>
                               <IconHand className="w-3.5 h-3.5" />
                             </button>
+                            {/* Hide */}
+                            <button onClick={(e) => handleHide(e, p)} title="Hide project"
+                              className="w-6 h-6 flex-shrink-0 rounded flex items-center justify-center transition-all hover:bg-white/10"
+                              style={{ color: "var(--text-muted)" }}>
+                              <IconEyeSlash className="w-3.5 h-3.5" />
+                            </button>
                             {/* GitHub — always reserve the slot to prevent layout shift */}
                             {p.githubOwner && p.githubRepo ? (
                               <a href={`https://github.com/${p.githubOwner}/${p.githubRepo}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="w-6 h-6 flex-shrink-0 rounded flex items-center justify-center hover:bg-white/10 transition-all" style={{ color: "var(--text-muted)" }} title="GitHub">
@@ -472,6 +548,20 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
               </tbody>
             </table>
           </div>
+
+          {/* Hidden projects footer */}
+          {hiddenCount > 0 && (
+            <div className="px-7 py-3 flex-shrink-0" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent("open-settings", { detail: { section: "hidden-projects" } }))}
+                className="flex items-center gap-1.5 text-xs transition-colors hover:opacity-80"
+                style={{ color: "var(--text-muted)" }}
+              >
+                <IconEyeSlash className="w-3.5 h-3.5" />
+                {hiddenCount} hidden project{hiddenCount !== 1 ? "s" : ""} — manage in Settings
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -481,6 +571,10 @@ export function ProjectsDashboard({ initialProjects }: { initialProjects: Projec
         chatPath="/api/global-chat"
         title="Operator Chat"
         personas={[]}
+        humanMembers={[
+          { name: "Mike", color: "#3b82f6" },
+          { name: "Ryan", color: "#10b981" },
+        ]}
         open={chatOpen}
         onClose={() => setChatOpen(false)}
       />

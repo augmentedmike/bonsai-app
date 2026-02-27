@@ -8,6 +8,7 @@ import { SettingsPanel } from "./settings-panel";
 import type { AgentRun } from "@/types";
 import { useLanguage } from "@/i18n/language-context";
 import { useUser } from "@/contexts/user-context";
+import { useNotifications } from "@/hooks/use-notifications";
 
 function NavIcon({ icon, active }: { icon: string; active?: boolean }) {
   const base = active
@@ -15,6 +16,13 @@ function NavIcon({ icon, active }: { icon: string; active?: boolean }) {
     : "text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]";
 
   switch (icon) {
+    case "projects":
+      return (
+        <svg className={`w-5 h-5 ${base}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+          {/* Stacked folders */}
+          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v8.25m19.5 0v.75A2.25 2.25 0 0119.5 17.25h-15a2.25 2.25 0 01-2.25-2.25V7.5" />
+        </svg>
+      );
     case "ideas":
       return (
         <svg className={`w-5 h-5 ${base}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
@@ -63,23 +71,26 @@ function getSubPage(pathname: string): string | undefined {
   return match ? match[1] : undefined;
 }
 
-interface WorkerSummary {
-  name: string;
-  role: string;
-  isActive: boolean;
-  avatarData?: string | null;
-  color?: string;
-}
-
 export function Sidebar({ userName }: { userName?: string }) {
   const pathname = usePathname();
   const router = useRouter();
   const { t } = useLanguage();
   const { user } = useUser();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialSection, setSettingsInitialSection] = useState<string | undefined>(undefined);
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeRunCount, setActiveRunCount] = useState(0);
-  const [workers, setWorkers] = useState<WorkerSummary[]>([]);
+
+  // Listen for open-settings events dispatched from other components (e.g. projects dashboard footer)
+  useEffect(() => {
+    function onOpenSettings(e: Event) {
+      const detail = (e as CustomEvent<{ section?: string }>).detail;
+      setSettingsInitialSection(detail?.section);
+      setSettingsOpen(true);
+    }
+    window.addEventListener("open-settings", onOpenSettings);
+    return () => window.removeEventListener("open-settings", onOpenSettings);
+  }, []);
 
   const activeSlug = getSlugFromPath(pathname);
   const subPage = getSubPage(pathname);
@@ -104,30 +115,21 @@ export function Sidebar({ userName }: { userName?: string }) {
     return () => { cancelled = true; clearInterval(interval); };
   }, []);
 
-  // Poll worker list for team avatar strip
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchWorkers() {
-      try {
-        const res = await fetch("/api/workers");
-        if (!cancelled && res.ok) {
-          const data = await res.json();
-          if (data?.workers) {
-            setWorkers(data.workers.map((w: WorkerSummary) => ({
-              name: w.name,
-              role: w.role,
-              isActive: w.isActive,
-              avatarData: w.avatarData,
-              color: w.color,
-            })));
-          }
-        }
-      } catch {}
+
+
+  const { unread: chatUnread, markRead: markChatRead } = useNotifications();
+
+  function openOperatorChat() {
+    markChatRead();
+    if (pathname === "/") {
+      // Dashboard is mounted — listener will catch this immediately
+      window.dispatchEvent(new CustomEvent("open-operator-chat"));
+    } else {
+      // Not on dashboard — flag sessionStorage then navigate; dashboard reads it on mount
+      try { sessionStorage.setItem("bonsai-open-chat", "1"); } catch {}
+      router.push("/");
     }
-    fetchWorkers();
-    const interval = setInterval(fetchWorkers, 5000);
-    return () => { cancelled = true; clearInterval(interval); };
-  }, []);
+  }
 
   const displayName = user?.name || userName || "User";
 
@@ -141,19 +143,19 @@ export function Sidebar({ userName }: { userName?: string }) {
   const projectNavItems = [
     { icon: "board", label: t.nav.board, subPath: "board", match: (s: string | undefined) => s === "board" || s === undefined },
     { icon: "activity", label: t.nav.activity, subPath: "activity", match: (s: string | undefined) => s === "activity" },
-    { icon: "team", label: t.nav.team, subPath: "team", match: (s: string | undefined) => s === "team" },
     { icon: "settings", label: t.nav.settings, subPath: "settings", match: (s: string | undefined) => s === "settings" },
   ];
 
   return (
     <aside
-      className="relative flex flex-col items-center justify-between w-16 py-4 border-r"
+      className="relative flex flex-col items-center w-16 py-4 border-r"
       style={{
         backgroundColor: "var(--bg-sidebar)",
         borderColor: "var(--border-subtle)",
       }}
     >
-      <div className="flex flex-col items-center gap-1">
+      {/* Nav list — logo, global items, project items, then avatar at bottom */}
+      <div className="flex flex-col items-center gap-1 w-full">
         {/* Logo — always links to "/" */}
         <Link href="/" className="flex flex-col items-center mb-4 cursor-pointer">
           <div className="w-9 h-9 rounded-xl overflow-hidden">
@@ -163,6 +165,16 @@ export function Sidebar({ userName }: { userName?: string }) {
             <span style={{ color: "var(--text-primary)" }}>BONS</span>
             <span style={{ color: "var(--accent-pink)" }}>AI</span>
           </span>
+        </Link>
+
+        {/* Projects — links to / */}
+        <Link
+          href="/"
+          title="Projects"
+          className="group relative w-10 h-10 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5"
+          style={pathname === "/" ? { backgroundColor: "rgba(91, 141, 249, 0.1)" } : undefined}
+        >
+          <NavIcon icon="projects" active={pathname === "/"} />
         </Link>
 
         {/* Global activity — always visible */}
@@ -183,141 +195,148 @@ export function Sidebar({ userName }: { userName?: string }) {
           )}
         </Link>
 
-        {/* Team avatar strip — always visible */}
-        {workers.length > 0 && (
-          <>
-            <div
-              className="w-6 my-1"
-              style={{ borderTop: "1px solid var(--border-subtle)" }}
-            />
-            {workers.map((worker) => {
-              const initials = worker.name
-                .split(" ")
-                .map((n) => n[0])
-                .join("")
-                .slice(0, 2)
-                .toUpperCase();
-              // Derive a stable bg color from role if no explicit color
-              const roleColors: Record<string, string> = {
-                operator: "#5b8df9",
-                researcher: "#8b5cf6",
-                developer: "#10b981",
-                designer: "#f59e0b",
-              };
-              const bg = worker.color || roleColors[worker.role] || "#6b7280";
-              const href = activeSlug ? `/p/${activeSlug}/team` : undefined;
-              const label = `${worker.name} · ${worker.role}${worker.isActive ? " (active)" : ""}`;
-
-              const avatarEl = (
-                <div
-                  className="relative"
-                  key={worker.name}
-                  title={label}
-                >
-                  <div
-                    className="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center text-[11px] font-semibold text-white transition-opacity hover:opacity-80 cursor-pointer"
-                    style={{ backgroundColor: worker.avatarData ? "transparent" : bg }}
-                    onClick={() => href && router.push(href)}
-                  >
-                    {worker.avatarData ? (
-                      <img src={worker.avatarData} alt={worker.name} className="w-full h-full object-cover" />
-                    ) : (
-                      initials
-                    )}
-                  </div>
-                  {/* Active indicator */}
-                  {worker.isActive && (
-                    <span
-                      className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2"
-                      style={{
-                        backgroundColor: "#22c55e",
-                        borderColor: "var(--bg-sidebar)",
-                      }}
-                    />
-                  )}
-                </div>
-              );
-
-              return avatarEl;
-            })}
-            <div
-              className="w-6 my-1"
-              style={{ borderTop: "1px solid var(--border-subtle)" }}
-            />
-          </>
-        )}
-
-        {/* Project-scoped nav items */}
-        {activeSlug && projectNavItems.map((item) => {
-          const isActive = item.match(subPage);
-          return (
-            <button
-              key={item.icon}
-              onClick={() => navTo(item.subPath)}
-              className="group relative w-10 h-10 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5"
-              style={isActive ? { backgroundColor: "rgba(91, 141, 249, 0.1)" } : undefined}
-              title={item.label}
-            >
-              <NavIcon icon={item.icon} active={isActive} />
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="relative flex flex-col items-center gap-1">
-        <div
-          onClick={() => setMenuOpen(!menuOpen)}
-          className="w-9 h-9 rounded-full overflow-hidden flex items-center justify-center text-xs font-medium text-white cursor-pointer hover:opacity-80 transition-opacity"
-          style={{
-            backgroundColor: user?.avatarData ? "transparent" : "var(--accent-indigo)",
-            ...(menuOpen ? { outline: "2px solid var(--accent-blue)", outlineOffset: "2px" } : {}),
-          }}
-          title={displayName}
-        >
-          {user?.avatarData ? (
-            <img src={user.avatarData} alt={displayName} className="w-full h-full object-cover" />
-          ) : (
-            displayName[0].toUpperCase()
-          )}
-        </div>
-
-        {/* Avatar submenu: Settings + Sign out */}
-        {menuOpen && (
+        {/* Project-scoped nav items — toolbar group (between Activity and Team) */}
+        {activeSlug && (
           <div
-            className="absolute bottom-10 left-12 z-50 rounded-lg shadow-xl overflow-hidden min-w-[140px]"
-            style={{ backgroundColor: "var(--bg-secondary)", border: "1px solid var(--border-subtle)" }}
+            className="flex flex-col items-center gap-1 w-full px-1 py-1.5 rounded-lg mt-1"
+            style={{
+              backgroundColor: "rgba(255,255,255,0.05)",
+              border: "1px solid rgba(255,255,255,0.07)",
+            }}
           >
-            <button
-              onClick={() => { setMenuOpen(false); setSettingsOpen(true); }}
-              className="w-full text-left px-3 py-2 text-sm hover:bg-white/5 transition-colors flex items-center gap-2"
-              style={{ color: "var(--text-primary)" }}
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              Settings
-            </button>
-            <div style={{ borderTop: "1px solid var(--border-subtle)" }} />
-            <button
-              onClick={async () => {
-                setMenuOpen(false);
-                await fetch("/api/auth/logout", { method: "POST" });
-                window.location.replace("/login");
-              }}
-              className="w-full text-left px-3 py-2 text-sm hover:bg-white/5 transition-colors flex items-center gap-2"
-              style={{ color: "#f87171" }}
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
-              </svg>
-              Sign out
-            </button>
+            {projectNavItems.map((item) => {
+              const isActive = item.match(subPage);
+              return (
+                <button
+                  key={item.icon}
+                  onClick={() => navTo(item.subPath)}
+                  className="group relative w-10 h-10 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5"
+                  style={isActive ? { backgroundColor: "rgba(91, 141, 249, 0.1)" } : undefined}
+                  title={item.label}
+                >
+                  <NavIcon icon={item.icon} active={isActive} />
+                </button>
+              );
+            })}
           </div>
         )}
+
+        {/* Global team — always visible */}
+        <Link
+          href={activeSlug ? `/p/${activeSlug}/team` : "/team"}
+          title="Team"
+          className="group relative w-10 h-10 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5"
+          style={(subPage === "team" || pathname === "/team") ? { backgroundColor: "rgba(91, 141, 249, 0.1)" } : undefined}
+        >
+          <NavIcon icon="team" active={subPage === "team" || pathname === "/team"} />
+        </Link>
+
+        {/* Settings — standalone icon, opens SettingsPanel */}
+        <button
+          onClick={() => setSettingsOpen(true)}
+          title="Settings"
+          className="group w-10 h-10 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5 mt-1"
+          style={settingsOpen ? { backgroundColor: "rgba(91, 141, 249, 0.1)" } : undefined}
+        >
+          <NavIcon icon="settings" active={settingsOpen} />
+        </button>
+
+        {/* Avatar / Profile — sign out only */}
+        <div className="relative mt-1 flex flex-col items-center gap-1">
+          {/* Glow ring — direct child of outer relative div, never inside the avatar subtree.
+              Sized to match w-9 h-9 (36×36px), centered via left-1/2 -translate-x-1/2.
+              box-shadow draws the ring + diffused glow; opacity is fully independent of avatar. */}
+          {chatUnread > 0 && (
+            <div
+              className="absolute pointer-events-none top-0 left-1/2 -translate-x-1/2 rounded-full"
+              style={{
+                width: 36,
+                height: 36,
+                boxShadow: "0 0 0 2.5px #22c55e, 0 0 20px 8px rgba(34,197,94,0.5)",
+                animation: "avatar-glow-pulse 1.8s ease-in-out infinite",
+              }}
+            />
+          )}
+
+          <div
+            onClick={() => setMenuOpen(!menuOpen)}
+            className="relative w-9 h-9 rounded-full overflow-hidden flex items-center justify-center text-xs font-medium text-white cursor-pointer hover:opacity-80 transition-opacity"
+            style={{
+              backgroundColor: user?.avatarData ? "transparent" : "var(--accent-indigo)",
+              ...(menuOpen ? { outline: "2px solid var(--accent-blue)", outlineOffset: "2px" } : {}),
+            }}
+            title={displayName}
+          >
+            {user?.avatarData ? (
+              <img src={user.avatarData} alt={displayName} className="w-full h-full object-cover" />
+            ) : (
+              displayName[0].toUpperCase()
+            )}
+          </div>
+
+          {/* Chat notification button — sits below avatar */}
+          {chatUnread > 0 && (
+            <button
+              onClick={openOperatorChat}
+              title={`${chatUnread} unread message${chatUnread !== 1 ? "s" : ""} — open Operator Chat`}
+              className="relative flex items-center justify-center w-6 h-6 rounded-full transition-all hover:scale-110 active:scale-95"
+              style={{
+                backgroundColor: "#16a34a",
+                boxShadow: "0 0 8px 3px rgba(34,197,94,0.45)",
+              }}
+            >
+              <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
+              </svg>
+              <span
+                className="absolute -top-1 -right-1 min-w-[14px] h-3.5 rounded-full flex items-center justify-center text-[9px] font-bold text-white leading-none px-0.5"
+                style={{ backgroundColor: "#dc2626" }}
+              >
+                {chatUnread > 9 ? "9+" : chatUnread}
+              </span>
+            </button>
+          )}
+
+          {/* Avatar submenu: profile name + sign out */}
+          {menuOpen && (
+            <div
+              className="absolute top-0 left-12 z-50 rounded-lg shadow-xl overflow-hidden min-w-[150px]"
+              style={{ backgroundColor: "var(--bg-secondary)", border: "1px solid var(--border-subtle)" }}
+            >
+              {/* Profile label */}
+              <div className="px-3 py-2 flex items-center gap-2" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+                <div
+                  className="w-6 h-6 rounded-full overflow-hidden flex items-center justify-center text-[10px] font-semibold text-white flex-shrink-0"
+                  style={{ backgroundColor: user?.avatarData ? "transparent" : "var(--accent-indigo)" }}
+                >
+                  {user?.avatarData ? (
+                    <img src={user.avatarData} alt={displayName} className="w-full h-full object-cover" />
+                  ) : (
+                    displayName[0].toUpperCase()
+                  )}
+                </div>
+                <span className="text-xs font-medium truncate" style={{ color: "var(--text-primary)" }}>{displayName}</span>
+              </div>
+              <button
+                onClick={async () => {
+                  setMenuOpen(false);
+                  await fetch("/api/auth/logout", { method: "POST" });
+                  window.location.replace("/login");
+                }}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-white/5 transition-colors flex items-center gap-2"
+                style={{ color: "#f87171" }}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75" />
+                </svg>
+                Sign out
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
-      <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsPanel open={settingsOpen} onClose={() => { setSettingsOpen(false); setSettingsInitialSection(undefined); }} initialSection={settingsInitialSection} />
     </aside>
   );
 }

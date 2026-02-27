@@ -66,7 +66,7 @@ interface PromptData {
 
 type Tab = "workers" | "roles";
 
-export function TeamView({ projectSlug }: { projectSlug: string }) {
+export function TeamView({ projectSlug = "__global__" }: { projectSlug?: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [tab, setTab] = useState<Tab>("workers");
@@ -180,7 +180,7 @@ export function TeamView({ projectSlug }: { projectSlug: string }) {
       const persona = personas.find((p) => p.id === editPersonaId);
       if (persona) {
         setEditingPersona(persona);
-        router.replace(`/p/${projectSlug}/team`, { scroll: false });
+        router.replace(projectSlug === "__global__" ? "/team" : `/p/${projectSlug}/team`, { scroll: false });
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -7,8 +7,8 @@ import { createProject } from "@/db/data/projects";
 import { fireDispatch } from "@/lib/dispatch-agent";
 import { getCurrentHuman } from "@/lib/auth";
 import { db } from "@/db";
-import { agentRuns, personas, projects } from "@/db/schema";
-import { eq, and, isNull } from "drizzle-orm";
+import { agentRuns, comments, notifications, personas, projects } from "@/db/schema";
+import { eq, and, isNull, desc, inArray } from "drizzle-orm";
 
 const API_BASE = process.env.API_BASE || "http://localhost:3080";
 const GLOBAL_SLUG = "__global__";
@@ -71,6 +71,10 @@ export async function GET(req: Request) {
 
   const inbox = await getTicketsByProject(projectId, "[Global Inbox]");
   const activeAgents: Array<{ id: string; name: string; color: string; avatarUrl?: string }> = [];
+
+  // Sim responses from the operator land in ticket comments, not project_messages.
+  // Fetch them and merge into the chat stream so they appear in the UI.
+  let simMessages: typeof messages = [];
   if (inbox) {
     const runs = db
       .select({
@@ -91,12 +95,54 @@ export async function GET(req: Request) {
         avatarUrl: r.personaAvatar && r.personaId ? `/api/personas/${r.personaId}/avatar` : undefined,
       });
     }
+
+    // Fetch sim comments from the inbox ticket (operator replies)
+    const inboxComments = db
+      .select()
+      .from(comments)
+      .where(and(eq(comments.ticketId, inbox.id), eq(comments.authorType, "sim")))
+      .orderBy(desc(comments.createdAt))
+      .limit(limit)
+      .all();
+
+    if (inboxComments.length > 0) {
+      const personaIds = [...new Set(inboxComments.filter((c) => c.personaId).map((c) => c.personaId!))];
+      const personaRows = personaIds.length > 0
+        ? db.select().from(personas).where(inArray(personas.id, personaIds)).all()
+        : [];
+      const personaMap = new Map(personaRows.map((p) => [p.id, p]));
+
+      simMessages = inboxComments.map((c) => {
+        const persona = c.personaId ? personaMap.get(c.personaId) : null;
+        return {
+          id: `c-${c.id}` as unknown as number,
+          projectId,
+          authorType: "sim" as const,
+          author: persona
+            ? {
+                name: persona.name,
+                avatarUrl: persona.avatar ? `/api/personas/${persona.id}/avatar` : undefined,
+                color: persona.color,
+                role: persona.role || undefined,
+              }
+            : { name: "Sim" },
+          content: c.content,
+          attachments: undefined,
+          createdAt: c.createdAt,
+        };
+      });
+    }
   }
+
+  // Merge human messages + sim responses, sorted oldest-first
+  const allMessages = [...messages, ...simMessages].sort((a, b) =>
+    (a.createdAt ?? "").localeCompare(b.createdAt ?? "")
+  );
 
   const humanList = await getHumans();
   const humans = humanList.map((h) => ({ id: h.id, name: h.name }));
 
-  return NextResponse.json({ messages, activeAgents, humans });
+  return NextResponse.json({ messages: allMessages, activeAgents, humans });
 }
 
 /** POST — save message and dispatch to @mentioned persona, or @operator by default */
@@ -121,6 +167,25 @@ export async function POST(req: Request) {
   });
 
   const trimmed = content.trim();
+
+  // Detect @human mentions and create notifications (excluding the sender)
+  // Matches both full name (@Ryan Bent) and first name (@Ryan)
+  const allHumans = await getHumans();
+  for (const h of allHumans) {
+    if (h.id === authorId) continue; // don't notify yourself
+    const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const firstName = h.name.split(" ")[0];
+    const fullPattern = new RegExp(`@${escape(h.name)}\\b`, "i");
+    const firstPattern = new RegExp(`@${escape(firstName)}\\b`, "i");
+    if (fullPattern.test(trimmed) || firstPattern.test(trimmed)) {
+      db.insert(notifications).values({
+        humanId: h.id,
+        projectMessageId: msg.id,
+        type: "mention",
+      }).run();
+    }
+  }
+
   const allPersonas = await getGlobalPersonas();
   const sorted = [...allPersonas].sort((a, b) => b.name.length - a.name.length);
   const mentionedIds: string[] = [];
@@ -132,17 +197,31 @@ export async function POST(req: Request) {
     }
   }
 
-  const isTeam = /@team\b/i.test(trimmed);
+  const isOperator = /@operator\b/i.test(trimmed);
+
+  // Collect all @words in the message, check if any are unrecognized (not a persona, not @operator)
+  // "Ryan", "Mike", first names, or any unknown word → treat as human/unknown → no fallback dispatch
+  const knownNames = new Set([
+    "operator",
+    "augmentedmike",
+    ...allPersonas.map((p) => p.name.toLowerCase()),
+    ...allPersonas.map((p) => p.role?.toLowerCase()).filter(Boolean),
+  ]);
+  const atWords = [...trimmed.matchAll(/@([\w\p{L}-]+)/giu)].map((m) => m[1].toLowerCase());
+  const hasUnrecognizedMention = atWords.some((w) => !knownNames.has(w));
+
   const inboxTicketId = await ensureGlobalInboxTicket(projectId);
 
-  if (isTeam) {
+  if (isOperator) {
+    // Explicit @operator → always dispatch to operator
     fireDispatch(API_BASE, inboxTicketId, {
       commentContent: trimmed,
-      team: true,
-      silent: true,
+      targetRole: "operator",
       conversational: true,
-    }, "bonsai-chat/@team");
+      silent: true,
+    }, "bonsai-chat/operator");
   } else if (mentionedIds.length > 0) {
+    // Named AI persona @mention → dispatch to each persona
     for (const personaId of mentionedIds) {
       fireDispatch(API_BASE, inboxTicketId, {
         commentContent: trimmed,
@@ -151,8 +230,8 @@ export async function POST(req: Request) {
         silent: true,
       }, "bonsai-chat/@mention");
     }
-  } else {
-    // No @mention — @operator owns it
+  } else if (!hasUnrecognizedMention) {
+    // No @mention at all → @operator catch-all
     fireDispatch(API_BASE, inboxTicketId, {
       commentContent: trimmed,
       targetRole: "operator",
@@ -160,6 +239,7 @@ export async function POST(req: Request) {
       silent: true,
     }, "bonsai-chat/operator");
   }
+  // else: unrecognized @word (first name, human name, unknown) → no dispatch
 
   return NextResponse.json({ ok: true, message: msg });
 }
