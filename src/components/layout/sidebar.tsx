@@ -180,17 +180,7 @@ export function Sidebar({ userName }: { userName?: string }) {
           )}
         </Link>
 
-        {/* Global team — always visible */}
-        <Link
-          href={activeSlug ? `/p/${activeSlug}/team` : "/team"}
-          title="Team"
-          className="group relative w-10 h-10 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5"
-          style={(subPage === "team" || pathname === "/team") ? { backgroundColor: "rgba(91, 141, 249, 0.1)" } : undefined}
-        >
-          <NavIcon icon="team" active={subPage === "team" || pathname === "/team"} />
-        </Link>
-
-        {/* Project-scoped nav items — toolbar group */}
+        {/* Project-scoped nav items — toolbar group (between Activity and Team) */}
         {activeSlug && (
           <div
             className="flex flex-col items-center gap-1 w-full px-1 py-1.5 rounded-lg mt-1"
@@ -215,6 +205,16 @@ export function Sidebar({ userName }: { userName?: string }) {
             })}
           </div>
         )}
+
+        {/* Global team — always visible */}
+        <Link
+          href={activeSlug ? `/p/${activeSlug}/team` : "/team"}
+          title="Team"
+          className="group relative w-10 h-10 rounded-lg flex items-center justify-center transition-colors hover:bg-white/5"
+          style={(subPage === "team" || pathname === "/team") ? { backgroundColor: "rgba(91, 141, 249, 0.1)" } : undefined}
+        >
+          <NavIcon icon="team" active={subPage === "team" || pathname === "/team"} />
+        </Link>
 
         {/* Settings — standalone icon, opens SettingsPanel */}
         <button
